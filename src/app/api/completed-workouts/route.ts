@@ -6,9 +6,15 @@ import {
   completedWorkouts,
   scheduledWorkouts,
   routineInstances,
+  userSettings,
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  isCalendarConnected,
+} from "@/lib/calendar";
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
@@ -76,7 +82,47 @@ export const POST = handle(async (request: NextRequest) => {
       .where(eq(routineInstances.id, scheduledRoutineInstanceId));
   }
 
-  // NOTE: calendar sync deferred to Phase 5b
+  // Sync to Google Calendar if connected
+  if (await isCalendarConnected(user.id)) {
+    const [settings] = await db
+      .select({ calendarId: userSettings.selectedCalendarId })
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1);
+
+    // Delete the old "(Scheduled)" event if it exists
+    if (body.scheduledWorkoutId) {
+      const [sw] = await db
+        .select()
+        .from(scheduledWorkouts)
+        .where(eq(scheduledWorkouts.id, body.scheduledWorkoutId))
+        .limit(1);
+      if (sw?.calendarEventId) {
+        await deleteCalendarEvent(
+          user.id,
+          sw.calendarEventId,
+          settings?.calendarId ?? undefined,
+        );
+      }
+    }
+
+    // Create the completed workout event
+    const eventId = await createCalendarEvent(
+      user.id,
+      body.name,
+      created.completedAt,
+      settings?.calendarId ?? undefined,
+      body.localDate,
+    );
+    if (eventId) {
+      await db
+        .update(completedWorkouts)
+        .set({ calendarEventId: eventId })
+        .where(eq(completedWorkouts.id, created.id));
+      created.calendarEventId = eventId;
+    }
+  }
+
   return new Response(JSON.stringify(created), {
     status: 201,
     headers: { "content-type": "application/json" },

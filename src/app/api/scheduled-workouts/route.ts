@@ -2,9 +2,13 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { scheduledWorkouts } from "@/lib/db/schema";
+import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import {
+  createCalendarEvent,
+  isCalendarConnected,
+} from "@/lib/calendar";
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
@@ -53,7 +57,29 @@ export const POST = handle(async (request: NextRequest) => {
     })
     .returning();
 
-  // NOTE: calendar event creation deferred to Phase 5b
+  // Sync to Google Calendar if connected
+  if (await isCalendarConnected(user.id)) {
+    const [settings] = await db
+      .select({ calendarId: userSettings.selectedCalendarId })
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1);
+    const eventId = await createCalendarEvent(
+      user.id,
+      `${body.name} (Scheduled)`,
+      dateValue,
+      settings?.calendarId ?? undefined,
+      body.localDate,
+    );
+    if (eventId) {
+      await db
+        .update(scheduledWorkouts)
+        .set({ calendarEventId: eventId })
+        .where(eq(scheduledWorkouts.id, created.id));
+      created.calendarEventId = eventId;
+    }
+  }
+
   return new Response(JSON.stringify(created), {
     status: 201,
     headers: { "content-type": "application/json" },

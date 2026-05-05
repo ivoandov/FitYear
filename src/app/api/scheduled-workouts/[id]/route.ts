@@ -2,9 +2,24 @@ import { NextRequest } from "next/server";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { scheduledWorkouts } from "@/lib/db/schema";
+import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import {
+  createCalendarEvent,
+  deleteCalendarEvent,
+  isCalendarConnected,
+  updateCalendarEvent,
+} from "@/lib/calendar";
+
+async function getSelectedCalendarId(userId: string): Promise<string | undefined> {
+  const [s] = await db
+    .select({ id: userSettings.selectedCalendarId })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  return s?.id ?? undefined;
+}
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -83,13 +98,54 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     .set(update)
     .where(eq(scheduledWorkouts.id, id))
     .returning();
+
+  // Calendar sync on date change
+  if (update.date && (await isCalendarConnected(user.id))) {
+    const calendarId = await getSelectedCalendarId(user.id);
+    const newDate = update.date as Date;
+    if (existing.calendarEventId) {
+      const existingDateStr = existing.date.toISOString().split("T")[0];
+      const newDateStr = newDate.toISOString().split("T")[0];
+      if (existingDateStr !== newDateStr) {
+        await updateCalendarEvent(
+          user.id,
+          existing.calendarEventId,
+          newDate,
+          calendarId,
+          body.localDate,
+        );
+      }
+    } else {
+      const eventId = await createCalendarEvent(
+        user.id,
+        `${updated.name} (Scheduled)`,
+        newDate,
+        calendarId,
+        body.localDate,
+      );
+      if (eventId) {
+        await db
+          .update(scheduledWorkouts)
+          .set({ calendarEventId: eventId })
+          .where(eq(scheduledWorkouts.id, id));
+        updated.calendarEventId = eventId;
+      }
+    }
+  }
+
   return updated;
 });
 
 export const DELETE = handle(async (_request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
-  await ownScheduled(id, user.id);
+  const existing = await ownScheduled(id, user.id);
+
+  if (existing.calendarEventId && (await isCalendarConnected(user.id))) {
+    const calendarId = await getSelectedCalendarId(user.id);
+    await deleteCalendarEvent(user.id, existing.calendarEventId, calendarId);
+  }
+
   await db.delete(scheduledWorkouts).where(eq(scheduledWorkouts.id, id));
   return new Response(null, { status: 204 });
 });

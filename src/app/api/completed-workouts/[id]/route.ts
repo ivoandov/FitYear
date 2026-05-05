@@ -2,9 +2,10 @@ import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { completedWorkouts } from "@/lib/db/schema";
+import { completedWorkouts, userSettings } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { deleteCalendarEvent, isCalendarConnected } from "@/lib/calendar";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -47,7 +48,17 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
 export const DELETE = handle(async (_request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
-  await ownCompleted(id, user.id);
+  const existing = await ownCompleted(id, user.id);
+
+  if (existing.calendarEventId && (await isCalendarConnected(user.id))) {
+    const [s] = await db
+      .select({ id: userSettings.selectedCalendarId })
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1);
+    await deleteCalendarEvent(user.id, existing.calendarEventId, s?.id ?? undefined);
+  }
+
   await db.delete(completedWorkouts).where(eq(completedWorkouts.id, id));
   return new Response(null, { status: 204 });
 });

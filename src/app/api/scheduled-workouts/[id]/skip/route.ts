@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { scheduledWorkouts, routineInstances } from "@/lib/db/schema";
+import {
+  scheduledWorkouts,
+  routineInstances,
+  userSettings,
+} from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { deleteCalendarEvent, isCalendarConnected } from "@/lib/calendar";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,6 +26,15 @@ export const POST = handle(async (_request: NextRequest, ctx: Ctx) => {
   if (existing.userId !== user.id) throw new ApiError(403, "Access denied");
   if (!existing.routineInstanceId) {
     throw new ApiError(400, "Only routine workouts can be skipped");
+  }
+
+  if (existing.calendarEventId && (await isCalendarConnected(user.id))) {
+    const [s] = await db
+      .select({ id: userSettings.selectedCalendarId })
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1);
+    await deleteCalendarEvent(user.id, existing.calendarEventId, s?.id ?? undefined);
   }
 
   await db

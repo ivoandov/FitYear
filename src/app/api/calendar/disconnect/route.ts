@@ -1,0 +1,9 @@
+import { disconnectCalendar } from "@/lib/calendar";
+import { requireUser } from "@/lib/api/auth";
+import { handle } from "@/lib/api/handler";
+
+export const POST = handle(async () => {
+  const { user } = await requireUser();
+  await disconnectCalendar(user.id);
+  return { success: true };
+});
