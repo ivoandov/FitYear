@@ -1,0 +1,781 @@
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RestTimer } from "@/components/RestTimer";
+import { useTimer } from "@/context/TimerContext";
+import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
+import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { useWorkout } from "@/context/WorkoutContext";
+import { useSettings } from "@/components/SettingsProvider";
+import { useQuery } from "@tanstack/react-query";
+import type { Exercise } from "@/lib/db/schema";
+import { useExerciseDetails } from "@/hooks/useExerciseDetails";
+
+interface SetData {
+  setNumber: number;
+  weight: number | null;
+  reps: number | null;
+  distance: number | null;
+  time: number | null;
+  completed: boolean;
+}
+
+type TrackingState = "not_started" | "in_set" | "resting";
+
+const TRACKING_STORAGE_KEY = "workout_tracking_progress";
+
+interface SavedTrackingProgress {
+  workoutDisplayId: string;
+  exerciseSets: [string, SetData[]][]; // Keyed by exercise instanceId for stability during edits/reorders
+  currentExerciseIndex: number;
+  currentSetIndex: number;
+  restTimerDuration: number;
+}
+
+export default function TrackPage() {
+  const router = useRouter();
+  const { 
+    activeWorkout, 
+    endWorkout, 
+    completeWorkout, 
+    updateActiveWorkout, 
+    completedWorkouts,
+    trackingProgress,
+    saveTrackingProgress,
+    clearTrackingProgress,
+    flushProgress,
+  } = useWorkout();
+  const { restTimerOnManualComplete, showKgConversion } = useSettings();
+  
+  const { data: userSettingsData } = useQuery<{ weightUnit?: string }>({ queryKey: ['/api/user-settings'] });
+  const weightUnit = (userSettingsData?.weightUnit ?? 'lbs') as 'lbs' | 'kg';
+
+  // Conversion helpers — DB always stores lbs; display in user's chosen unit
+  const fromLbs = (lbs: number | null): number | null => {
+    if (lbs == null) return null;
+    return weightUnit === 'kg' ? Math.round((lbs / 2.20462) * 10) / 10 : lbs;
+  };
+  const toLbs = (val: number | null): number | null => {
+    if (val == null) return null;
+    return weightUnit === 'kg' ? Math.round(val * 2.20462 * 10) / 10 : val;
+  };
+  // Increment for +/- buttons: 5 lbs or 2.5 kg
+  const weightIncrement = weightUnit === 'kg' ? 2.5 : 5;
+
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  const [trackingState, setTrackingState] = useState<TrackingState>("not_started");
+  const [currentSetIndex, setCurrentSetIndex] = useState(0);
+  const [restTimerDuration, setRestTimerDuration] = useState(90);
+  const [exerciseSets, setExerciseSets] = useState<Map<string, SetData[]>>(new Map()); // Keyed by exercise instanceId for stability
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
+  const restCloseProcessed = useRef(false);
+
+  const { data: exercises = [] } = useQuery<Exercise[]>({
+    queryKey: ["/api/exercises"],
+  });
+
+  const { enrichExercises } = useExerciseDetails();
+
+  const enrichedWorkoutExercises = useMemo(() => {
+    if (!activeWorkout?.exercises) return [];
+    return enrichExercises(activeWorkout.exercises as any[]);
+  }, [activeWorkout?.exercises, enrichExercises]);
+
+  // Load saved progress from context on mount
+  useEffect(() => {
+    if (activeWorkout && !hasLoadedSavedProgress) {
+      if (trackingProgress && trackingProgress.workoutDisplayId === activeWorkout.displayId) {
+        console.log("Restoring tracking progress from server");
+        // Restore progress - key is the instanceId
+        const restoredMap = new Map<string, SetData[]>();
+        for (const [instanceId, sets] of trackingProgress.exerciseSets) {
+          restoredMap.set(instanceId, sets);
+        }
+        setExerciseSets(restoredMap);
+        setCurrentExerciseIndex(trackingProgress.currentExerciseIndex);
+        setCurrentSetIndex(trackingProgress.currentSetIndex);
+        setRestTimerDuration(trackingProgress.restTimerDuration);
+      }
+      setHasLoadedSavedProgress(true);
+    }
+  }, [activeWorkout, trackingProgress, hasLoadedSavedProgress]);
+
+  // Auto-save progress to context whenever tracking state changes
+  useEffect(() => {
+    if (activeWorkout && hasLoadedSavedProgress && exerciseSets.size > 0) {
+      const progress: SavedTrackingProgress = {
+        workoutDisplayId: activeWorkout.displayId,
+        exerciseSets: Array.from(exerciseSets.entries()),
+        currentExerciseIndex,
+        currentSetIndex,
+        restTimerDuration,
+      };
+      saveTrackingProgress(progress);
+    }
+  }, [activeWorkout, exerciseSets, currentExerciseIndex, currentSetIndex, restTimerDuration, hasLoadedSavedProgress, saveTrackingProgress]);
+
+  // Flush progress when navigating away from the page; also minimize timer so pill persists
+  useEffect(() => {
+    return () => {
+      if (activeWorkout) {
+        console.log("[TrackPage] Unmounting - flushing progress");
+        flushProgress();
+      }
+      // Auto-minimize so the pill stays visible on other tabs
+      setTimerMinimized(true);
+    };
+  }, [activeWorkout, flushProgress]);
+
+  // Clear saved progress when workout ends
+  const clearSavedProgress = () => {
+    clearTrackingProgress();
+  };
+
+  // Find the best set (highest weight) for an exercise from the most recent workout that contained it
+  const getLastRecordedValues = (exerciseId: string): { weight: number; reps: number; distance: number; time: number } | null => {
+    // Sort completed workouts by date descending to get most recent first
+    const sortedWorkouts = [...completedWorkouts].sort((a, b) => 
+      b.completedAt.getTime() - a.completedAt.getTime()
+    );
+    
+    for (const workout of sortedWorkouts) {
+      const exercise = workout.exercises.find(ex => ex.id === exerciseId) as any;
+      if (exercise?.setsData && exercise.setsData.length > 0) {
+        const completedSets = exercise.setsData.filter((s: any) => s.completed);
+        if (completedSets.length > 0) {
+          // For weight/reps exercises, show the set with the highest weight
+          // For distance/time exercises, show the set with the longest distance
+          const bestSet = completedSets.reduce((best: any, s: any) => {
+            const sWeight = s.weight ?? 0;
+            const bestWeight = best.weight ?? 0;
+            const sDistance = s.distance ?? 0;
+            const bestDistance = best.distance ?? 0;
+            if (sWeight !== bestWeight) return sWeight > bestWeight ? s : best;
+            return sDistance > bestDistance ? s : best;
+          });
+          return {
+            weight: bestSet.weight ?? null,
+            reps: bestSet.reps ?? null,
+            distance: bestSet.distance ?? null,
+            time: bestSet.time ?? null,
+          };
+        }
+      }
+    }
+    return null;
+  };
+
+  const getDefaultSets = (exerciseId?: string, exerciseType?: string): SetData[] => {
+    const lastValues = exerciseId ? getLastRecordedValues(exerciseId) : null;
+    
+    // Distance/time exercises default to 1 set, weight/reps default to 3 sets
+    const isDistanceTime = exerciseType === "distance_time";
+    
+    if (lastValues) {
+      const displayWeight = fromLbs(lastValues.weight);
+      if (isDistanceTime) {
+        return [
+          { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
+        ];
+      }
+      return [
+        { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
+        { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
+        { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
+      ];
+    }
+    
+    if (isDistanceTime) {
+      return [
+        { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
+      ];
+    }
+    return [
+      { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
+      { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
+      { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
+    ];
+  };
+
+  const getCurrentSets = (): SetData[] => {
+    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
+    if (!currentExercise) return getDefaultSets();
+    const instanceId = currentExercise.instanceId;
+    return exerciseSets.get(instanceId) || getDefaultSets(currentExercise.id, currentExercise.exerciseType);
+  };
+
+  const setCurrentSets = (sets: SetData[]) => {
+    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
+    if (!currentExercise?.instanceId) return;
+    const newMap = new Map(exerciseSets);
+    newMap.set(currentExercise.instanceId, sets);
+    setExerciseSets(newMap);
+  };
+
+  useEffect(() => {
+    if (!hasLoadedSavedProgress) return;
+    if (enrichedWorkoutExercises.length > 0) {
+      const currentEx = enrichedWorkoutExercises[currentExerciseIndex] as any;
+      if (currentEx?.instanceId) {
+        setExerciseSets(prev => {
+          if (prev.has(currentEx.instanceId)) return prev;
+          const newMap = new Map(prev);
+          newMap.set(currentEx.instanceId, getDefaultSets(currentEx.id, currentEx.exerciseType));
+          return newMap;
+        });
+      }
+    }
+  }, [currentExerciseIndex, enrichedWorkoutExercises, hasLoadedSavedProgress]);
+
+  useEffect(() => {
+    if (!hasLoadedSavedProgress || !userSettingsData || completedWorkouts.length === 0 || enrichedWorkoutExercises.length === 0) return;
+    if (trackingProgress) return;
+    setExerciseSets(prev => {
+      let changed = false;
+      const newMap = new Map(prev);
+      for (const ex of enrichedWorkoutExercises as any[]) {
+        if (!ex?.instanceId) continue;
+        const sets = newMap.get(ex.instanceId);
+        if (!sets || sets.length === 0) continue;
+        const firstSet = sets[0];
+        if (firstSet.completed) continue;
+        if (firstSet.weight != null || firstSet.reps != null || firstSet.distance != null || firstSet.time != null) continue;
+        const lastValues = getLastRecordedValues(ex.id);
+        if (lastValues) {
+          const updatedSets = [...sets];
+          updatedSets[0] = { ...firstSet, weight: fromLbs(lastValues.weight), reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time };
+          newMap.set(ex.instanceId, updatedSets);
+          changed = true;
+        }
+      }
+      return changed ? newMap : prev;
+    });
+  }, [completedWorkouts, enrichedWorkoutExercises, hasLoadedSavedProgress, userSettingsData]);
+
+  const { openTimer, isOpen: timerIsOpen, setIsMinimized: setTimerMinimized } = useTimer();
+  const handleRestTimerCloseRef = useRef<() => void>(() => {});
+
+  // Open the timer in TimerContext whenever we enter resting state
+  useEffect(() => {
+    if (trackingState === "resting") {
+      restCloseProcessed.current = false;
+      const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex] as any;
+      const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1] as any;
+      openTimer({
+        initialSeconds: restTimerDuration,
+        exerciseName: exAtIndex?.name ?? "Rest",
+        nextExerciseName: nextEx?.name,
+        onClose: () => handleRestTimerCloseRef.current(),
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingState]);
+
+  // When navigating back to TrackPage while timer is still running, restore resting state
+  useEffect(() => {
+    if (timerIsOpen && hasLoadedSavedProgress && trackingState !== "resting") {
+      setTrackingState("resting");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timerIsOpen, hasLoadedSavedProgress]);
+
+  if (!activeWorkout) {
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+          <div className="text-center py-12">
+            <h1 className="text-2xl font-bold mb-4" data-testid="text-no-workout">No Active Workout</h1>
+            <p className="text-muted-foreground mb-6">
+              Start a workout from the Workouts page to begin tracking.
+            </p>
+            <Button onClick={() => router.push("/")} data-testid="button-go-to-workouts">
+              Go to Workouts
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentExercise = enrichedWorkoutExercises[currentExerciseIndex];
+  const sets = getCurrentSets();
+  const progress = ((currentExerciseIndex + 1) / enrichedWorkoutExercises.length) * 100;
+  const allSetsCompleted = sets.every(s => s.completed);
+  const isLastExercise = currentExerciseIndex === enrichedWorkoutExercises.length - 1;
+
+  // Copy weight+reps from a completed set into the next uncompleted set (if still empty)
+  const propagateToNextSet = (setsArr: SetData[], completedIndex: number): SetData[] => {
+    const next = setsArr[completedIndex + 1];
+    if (!next) return setsArr;
+    const current = setsArr[completedIndex];
+    const updated = [...setsArr];
+    updated[completedIndex + 1] = {
+      ...next,
+      weight: next.weight ?? current.weight,
+      reps: next.reps ?? current.reps,
+    };
+    return updated;
+  };
+
+  const handlePrimaryAction = () => {
+    if (trackingState === "not_started") {
+      setTrackingState("in_set");
+    } else if (trackingState === "in_set") {
+      let newSets = [...sets];
+      newSets[currentSetIndex].completed = true;
+      newSets = propagateToNextSet(newSets, currentSetIndex);
+      setCurrentSets(newSets);
+      
+      if (currentSetIndex < sets.length - 1) {
+        setTrackingState("resting");
+      } else {
+        setTrackingState("not_started");
+      }
+    }
+  };
+
+  // Convert all weights in the exerciseSets map from display unit back to lbs before saving
+  const toLbsMap = (map: Map<string, SetData[]>): Map<string, SetData[]> => {
+    if (weightUnit === 'lbs') return map;
+    const converted = new Map<string, SetData[]>();
+    map.forEach((sets, key) => {
+      converted.set(key, sets.map(s => ({ ...s, weight: toLbs(s.weight) })));
+    });
+    return converted;
+  };
+
+  const handleFinishExercise = () => {
+    if (isLastExercise) {
+      // Don't clear progress before save - the save handles cleanup on success
+      completeWorkout(toLbsMap(exerciseSets));
+      router.push("/");
+    } else {
+      setCurrentExerciseIndex(currentExerciseIndex + 1);
+      setCurrentSetIndex(0);
+      setTrackingState("not_started");
+    }
+  };
+
+  const handleAddSet = () => {
+    const newSetNumber = sets.length + 1;
+    const lastSet = sets[sets.length - 1];
+    const newSet: SetData = {
+      setNumber: newSetNumber,
+      weight: lastSet?.weight ?? null,
+      reps: lastSet?.reps ?? null,
+      distance: lastSet?.distance ?? null,
+      time: lastSet?.time ?? null,
+      completed: false,
+    };
+    setCurrentSets([...sets, newSet]);
+    setCurrentSetIndex(sets.length);
+    setTrackingState("not_started");
+  };
+
+  const handleRestTimerClose = () => {
+    if (restCloseProcessed.current) return;
+    restCloseProcessed.current = true;
+    setTrackingState("in_set");
+    if (currentSetIndex < sets.length - 1) {
+      setCurrentSetIndex(currentSetIndex + 1);
+    }
+  };
+  // Keep ref always pointing to the latest closure so TimerContext's onClose stays current
+  handleRestTimerCloseRef.current = handleRestTimerClose;
+
+  const handleNextExercise = () => {
+    if (currentExerciseIndex < enrichedWorkoutExercises.length - 1) {
+      setCurrentExerciseIndex(currentExerciseIndex + 1);
+      setCurrentSetIndex(0);
+      setTrackingState("not_started");
+    }
+  };
+
+  const handlePreviousExercise = () => {
+    if (currentExerciseIndex > 0) {
+      setCurrentExerciseIndex(currentExerciseIndex - 1);
+      setCurrentSetIndex(0);
+      setTrackingState("not_started");
+    }
+  };
+
+  const handleEndWorkout = () => {
+    // Don't clear progress before save - the save handles cleanup on success
+    endWorkout(toLbsMap(exerciseSets));
+    router.push("/");
+  };
+
+  const handleEditSave = (data: WorkoutData) => {
+    // Since exerciseSets is now keyed by exercise ID, no remapping needed!
+    // Set data stays aligned automatically when exercises are reordered/added/removed
+    const oldExercises = activeWorkout.exercises;
+    const newExercises = data.exercises;
+    
+    updateActiveWorkout(data.name, data.exercises);
+    setIsEditDialogOpen(false);
+    
+    // Reset to first exercise if current exercise was removed
+    if (currentExerciseIndex >= newExercises.length) {
+      setCurrentExerciseIndex(Math.max(0, newExercises.length - 1));
+      setCurrentSetIndex(0);
+      setTrackingState("not_started");
+    } else {
+      // Check if current exercise still exists (might be at a different index now)
+      const currentExId = oldExercises[currentExerciseIndex]?.id;
+      const newIndex = newExercises.findIndex(ex => ex.id === currentExId);
+      if (newIndex >= 0 && newIndex !== currentExerciseIndex) {
+        // Move to the new index of the same exercise
+        setCurrentExerciseIndex(newIndex);
+      } else if (newIndex < 0) {
+        // Current exercise was removed, go to first exercise
+        setCurrentExerciseIndex(0);
+        setCurrentSetIndex(0);
+        setTrackingState("not_started");
+      }
+    }
+  };
+
+  const getPrimaryButtonText = () => {
+    if (allSetsCompleted) {
+      return isLastExercise ? "Finish Workout" : "Finish Exercise";
+    }
+    if (trackingState === "not_started") {
+      return currentSetIndex === 0 ? "Start" : `Start Set ${currentSetIndex + 1}`;
+    }
+    if (trackingState === "in_set") {
+      return "End Set";
+    }
+    return "Start";
+  };
+
+  const handlePrimaryButtonClick = () => {
+    if (allSetsCompleted) {
+      handleFinishExercise();
+    } else {
+      handlePrimaryAction();
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
+            {activeWorkout.name}
+          </h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+            Exercise {currentExerciseIndex + 1} of {enrichedWorkoutExercises.length}
+          </p>
+          <Progress value={progress} className="mt-3 sm:mt-4" data-testid="progress-workout" />
+        </div>
+
+        <Card>
+          <CardHeader className="p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-2 sm:gap-4">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handlePreviousExercise}
+                disabled={currentExerciseIndex === 0}
+                data-testid="button-previous-exercise"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <div className="flex-1 text-center min-w-0">
+                <CardTitle className="text-lg sm:text-2xl font-bold truncate" data-testid="text-current-exercise">
+                  {currentExercise.name}
+                </CardTitle>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                  {currentExercise.muscleGroups?.join(", ")}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleNextExercise}
+                disabled={currentExerciseIndex === enrichedWorkoutExercises.length - 1}
+                data-testid="button-next-exercise"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
+            <div className="space-y-3 sm:space-y-4">
+              {currentExercise.exerciseType === "distance_time" ? (
+                <>
+                  <div className="grid grid-cols-4 gap-2 sm:gap-4 font-semibold text-xs sm:text-sm pb-2 border-b">
+                    <div>Set</div>
+                    <div className="text-center">Distance (mi)</div>
+                    <div className="text-center">Time (min)</div>
+                    <div className="text-center">Done</div>
+                  </div>
+                  {sets.map((set, index) => {
+                    const isCurrentSet = index === currentSetIndex && !set.completed;
+                    const isActive = isCurrentSet && trackingState === "in_set";
+                    
+                    return (
+                      <div
+                        key={set.setNumber}
+                        className={`grid grid-cols-4 gap-2 sm:gap-4 items-center py-2 rounded-md px-1 sm:px-2 ${
+                          set.completed ? 'bg-accent' : ''
+                        } ${isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
+                        data-testid={`row-set-${set.setNumber}`}
+                      >
+                        <div className="font-medium text-sm sm:text-base">{set.setNumber}</div>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={set.distance ?? ""}
+                          onChange={(e) => {
+                            const newSets = [...sets];
+                            newSets[index].distance = e.target.value === "" ? null : parseFloat(e.target.value);
+                            setCurrentSets(newSets);
+                          }}
+                          className="text-center text-sm h-9 sm:h-10"
+                          data-testid={`input-distance-${set.setNumber}`}
+                        />
+                        <Input
+                          type="number"
+                          value={set.time ?? ""}
+                          onChange={(e) => {
+                            const newSets = [...sets];
+                            newSets[index].time = e.target.value === "" ? null : parseInt(e.target.value);
+                            setCurrentSets(newSets);
+                          }}
+                          className="text-center text-sm h-9 sm:h-10"
+                          data-testid={`input-time-${set.setNumber}`}
+                        />
+                        <div className="flex justify-center">
+                          <Checkbox
+                            checked={set.completed}
+                            onCheckedChange={(checked) => {
+                              const newSets = [...sets];
+                              newSets[index].completed = !!checked;
+                              setCurrentSets(newSets);
+                              if (checked) {
+                                // Start rest timer if setting is enabled
+                                if (restTimerOnManualComplete) {
+                                  setTrackingState("resting");
+                                }
+                                // If completing the current set, advance to next
+                                if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
+                                  setCurrentSetIndex(currentSetIndex + 1);
+                                  setTrackingState("not_started");
+                                }
+                              }
+                            }}
+                            data-testid={`checkbox-complete-${set.setNumber}`}
+                            className="h-5 w-5 sm:h-6 sm:w-6"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center font-semibold text-xs sm:text-sm pb-2 border-b">
+                    <div>Set</div>
+                    <div className="text-center">Weight ({weightUnit})</div>
+                    <div className="text-center">Reps</div>
+                    <div className="text-center">Done</div>
+                  </div>
+                  {sets.map((set, index) => {
+                    const isCurrentSet = index === currentSetIndex && !set.completed;
+                    const isActive = isCurrentSet && trackingState === "in_set";
+                    
+                    return (
+                      <div
+                        key={set.setNumber}
+                        className={`grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center py-2 rounded-md px-1 sm:px-2 ${
+                          set.completed ? 'bg-accent' : ''
+                        } ${isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
+                        data-testid={`row-set-${set.setNumber}`}
+                      >
+                        <div className="font-medium text-sm sm:text-base">{set.setNumber}</div>
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <div className="flex items-center gap-1 sm:gap-1.5 justify-center">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="px-1.5 text-xs font-semibold shrink-0"
+                              onClick={() => {
+                                const newSets = [...sets];
+                                const current = newSets[index].weight ?? 0;
+                                newSets[index].weight = Math.max(0, Math.round((current - weightIncrement) * 10) / 10);
+                                setCurrentSets(newSets);
+                              }}
+                              data-testid={`button-weight-minus-${set.setNumber}`}
+                            >
+                              -{weightIncrement}
+                            </Button>
+                            <Input
+                              type="number"
+                              step={weightUnit === 'kg' ? '0.5' : '1'}
+                              value={set.weight ?? ""}
+                              onChange={(e) => {
+                                const newSets = [...sets];
+                                newSets[index].weight = e.target.value === "" ? null : parseFloat(e.target.value);
+                                setCurrentSets(newSets);
+                              }}
+                              className="text-center text-sm h-9 sm:h-10 flex-1 min-w-0"
+                              data-testid={`input-weight-${set.setNumber}`}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="px-1.5 text-xs font-semibold shrink-0"
+                              onClick={() => {
+                                const newSets = [...sets];
+                                const current = newSets[index].weight ?? 0;
+                                newSets[index].weight = Math.round((current + weightIncrement) * 10) / 10;
+                                setCurrentSets(newSets);
+                              }}
+                              data-testid={`button-weight-plus-${set.setNumber}`}
+                            >
+                              +{weightIncrement}
+                            </Button>
+                          </div>
+                          {showKgConversion && set.weight != null && weightUnit === 'lbs' && (
+                            <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-kg-conversion-${set.setNumber}`}>
+                              {(set.weight / 2.20462).toFixed(1)} kg
+                            </p>
+                          )}
+                          {showKgConversion && set.weight != null && weightUnit === 'kg' && (
+                            <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-lbs-conversion-${set.setNumber}`}>
+                              {(set.weight * 2.20462).toFixed(0)} lbs
+                            </p>
+                          )}
+                        </div>
+                        <Input
+                          type="number"
+                          value={set.reps ?? ""}
+                          onChange={(e) => {
+                            const newSets = [...sets];
+                            newSets[index].reps = e.target.value === "" ? null : parseInt(e.target.value);
+                            setCurrentSets(newSets);
+                          }}
+                          className="text-center text-sm h-9 sm:h-10"
+                          data-testid={`input-reps-${set.setNumber}`}
+                        />
+                        <div className="flex justify-center">
+                          <Checkbox
+                            checked={set.completed}
+                            onCheckedChange={(checked) => {
+                              let newSets = [...sets];
+                              newSets[index].completed = !!checked;
+                              if (checked) {
+                                newSets = propagateToNextSet(newSets, index);
+                              }
+                              setCurrentSets(newSets);
+                              if (checked) {
+                                if (restTimerOnManualComplete) {
+                                  setTrackingState("resting");
+                                }
+                                if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
+                                  setCurrentSetIndex(currentSetIndex + 1);
+                                  setTrackingState("not_started");
+                                }
+                              }
+                            }}
+                            data-testid={`checkbox-complete-${set.setNumber}`}
+                            className="h-5 w-5 sm:h-6 sm:w-6"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {allSetsCompleted && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-2"
+                  onClick={handleAddSet}
+                  data-testid="button-add-set"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Set
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-4 sm:mt-6 space-y-3 sm:space-y-4">
+              <div className="flex items-center gap-2 sm:gap-4">
+                <label className="text-xs sm:text-sm font-medium whitespace-nowrap">Rest:</label>
+                <Input
+                  type="number"
+                  value={restTimerDuration}
+                  onChange={(e) => setRestTimerDuration(parseInt(e.target.value) || 90)}
+                  className="w-16 sm:w-24 text-center h-9 sm:h-10"
+                  data-testid="input-rest-timer"
+                />
+                <span className="text-xs sm:text-sm text-muted-foreground">sec</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setTrackingState("resting")}
+                  data-testid="button-start-rest-timer"
+                >
+                  <Play className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={handlePrimaryButtonClick}
+                data-testid="button-primary-action"
+              >
+                {allSetsCompleted && <Check className="h-4 w-4 mr-2" />}
+                {getPrimaryButtonText()}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-2 sm:gap-3">
+          <Button variant="outline" className="w-full text-sm" onClick={() => { flushProgress(); setIsEditDialogOpen(true); }} data-testid="button-edit-workout">
+            <Pencil className="h-4 w-4 mr-2" />
+            Edit Workout
+          </Button>
+          <Button variant="outline" className="w-full text-sm" onClick={handleEndWorkout} data-testid="button-end-workout">
+            End Workout
+          </Button>
+        </div>
+
+        <WorkoutEditorDialog
+          isOpen={isEditDialogOpen}
+          onClose={() => setIsEditDialogOpen(false)}
+          onSave={handleEditSave}
+          initialData={{
+            id: activeWorkout.id,
+            name: activeWorkout.name,
+            exercises: activeWorkout.exercises,
+            date: new Date(),
+            repeatType: "none",
+            repeatInterval: 1,
+          }}
+          availableExercises={exercises.map(ex => ({ 
+            ...ex, 
+            muscleGroups: (ex.muscleGroups || []) as string[],
+            imageUrl: ex.imageUrl ?? undefined,
+            exerciseType: ex.exerciseType as "weight_reps" | "distance_time" | undefined,
+          }))}
+        />
+
+        <RestTimer />
+      </div>
+    </div>
+  );
+}

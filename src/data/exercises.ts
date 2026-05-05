@@ -17,4 +17,7 @@ export interface Exercise {
   // Not persisted as columns — sets data lives on completed_workouts.
   setsData?: unknown[];
   completedSets?: number;
+  // Index signature to match the legacy StoredExercise interface used by
+  // useExerciseDetails — allows extra properties to flow through enrichment.
+  [key: string]: unknown;
 }

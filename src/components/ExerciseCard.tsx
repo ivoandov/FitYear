@@ -23,8 +23,8 @@ interface ExerciseCardProps {
   name: string;
   muscleGroups: string[];
   description: string;
-  imageUrl?: string;
-  exerciseType?: string;
+  imageUrl?: string | null;
+  exerciseType?: string | null;
   isEditable?: boolean;
   isRegenerating?: boolean;
   onAdd?: (id: string) => void;
