@@ -56,8 +56,12 @@ export const profiles = pgTable("profiles", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Note on ID types: legacy DB used varchar for all `id` columns and seeded some
+// exercises with non-UUID short ids ("4", etc). Keeping varchar preserves those
+// IDs verbatim during migration; new rows still default to gen_random_uuid()
+// which produces a UUID stored as text. Only auth.users.id (Supabase) is uuid.
 export const exercises = pgTable("exercises", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => authUsers.id, {
     onDelete: "cascade",
   }),
@@ -71,7 +75,7 @@ export const exercises = pgTable("exercises", {
 });
 
 export const workoutTemplates = pgTable("workout_templates", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => authUsers.id, {
     onDelete: "cascade",
   }),
@@ -80,25 +84,25 @@ export const workoutTemplates = pgTable("workout_templates", {
 });
 
 export const scheduledWorkouts = pgTable("scheduled_workouts", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => authUsers.id, {
     onDelete: "cascade",
   }),
-  templateId: uuid("template_id"),
+  templateId: varchar("template_id"),
   name: text("name").notNull(),
   date: timestamp("date").notNull(),
   exercises: jsonb("exercises").notNull(),
   calendarEventId: varchar("calendar_event_id"),
-  routineInstanceId: uuid("routine_instance_id"),
+  routineInstanceId: varchar("routine_instance_id"),
   routineDayIndex: integer("routine_day_index"),
 });
 
 export const completedWorkouts = pgTable("completed_workouts", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => authUsers.id, {
     onDelete: "cascade",
   }),
-  templateId: uuid("template_id"),
+  templateId: varchar("template_id"),
   displayId: text("display_id").notNull(),
   name: text("name").notNull(),
   exercises: jsonb("exercises").notNull(),
@@ -106,12 +110,12 @@ export const completedWorkouts = pgTable("completed_workouts", {
   startedAt: timestamp("started_at"),
   durationSeconds: integer("duration_seconds"),
   calendarEventId: varchar("calendar_event_id"),
-  routineInstanceId: uuid("routine_instance_id"),
+  routineInstanceId: varchar("routine_instance_id"),
   routineDayIndex: integer("routine_day_index"),
 });
 
 export const userSettings = pgTable("user_settings", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .unique()
@@ -129,7 +133,7 @@ export const userSettings = pgTable("user_settings", {
 });
 
 export const activeWorkouts = pgTable("active_workouts", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .unique()
@@ -140,7 +144,7 @@ export const activeWorkouts = pgTable("active_workouts", {
 });
 
 export const routines = pgTable("routines", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -152,19 +156,19 @@ export const routines = pgTable("routines", {
 });
 
 export const routineEntries = pgTable("routine_entries", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  routineId: uuid("routine_id")
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  routineId: varchar("routine_id")
     .notNull()
     .references(() => routines.id, { onDelete: "cascade" }),
   dayIndex: integer("day_index").notNull(),
-  workoutTemplateId: uuid("workout_template_id"),
+  workoutTemplateId: varchar("workout_template_id"),
   workoutName: text("workout_name"),
   exercises: jsonb("exercises"),
 });
 
 export const routineInstances = pgTable("routine_instances", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  routineId: uuid("routine_id").notNull(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  routineId: varchar("routine_id").notNull(),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -181,11 +185,11 @@ export const routineInstances = pgTable("routine_instances", {
 });
 
 export const exerciseGoals = pgTable("exercise_goals", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
-  exerciseId: uuid("exercise_id").notNull(),
+  exerciseId: varchar("exercise_id").notNull(),
   exerciseName: text("exercise_name").notNull(),
   targetReps: integer("target_reps").notNull(),
   period: text("period").notNull().default("week"),
@@ -193,7 +197,7 @@ export const exerciseGoals = pgTable("exercise_goals", {
 });
 
 export const googleCalendarTokens = pgTable("google_calendar_tokens", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .unique()
@@ -206,12 +210,12 @@ export const googleCalendarTokens = pgTable("google_calendar_tokens", {
 
 // New table for the Workout Complete + History PR Tab features.
 export const prHistory = pgTable("pr_history", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
-  exerciseId: uuid("exercise_id").notNull(),
-  workoutId: uuid("workout_id").notNull(),
+  exerciseId: varchar("exercise_id").notNull(),
+  workoutId: varchar("workout_id").notNull(),
   prType: text("pr_type").notNull(),
   newValue: real("new_value").notNull(),
   previousValue: real("previous_value"),

@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# migration data — contains real user data, never commit
+/migration/snapshots/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
