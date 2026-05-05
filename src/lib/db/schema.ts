@@ -1,0 +1,298 @@
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  text,
+  varchar,
+  integer,
+  timestamp,
+  jsonb,
+  boolean,
+  uuid,
+  real,
+  pgSchema,
+} from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+// Reference to Supabase Auth's auth.users table — managed by Supabase, not by us.
+// We FK to it from app tables so deletes cascade correctly.
+const authSchema = pgSchema("auth");
+export const authUsers = authSchema.table("users", {
+  id: uuid("id").primaryKey(),
+});
+
+export const DEFAULT_MUSCLE_GROUPS = [
+  "Chest",
+  "Triceps",
+  "Back",
+  "Biceps",
+  "Shoulders",
+  "Legs",
+  "Abs/Core",
+  "Cardio",
+] as const;
+
+export function isCustomMuscleGroup(group: string): boolean {
+  return !DEFAULT_MUSCLE_GROUPS.map((g) => g.toLowerCase()).includes(
+    group.toLowerCase(),
+  );
+}
+
+export function hasCustomMuscleGroup(groups: string[]): boolean {
+  return groups.some((g) => isCustomMuscleGroup(g));
+}
+
+// User profile — extends auth.users with app-specific fields. Synced via trigger
+// on auth.users insert (set up in Phase 2). One-to-one with auth.users by id.
+export const profiles = pgTable("profiles", {
+  id: uuid("id")
+    .primaryKey()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  email: text("email"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profileImageUrl: text("profile_image_url"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const exercises = pgTable("exercises", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => authUsers.id, {
+    onDelete: "cascade",
+  }),
+  isPublic: boolean("is_public").notNull().default(true),
+  name: text("name").notNull(),
+  muscleGroups: jsonb("muscle_groups").notNull().default([]),
+  description: text("description").notNull(),
+  imageUrl: text("image_url"),
+  exerciseType: text("exercise_type").notNull().default("weight_reps"),
+  isAssisted: boolean("is_assisted").notNull().default(false),
+});
+
+export const workoutTemplates = pgTable("workout_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => authUsers.id, {
+    onDelete: "cascade",
+  }),
+  name: text("name").notNull(),
+  exercises: jsonb("exercises").notNull(),
+});
+
+export const scheduledWorkouts = pgTable("scheduled_workouts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => authUsers.id, {
+    onDelete: "cascade",
+  }),
+  templateId: uuid("template_id"),
+  name: text("name").notNull(),
+  date: timestamp("date").notNull(),
+  exercises: jsonb("exercises").notNull(),
+  calendarEventId: varchar("calendar_event_id"),
+  routineInstanceId: uuid("routine_instance_id"),
+  routineDayIndex: integer("routine_day_index"),
+});
+
+export const completedWorkouts = pgTable("completed_workouts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => authUsers.id, {
+    onDelete: "cascade",
+  }),
+  templateId: uuid("template_id"),
+  displayId: text("display_id").notNull(),
+  name: text("name").notNull(),
+  exercises: jsonb("exercises").notNull(),
+  completedAt: timestamp("completed_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  durationSeconds: integer("duration_seconds"),
+  calendarEventId: varchar("calendar_event_id"),
+  routineInstanceId: uuid("routine_instance_id"),
+  routineDayIndex: integer("routine_day_index"),
+});
+
+export const userSettings = pgTable("user_settings", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  selectedCalendarId: varchar("selected_calendar_id"),
+  selectedCalendarName: text("selected_calendar_name"),
+  weightUnit: text("weight_unit").default("lbs"),
+  monthlyWorkoutGoal: integer("monthly_workout_goal").default(16),
+  fitbotDefaultFocus: text("fitbot_default_focus").default("strength"),
+  hasCompletedOnboarding: boolean("has_completed_onboarding")
+    .notNull()
+    .default(false),
+  onboardingDaysPerWeek: integer("onboarding_days_per_week"),
+  onboardingProgramLength: integer("onboarding_program_length"),
+});
+
+export const activeWorkouts = pgTable("active_workouts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  workoutData: jsonb("workout_data").notNull(),
+  trackingProgress: jsonb("tracking_progress"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const routines = pgTable("routines", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  defaultDurationDays: integer("default_duration_days").notNull().default(7),
+  isPublic: boolean("is_public").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const routineEntries = pgTable("routine_entries", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  routineId: uuid("routine_id")
+    .notNull()
+    .references(() => routines.id, { onDelete: "cascade" }),
+  dayIndex: integer("day_index").notNull(),
+  workoutTemplateId: uuid("workout_template_id"),
+  workoutName: text("workout_name"),
+  exercises: jsonb("exercises"),
+});
+
+export const routineInstances = pgTable("routine_instances", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  routineId: uuid("routine_id").notNull(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  routineName: text("routine_name").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  durationDays: integer("duration_days").notNull(),
+  totalWorkouts: integer("total_workouts").notNull().default(0),
+  completedWorkouts: integer("completed_workouts").notNull().default(0),
+  skippedWorkouts: integer("skipped_workouts").notNull().default(0),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const exerciseGoals = pgTable("exercise_goals", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  exerciseId: uuid("exercise_id").notNull(),
+  exerciseName: text("exercise_name").notNull(),
+  targetReps: integer("target_reps").notNull(),
+  period: text("period").notNull().default("week"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const googleCalendarTokens = pgTable("google_calendar_tokens", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .unique()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  refreshToken: text("refresh_token").notNull(),
+  accessToken: text("access_token"),
+  expiresAt: timestamp("expires_at"),
+  connectedAt: timestamp("connected_at").notNull().defaultNow(),
+});
+
+// New table for the Workout Complete + History PR Tab features.
+export const prHistory = pgTable("pr_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  exerciseId: uuid("exercise_id").notNull(),
+  workoutId: uuid("workout_id").notNull(),
+  prType: text("pr_type").notNull(),
+  newValue: real("new_value").notNull(),
+  previousValue: real("previous_value"),
+  achievedAt: timestamp("achieved_at").notNull().defaultNow(),
+});
+
+// Zod schemas
+export const insertExerciseSchema = createInsertSchema(exercises).omit({
+  id: true,
+});
+export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
+  id: true,
+});
+export const insertWorkoutTemplateSchema = createInsertSchema(
+  workoutTemplates,
+).omit({ id: true });
+export const insertScheduledWorkoutSchema = createInsertSchema(
+  scheduledWorkouts,
+).omit({ id: true });
+export const insertCompletedWorkoutSchema = createInsertSchema(
+  completedWorkouts,
+).omit({ id: true });
+export const insertActiveWorkoutSchema = createInsertSchema(
+  activeWorkouts,
+).omit({ id: true });
+export const insertRoutineSchema = createInsertSchema(routines).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertRoutineEntrySchema = createInsertSchema(
+  routineEntries,
+).omit({ id: true });
+export const insertRoutineInstanceSchema = createInsertSchema(
+  routineInstances,
+).omit({ id: true, createdAt: true, completedAt: true });
+export const insertExerciseGoalSchema = createInsertSchema(exerciseGoals).omit({
+  id: true,
+  createdAt: true,
+});
+export const insertGoogleCalendarTokensSchema = createInsertSchema(
+  googleCalendarTokens,
+).omit({ id: true, connectedAt: true });
+export const insertProfileSchema = createInsertSchema(profiles).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertPrHistorySchema = createInsertSchema(prHistory).omit({
+  id: true,
+  achievedAt: true,
+});
+
+// Inferred types
+export type Profile = typeof profiles.$inferSelect;
+export type Exercise = typeof exercises.$inferSelect;
+export type WorkoutTemplate = typeof workoutTemplates.$inferSelect;
+export type ScheduledWorkout = typeof scheduledWorkouts.$inferSelect;
+export type CompletedWorkout = typeof completedWorkouts.$inferSelect;
+export type UserSettings = typeof userSettings.$inferSelect;
+export type ActiveWorkout = typeof activeWorkouts.$inferSelect;
+export type Routine = typeof routines.$inferSelect;
+export type RoutineEntry = typeof routineEntries.$inferSelect;
+export type RoutineInstance = typeof routineInstances.$inferSelect;
+export type ExerciseGoal = typeof exerciseGoals.$inferSelect;
+export type GoogleCalendarTokens = typeof googleCalendarTokens.$inferSelect;
+export type PrHistory = typeof prHistory.$inferSelect;
+export type InsertProfile = z.infer<typeof insertProfileSchema>;
+export type InsertExercise = z.infer<typeof insertExerciseSchema>;
+export type InsertExerciseGoal = z.infer<typeof insertExerciseGoalSchema>;
+export type InsertWorkoutTemplate = z.infer<typeof insertWorkoutTemplateSchema>;
+export type InsertScheduledWorkout = z.infer<
+  typeof insertScheduledWorkoutSchema
+>;
+export type InsertCompletedWorkout = z.infer<
+  typeof insertCompletedWorkoutSchema
+>;
+export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
+export type InsertActiveWorkout = z.infer<typeof insertActiveWorkoutSchema>;
+export type InsertRoutine = z.infer<typeof insertRoutineSchema>;
+export type InsertRoutineEntry = z.infer<typeof insertRoutineEntrySchema>;
+export type InsertRoutineInstance = z.infer<typeof insertRoutineInstanceSchema>;
+export type InsertGoogleCalendarTokens = z.infer<
+  typeof insertGoogleCalendarTokensSchema
+>;
+export type InsertPrHistory = z.infer<typeof insertPrHistorySchema>;
