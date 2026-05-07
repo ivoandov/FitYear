@@ -61,8 +61,7 @@ export default function OnboardingPage() {
       onboardingDaysPerWeek: daysPerWeek,
       onboardingProgramLength: programLength,
     });
-    // Fit Bot builder lives at /routines for now (Phase 6 #7 will add a dedicated flow)
-    window.location.href = "/routines";
+    window.location.href = "/fit-bot";
   }
 
   return (
