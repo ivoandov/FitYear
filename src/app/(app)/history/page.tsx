@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Calendar, Flame, Activity, Plus, Target } from "lucide-react";
+import { TrendingUp, Calendar, Flame, Activity, Plus, Target, Trophy } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -22,6 +22,20 @@ export default function HistoryPage() {
   const [editingGoal, setEditingGoal] = useState<ExerciseGoal | null>(null);
 
   const { data: goals = [] } = useQuery<ExerciseGoal[]>({ queryKey: ["/api/exercise-goals"] });
+
+  interface PrHistoryRow {
+    id: string;
+    exerciseId: string;
+    exerciseName: string | null;
+    workoutId: string;
+    prType: "weight" | "volume";
+    newValue: number;
+    previousValue: number | null;
+    achievedAt: string;
+  }
+  const { data: prHistoryRows = [] } = useQuery<PrHistoryRow[]>({
+    queryKey: ["/api/pr-history?limit=5"],
+  });
 
   const historyData = useMemo(() => completedWorkouts.map((workout, index) => {
     let workoutVolume = 0;
@@ -288,6 +302,56 @@ export default function HistoryPage() {
             </div>
           </CardContent>
         </Card>
+
+        {prHistoryRows.length > 0 && (
+          <Card>
+            <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-4">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-primary" />
+                Recent personal bests
+              </CardTitle>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                Last {prHistoryRows.length} {prHistoryRows.length === 1 ? "PR" : "PRs"} across all your lifts
+              </p>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 space-y-3">
+              {prHistoryRows.map((pr) => {
+                const date = new Date(pr.achievedAt);
+                const dateLabel = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                return (
+                  <div key={pr.id} className="flex items-start justify-between gap-2 text-sm">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <span className="text-base shrink-0">
+                        {pr.prType === "weight" ? "🏆" : "⭐"}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{pr.exerciseName ?? "Unknown exercise"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          <span className={`uppercase tracking-wide font-semibold ${pr.prType === "weight" ? "text-primary" : "text-emerald-500"}`}>
+                            {pr.prType}
+                          </span>
+                          {" · "}{dateLabel}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 tabular-nums">
+                      <div className="font-semibold">
+                        {pr.prType === "weight" ? `${pr.newValue} lbs` : `${pr.newValue.toLocaleString()} vol`}
+                      </div>
+                      {pr.previousValue != null ? (
+                        <div className="text-xs text-muted-foreground">
+                          was {pr.prType === "weight" ? `${pr.previousValue} lbs` : pr.previousValue.toLocaleString()}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">first time</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
 
         {historyData.length > 0 && (
           <div className="space-y-3 sm:space-y-4">

@@ -9,13 +9,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RestTimer } from "@/components/RestTimer";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkout } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
 import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
+import { toast } from "sonner";
 
 interface SetData {
   setNumber: number;
@@ -75,6 +76,9 @@ export default function TrackPage() {
   const [exerciseSets, setExerciseSets] = useState<Map<string, SetData[]>>(new Map()); // Keyed by exercise instanceId for stability
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
+  // Tracks which (instanceId, setIndex) pairs hit a PR during this workout — used
+  // to render the persistent neon "PR" badge on those rows.
+  const [prSetMarkers, setPrSetMarkers] = useState<Map<string, Set<number>>>(new Map());
   const restCloseProcessed = useRef(false);
 
   const { data: exercises = [] } = useQuery<Exercise[]>({
@@ -87,6 +91,81 @@ export default function TrackPage() {
     if (!activeWorkout?.exercises) return [];
     return enrichExercises(activeWorkout.exercises as any[]);
   }, [activeWorkout?.exercises, enrichExercises]);
+
+  // Historical bests per exerciseId (in lbs/db units) — used for in-workout PR detection
+  const historicalBests = useMemo(() => {
+    const bests = new Map<string, { maxWeight: number; maxVolume: number }>();
+    for (const w of completedWorkouts) {
+      for (const ex of w.exercises as Array<{ id: string; setsData?: Array<{ weight?: number | null; reps?: number | null; completed?: boolean }> }>) {
+        for (const s of ex.setsData ?? []) {
+          if (!s.completed) continue;
+          const wt = s.weight || 0;
+          const vol = wt * (s.reps || 0);
+          const cur = bests.get(ex.id) ?? { maxWeight: 0, maxVolume: 0 };
+          if (wt > cur.maxWeight) cur.maxWeight = wt;
+          if (vol > cur.maxVolume) cur.maxVolume = vol;
+          bests.set(ex.id, cur);
+        }
+      }
+    }
+    return bests;
+  }, [completedWorkouts]);
+
+  /**
+   * Called when a set is marked complete. Compares the set vs historical bests
+   * (and any earlier set in THIS workout for the same exercise) and fires PR
+   * toasts when applicable. Updates `prSetMarkers` so the row keeps a neon
+   * border + PR badge for the rest of the workout.
+   */
+  const checkForPRs = (
+    exerciseId: string,
+    instanceId: string,
+    exerciseName: string,
+    setIndex: number,
+    setWeightLbs: number,
+    setReps: number,
+  ) => {
+    if (setWeightLbs <= 0 || setReps <= 0) return;
+    const volume = setWeightLbs * setReps;
+    const hist = historicalBests.get(exerciseId) ?? { maxWeight: 0, maxVolume: 0 };
+
+    // Also consider any earlier sets completed in this workout for the same instance
+    let runningMaxWeight = hist.maxWeight;
+    let runningMaxVolume = hist.maxVolume;
+    const earlierSets = (exerciseSets.get(instanceId) ?? []).slice(0, setIndex);
+    for (const s of earlierSets) {
+      if (!s.completed) continue;
+      const wLbs = toLbs(s.weight) ?? 0;
+      const r = s.reps ?? 0;
+      if (wLbs > runningMaxWeight) runningMaxWeight = wLbs;
+      const v = wLbs * r;
+      if (v > runningMaxVolume) runningMaxVolume = v;
+    }
+
+    let isPr = false;
+    if (setWeightLbs > runningMaxWeight) {
+      isPr = true;
+      toast(`🏆 ${exerciseName} — new weight PR!`, {
+        description: `${setWeightLbs} lbs (was ${runningMaxWeight || "—"})`,
+      });
+    }
+    if (volume > runningMaxVolume) {
+      isPr = true;
+      toast(`⭐ ${exerciseName} — new volume PR!`, {
+        description: `${setWeightLbs} × ${setReps} = ${volume} lbs (was ${runningMaxVolume || "—"})`,
+      });
+    }
+
+    if (isPr) {
+      setPrSetMarkers((prev) => {
+        const next = new Map(prev);
+        const setForInstance = new Set(next.get(instanceId) ?? []);
+        setForInstance.add(setIndex);
+        next.set(instanceId, setForInstance);
+        return next;
+      });
+    }
+  };
 
   // Load saved progress from context on mount
   useEffect(() => {
@@ -332,7 +411,25 @@ export default function TrackPage() {
       newSets[currentSetIndex].completed = true;
       newSets = propagateToNextSet(newSets, currentSetIndex);
       setCurrentSets(newSets);
-      
+
+      // PR check (in-workout)
+      const completedSet = newSets[currentSetIndex];
+      const wLbs = toLbs(completedSet.weight) ?? 0;
+      const reps = completedSet.reps ?? 0;
+      if (currentExercise && activeWorkout) {
+        const ex = activeWorkout.exercises[currentExerciseIndex];
+        if (ex) {
+          checkForPRs(
+            ex.id,
+            ex.instanceId,
+            currentExercise.name,
+            currentSetIndex,
+            wLbs,
+            reps,
+          );
+        }
+      }
+
       if (currentSetIndex < sets.length - 1) {
         setTrackingState("resting");
       } else {
@@ -351,11 +448,10 @@ export default function TrackPage() {
     return converted;
   };
 
-  const handleFinishExercise = () => {
+  const handleFinishExercise = async () => {
     if (isLastExercise) {
-      // Don't clear progress before save - the save handles cleanup on success
-      completeWorkout(toLbsMap(exerciseSets));
-      router.push("/");
+      const newId = await completeWorkout(toLbsMap(exerciseSets));
+      router.push(newId ? `/workout-complete/${newId}` : "/");
     } else {
       setCurrentExerciseIndex(currentExerciseIndex + 1);
       setCurrentSetIndex(0);
@@ -406,10 +502,12 @@ export default function TrackPage() {
     }
   };
 
-  const handleEndWorkout = () => {
-    // Don't clear progress before save - the save handles cleanup on success
-    endWorkout(toLbsMap(exerciseSets));
-    router.push("/");
+  const handleEndWorkout = async () => {
+    const newId = await completeWorkout(toLbsMap(exerciseSets));
+    router.push(newId ? `/workout-complete/${newId}` : "/");
+    // endWorkout was identical to completeWorkout when there was an active workout —
+    // simplified to a single call for the new flow.
+    void endWorkout;
   };
 
   const handleEditSave = (data: WorkoutData) => {
@@ -591,16 +689,27 @@ export default function TrackPage() {
                   {sets.map((set, index) => {
                     const isCurrentSet = index === currentSetIndex && !set.completed;
                     const isActive = isCurrentSet && trackingState === "in_set";
-                    
+                    const currentInstanceId = activeWorkout?.exercises[currentExerciseIndex]?.instanceId;
+                    const isPR = currentInstanceId
+                      ? prSetMarkers.get(currentInstanceId)?.has(index) ?? false
+                      : false;
+
                     return (
                       <div
                         key={set.setNumber}
                         className={`grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center py-2 rounded-md px-1 sm:px-2 ${
                           set.completed ? 'bg-accent' : ''
-                        } ${isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
+                        } ${isPR ? 'border-2 border-primary' : isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
                         data-testid={`row-set-${set.setNumber}`}
                       >
-                        <div className="font-medium text-sm sm:text-base">{set.setNumber}</div>
+                        <div className="flex items-center gap-1 font-medium text-sm sm:text-base">
+                          {set.setNumber}
+                          {isPR ? (
+                            <span className="rounded bg-primary/20 px-1 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wide">
+                              PR
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="flex flex-col gap-0.5 min-w-0">
                           <div className="flex items-center gap-1 sm:gap-1.5 justify-center">
                             <Button
@@ -679,6 +788,24 @@ export default function TrackPage() {
                               }
                               setCurrentSets(newSets);
                               if (checked) {
+                                // PR check (in-workout)
+                                const completedSet = newSets[index];
+                                const wLbs = toLbs(completedSet.weight) ?? 0;
+                                const reps = completedSet.reps ?? 0;
+                                if (currentExercise && activeWorkout) {
+                                  const ex = activeWorkout.exercises[currentExerciseIndex];
+                                  if (ex) {
+                                    checkForPRs(
+                                      ex.id,
+                                      ex.instanceId,
+                                      currentExercise.name,
+                                      index,
+                                      wLbs,
+                                      reps,
+                                    );
+                                  }
+                                }
+
                                 if (restTimerOnManualComplete) {
                                   setTrackingState("resting");
                                 }

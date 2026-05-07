@@ -19,6 +19,7 @@ interface ActiveWorkout {
   scheduledWorkoutId: string | null;
   name: string;
   exercises: WorkoutExercise[];
+  startedAt?: string; // ISO string — set on startWorkout, used for duration on complete
 }
 
 export interface CompletedWorkoutRecord {
@@ -53,9 +54,10 @@ interface WorkoutContextType {
   completedWorkouts: CompletedWorkoutRecord[];
   isLoading: boolean;
   trackingProgress: TrackingProgress | null;
+  lastCompletedWorkoutId: string | null; // Set after completeWorkout() succeeds — used by /workout-complete page
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
   endWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => void;
-  completeWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => void;
+  completeWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
   updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date) => Promise<boolean>;
@@ -76,6 +78,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [trackingProgress, setTrackingProgress] = useState<TrackingProgress | null>(null);
   const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
+  const [lastCompletedWorkoutId, setLastCompletedWorkoutId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Refs to track current state for immediate saves (visibility change, beforeunload)
@@ -331,26 +334,33 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const createCompletedMutation = useMutation({
-    mutationFn: async (workout: { displayId: string; name: string; exercises: Exercise[]; completedAt: Date; scheduledWorkoutId?: string }) => {
-      // Send both UTC timestamp and local date string for calendar
+    mutationFn: async (workout: {
+      displayId: string;
+      name: string;
+      exercises: Exercise[];
+      completedAt: Date;
+      startedAt?: Date;
+      durationSeconds?: number;
+      scheduledWorkoutId?: string;
+    }) => {
       const localDate = workout.completedAt;
-      const localDateStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, '0')}-${String(localDate.getDate()).padStart(2, '0')}`;
-      
+      const localDateStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, "0")}-${String(localDate.getDate()).padStart(2, "0")}`;
+
       return apiRequest("POST", "/api/completed-workouts", {
         displayId: workout.displayId,
         name: workout.name,
         exercises: workout.exercises,
         completedAt: workout.completedAt.toISOString(),
+        startedAt: workout.startedAt?.toISOString(),
+        durationSeconds: workout.durationSeconds,
         localDate: localDateStr,
         scheduledWorkoutId: workout.scheduledWorkoutId,
       });
     },
     onSuccess: () => {
-      // Only clear active workout and tracking progress AFTER successful save
       setActiveWorkout(null);
       setTrackingProgress(null);
       queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
-      // Also clear from server
       if (user) {
         apiRequest("DELETE", "/api/active-workout").catch(() => {});
       }
@@ -406,6 +416,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       displayId: workout.displayId,
       scheduledWorkoutId: workout.scheduledWorkoutId || null,
       name: workout.name,
+      startedAt: new Date().toISOString(),
       exercises: workout.exercises.map((ex, index) => ({
         ...ex,
         instanceId: `${workout.displayId}-${index}-${Date.now()}`, // Unique instance ID for this exercise
@@ -415,62 +426,86 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       })),
     };
     setActiveWorkout(workoutWithSets);
+    setLastCompletedWorkoutId(null);
   };
 
-  const endWorkout = (exerciseSets?: Map<string, ExerciseSetData[]>) => {
+  const endWorkout = async (exerciseSets?: Map<string, ExerciseSetData[]>) => {
     // Save the workout with whatever progress exists before ending
     if (activeWorkout) {
-      completeWorkout(exerciseSets);
+      await completeWorkout(exerciseSets);
     } else {
       setActiveWorkout(null);
       setTrackingProgress(null);
     }
   };
 
-  const completeWorkout = (exerciseSets?: Map<string, ExerciseSetData[]>) => {
-    if (activeWorkout) {
-      // Merge set data into exercises by instanceId
-      const exercisesWithSets = activeWorkout.exercises.map((exercise) => {
-        const sets = exerciseSets?.get(exercise.instanceId);
-        if (sets) {
-          const normalizedSets = sets.map(s => ({
-            ...s,
-            weight: s.weight ?? 0,
-            reps: s.reps ?? 0,
-            distance: s.distance ?? 0,
-            time: s.time ?? 0,
-          }));
-          const completedSets = normalizedSets.filter(s => s.completed);
-          return {
-            ...exercise,
-            completedSets: completedSets.length,
-            setsData: normalizedSets,
-          };
-        }
+  const completeWorkout = async (exerciseSets?: Map<string, ExerciseSetData[]>): Promise<string | null> => {
+    if (!activeWorkout) return null;
+
+    // Merge set data into exercises by instanceId
+    const exercisesWithSets = activeWorkout.exercises.map((exercise) => {
+      const sets = exerciseSets?.get(exercise.instanceId);
+      if (sets) {
+        const normalizedSets = sets.map(s => ({
+          ...s,
+          weight: s.weight ?? 0,
+          reps: s.reps ?? 0,
+          distance: s.distance ?? 0,
+          time: s.time ?? 0,
+        }));
+        const completedSets = normalizedSets.filter(s => s.completed);
         return {
           ...exercise,
-          completedSets: exercise.sets,
-          setsData: [],
+          completedSets: completedSets.length,
+          setsData: normalizedSets,
         };
-      });
-      
-      const scheduledWorkoutId = activeWorkout.scheduledWorkoutId;
-      
-      createCompletedMutation.mutate({
+      }
+      return {
+        ...exercise,
+        completedSets: exercise.sets,
+        setsData: [],
+      };
+    });
+
+    const scheduledWorkoutId = activeWorkout.scheduledWorkoutId;
+    const startedAt = activeWorkout.startedAt
+      ? new Date(activeWorkout.startedAt)
+      : null;
+    const completedAt = new Date();
+    const durationSeconds = startedAt
+      ? Math.max(0, Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000))
+      : null;
+
+    try {
+      const created = await createCompletedMutation.mutateAsync({
         displayId: activeWorkout.displayId,
         name: activeWorkout.name,
         exercises: exercisesWithSets,
-        completedAt: new Date(),
+        completedAt,
+        startedAt: startedAt ?? undefined,
+        durationSeconds: durationSeconds ?? undefined,
         scheduledWorkoutId: scheduledWorkoutId || undefined,
-      }, {
-        onSuccess: () => {
-          // Delete the scheduled workout AFTER completed workout is saved
-          if (scheduledWorkoutId) {
-            deleteScheduledWorkoutMutation.mutate(scheduledWorkoutId);
-          }
-        }
       });
-      // State clearing now happens in createCompletedMutation.onSuccess - DO NOT clear here
+
+      // Delete the scheduled workout AFTER completed workout is saved
+      if (scheduledWorkoutId) {
+        deleteScheduledWorkoutMutation.mutate(scheduledWorkoutId);
+      }
+
+      // Pull the new id from the API response so the Workout Complete page
+      // knows which row to render.
+      let newId: string | null = null;
+      try {
+        const body = await (created as Response).json();
+        newId = (body?.id as string) ?? null;
+      } catch {
+        newId = null;
+      }
+      setLastCompletedWorkoutId(newId);
+      return newId;
+    } catch (e) {
+      console.error("[WorkoutContext] completeWorkout failed:", e);
+      return null;
     }
   };
 
@@ -544,12 +579,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <WorkoutContext.Provider value={{ 
-      activeWorkout, 
+    <WorkoutContext.Provider value={{
+      activeWorkout,
       completedWorkouts,
       isLoading,
       trackingProgress,
-      startWorkout, 
+      lastCompletedWorkoutId,
+      startWorkout,
       endWorkout,
       completeWorkout,
       isWorkoutCompleted,
