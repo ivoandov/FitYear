@@ -450,7 +450,35 @@ export default function TrackPage() {
 
   const handleFinishExercise = async () => {
     if (isLastExercise) {
+      const wasRoutineWorkout = !!activeWorkout?.scheduledWorkoutId;
       const newId = await completeWorkout(toLbsMap(exerciseSets));
+      // Routine completion toast: if this was a routine workout, fetch the
+      // updated active routine instance to show "Day N complete — Day N+1 unlocked".
+      if (newId && wasRoutineWorkout) {
+        try {
+          const res = await fetch("/api/routine-instances/active", {
+            credentials: "include",
+          });
+          if (res.ok) {
+            const instances = (await res.json()) as Array<{ completedWorkouts: number; totalWorkouts: number; routineName: string }>;
+            const ri = instances[0];
+            if (ri) {
+              const day = ri.completedWorkouts;
+              if (day < ri.totalWorkouts) {
+                toast(`🎯 Day ${day} complete — Day ${day + 1} unlocked`, {
+                  description: ri.routineName,
+                });
+              } else {
+                toast(`🏁 Routine complete: ${ri.routineName}`, {
+                  description: `${ri.totalWorkouts} workouts done`,
+                });
+              }
+            }
+          }
+        } catch {
+          // Ignore — toast is non-essential
+        }
+      }
       router.push(newId ? `/workout-complete/${newId}` : "/");
     } else {
       setCurrentExerciseIndex(currentExerciseIndex + 1);

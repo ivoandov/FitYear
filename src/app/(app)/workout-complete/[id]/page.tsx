@@ -1,7 +1,8 @@
 import { and, eq, lt } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Trophy, Flame, Clock, Dumbbell, BarChart3, Zap, Share2 } from "lucide-react";
+import { Trophy, Flame, Clock, Dumbbell, BarChart3, Zap } from "lucide-react";
+import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { completedWorkouts, prHistory } from "@/lib/db/schema";
@@ -207,15 +208,17 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
 
       {/* Actions */}
       <div className="flex flex-col gap-2 pt-2">
-        <button
-          type="button"
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium opacity-50"
-          disabled
-          title="Coming soon — Phase 6 #9"
-        >
-          <Share2 className="h-4 w-4" />
-          Share Workout
-        </button>
+        <ShareWorkoutButton
+          workoutName={workout.name}
+          date={completedDateLabel}
+          durationLabel={formatDuration(summary.durationSeconds)}
+          totalSets={summary.totalSets}
+          totalVolumeLbs={summary.totalVolumeLbs}
+          exerciseCount={summary.exerciseCount}
+          muscleGroups={muscleEntries}
+          prCount={prHits.length}
+          streakDays={streakDays}
+        />
         <Link
           href="/"
           className="inline-flex h-12 w-full items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"

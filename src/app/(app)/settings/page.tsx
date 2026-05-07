@@ -11,6 +11,13 @@ import { useSettings, type WeekStart, DEFAULT_MUSCLE_GROUPS } from "@/components
 import { isCustomMuscleGroup } from "@/lib/db/schema";
 import { Sun, Moon, Monitor, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Timer, Link2, Unlink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -304,6 +311,8 @@ export default function SettingsPage() {
             Customize your app experience
           </p>
         </div>
+
+        <FitYearGoalsCard />
 
         <Card>
           <CardHeader className="p-4 sm:p-6">
@@ -748,5 +757,111 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function FitYearGoalsCard() {
+  const { data: settings } = useQuery<{
+    monthlyWorkoutGoal?: number | null;
+    fitbotDefaultFocus?: string | null;
+  }>({ queryKey: ["/api/user-settings"] });
+  const { toast } = useToast();
+  const monthlyGoal = settings?.monthlyWorkoutGoal ?? 16;
+  const focus = settings?.fitbotDefaultFocus ?? "strength";
+
+  const update = useMutation({
+    mutationFn: async (vars: { monthlyWorkoutGoal?: number; fitbotDefaultFocus?: string }) => {
+      return apiRequest("PATCH", "/api/user-settings", vars);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
+    },
+    onError: () => {
+      toast({ title: "Couldn't save settings", variant: "destructive" });
+    },
+  });
+
+  const focusOptions = [
+    { value: "strength", label: "Strength" },
+    { value: "hypertrophy", label: "Hypertrophy" },
+    { value: "calisthenics", label: "Calisthenics" },
+    { value: "flexibility", label: "Flexibility" },
+    { value: "mixed", label: "Mixed" },
+    { value: "athletic", label: "Athletic" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="p-4 sm:p-6">
+        <CardTitle className="text-base sm:text-lg">Goals & Fit Bot</CardTitle>
+        <CardDescription className="text-xs sm:text-sm">
+          Monthly targets and Fit Bot defaults
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 sm:p-6 pt-0 space-y-5">
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Monthly workout target</Label>
+          <p className="text-xs text-muted-foreground">
+            Used by the home goals strip
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                update.mutate({
+                  monthlyWorkoutGoal: Math.max(1, monthlyGoal - 1),
+                })
+              }
+              disabled={monthlyGoal <= 1}
+            >
+              −
+            </Button>
+            <span className="min-w-[3rem] text-center text-2xl font-bold tabular-nums">
+              {monthlyGoal}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                update.mutate({
+                  monthlyWorkoutGoal: Math.min(31, monthlyGoal + 1),
+                })
+              }
+              disabled={monthlyGoal >= 31}
+            >
+              +
+            </Button>
+            <span className="text-sm text-muted-foreground">workouts / month</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Fit Bot default focus</Label>
+          <p className="text-xs text-muted-foreground">
+            Pre-selects this when you open Fit Bot
+          </p>
+          <Select
+            value={focus}
+            onValueChange={(value) => {
+              if (value) update.mutate({ fitbotDefaultFocus: value });
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {focusOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
