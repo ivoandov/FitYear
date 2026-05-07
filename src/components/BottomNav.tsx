@@ -13,9 +13,6 @@ interface NavItem {
   isFab?: boolean;
 }
 
-// Custom barbell icon — side-view, two plates per side. Avoids the head-circle
-// clash with the active-tab dot indicator that the legacy GiWeightLiftingUp
-// caused.
 function BarbellIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -71,77 +68,85 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      // pointer-events-auto + touch-manipulation = ensure Android Chrome doesn't
+      // funnel taps to the underlying scroll container. style overrides any inherited
+      // pointer-events. inset-x-0 binds left/right reliably on every browser.
+      className="fixed bottom-0 inset-x-0 z-[60] bg-background border-t border-border pointer-events-auto touch-manipulation"
+      style={{
+        pointerEvents: "auto",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
     >
-      <div className="flex items-end justify-around h-16 max-w-lg mx-auto px-2 pt-1">
+      <ul className="flex items-end justify-around max-w-lg mx-auto px-1 list-none m-0">
         {navItems.map((item) => {
           const isActive =
             pathname === item.url ||
             (item.url === "/" && pathname === "/workouts");
 
-          if (item.isFab) {
-            // Track FAB — elevated above the bar, neon fill, glow
-            return (
-              <Link
-                key={item.url}
-                href={item.url}
-                className="relative flex flex-col items-center justify-end gap-1"
-                data-testid={item.testId}
-              >
-                <div
-                  className={cn(
-                    "flex h-14 w-14 -translate-y-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background transition-transform",
-                    "hover:scale-105 active:scale-95",
-                  )}
-                  style={{ boxShadow: "0 0 20px hsl(var(--primary) / 0.4), 0 4px 12px rgba(0,0,0,0.3)" }}
-                >
-                  <item.icon className="h-6 w-6" />
-                </div>
-                <span
-                  className={cn(
-                    "text-[10px] -mt-2 font-semibold transition-colors",
-                    isActive ? "text-primary" : "text-muted-foreground",
-                  )}
-                >
-                  {item.title}
-                </span>
-              </Link>
-            );
-          }
-
           return (
-            <Link
-              key={item.url}
-              href={item.url}
-              className="flex flex-col items-center justify-end gap-0.5 px-2 py-1"
-              data-testid={item.testId}
-            >
-              <item.icon
+            <li key={item.url} className="flex-1">
+              <Link
+                href={item.url}
                 className={cn(
-                  "h-5 w-5 transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground",
+                  "flex flex-col items-center justify-end gap-0.5 py-2 px-1",
+                  // Big tap target: at least 56px tall on every nav button
+                  "min-h-[56px] cursor-pointer select-none",
+                  // Safari iOS: ensure tap highlight is subtle, not invisible
+                  "active:opacity-70",
                 )}
-              />
-              <span
-                className={cn(
-                  "text-[10px] font-medium transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground",
-                )}
+                style={{ WebkitTapHighlightColor: "rgba(229,255,0,0.18)" }}
+                data-testid={item.testId}
+                prefetch={false}
               >
-                {item.title}
-              </span>
-              {/* Active-tab indicator: small dot, NOT a filled circle (which is
-                  reserved for the Track FAB) */}
-              {isActive ? (
-                <div className="h-1 w-1 rounded-full bg-primary" />
-              ) : (
-                <div className="h-1 w-1" />
-              )}
-            </Link>
+                {item.isFab ? (
+                  <>
+                    <span
+                      className="flex h-12 w-12 -translate-y-3 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background"
+                      style={{
+                        boxShadow:
+                          "0 0 18px hsl(66 100% 50% / 0.4), 0 4px 10px rgba(0,0,0,0.3)",
+                      }}
+                    >
+                      <item.icon className="h-5 w-5" />
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] -mt-1 font-semibold",
+                        isActive ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <item.icon
+                      className={cn(
+                        "h-5 w-5",
+                        isActive ? "text-primary" : "text-muted-foreground",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-[10px] font-medium",
+                        isActive ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-1 w-1 rounded-full",
+                        isActive ? "bg-primary" : "bg-transparent",
+                      )}
+                    />
+                  </>
+                )}
+              </Link>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </nav>
   );
 }
