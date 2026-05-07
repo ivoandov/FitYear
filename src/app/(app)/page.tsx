@@ -41,6 +41,7 @@ import { useWorkout } from "@/context/WorkoutContext";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { setWorkoutPreview } from "@/lib/workout-preview";
+import { GoalsStrip } from "@/components/GoalsStrip";
 
 interface ScheduledWorkout {
   id: string;
@@ -133,6 +134,32 @@ export default function WorkoutsPage() {
   const routineInstanceMap = new Map<string, string>(
     dbRoutineInstances.map(ri => [ri.id, ri.routineName])
   );
+
+  const activeRoutineInstances = dbRoutineInstances.filter(
+    (ri) => ri.status === "active",
+  );
+
+  // Compute "Day X of Y · Routine Name" for the hero card when this workout
+  // belongs to an active routine instance.
+  function activeRoutineForHero(
+    hero: { routineInstanceId?: string | null },
+    instances: DBRoutineInstance[],
+  ): {
+    dayNumber: number;
+    totalDays: number;
+    routineName: string;
+    completedSoFar: number;
+  } | null {
+    if (!hero.routineInstanceId) return null;
+    const ri = instances.find((x) => x.id === hero.routineInstanceId);
+    if (!ri) return null;
+    return {
+      dayNumber: (ri.completedWorkouts ?? 0) + 1,
+      totalDays: ri.totalWorkouts || ri.durationDays,
+      routineName: ri.routineName,
+      completedSoFar: ri.completedWorkouts ?? 0,
+    };
+  }
 
   const allAvailableExercises: Exercise[] = dbExercises.map((ex) => ({
     id: ex.id,
@@ -758,6 +785,8 @@ export default function WorkoutsPage() {
           </div>
         </div>
 
+        <GoalsStrip />
+
         {todayWorkouts.length > 0 && (
           <div className="space-y-3 sm:space-y-4">
             <h2 className="text-lg sm:text-xl font-semibold">Today</h2>
@@ -852,12 +881,35 @@ export default function WorkoutsPage() {
                       </DropdownMenu>
                     </div>
                     <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 py-8" style={{ minHeight: '320px' }}>
+                      {(() => {
+                        const ai = activeRoutineForHero(heroWorkout, activeRoutineInstances);
+                        if (!ai) return null;
+                        return (
+                          <>
+                            <p className="text-xs uppercase tracking-wide text-white/70 mb-2">
+                              Day {ai.dayNumber} of {ai.totalDays} · {ai.routineName}
+                            </p>
+                          </>
+                        );
+                      })()}
                       <h3 className="text-2xl sm:text-3xl font-bold text-white mb-1">
                         {heroWorkout.name}
                       </h3>
-                      <p className="text-sm text-white/60 mb-6">
+                      <p className="text-sm text-white/60 mb-2">
                         {heroWorkout.exercises.length} exercises
                       </p>
+                      {(() => {
+                        const ai = activeRoutineForHero(heroWorkout, activeRoutineInstances);
+                        if (!ai) return null;
+                        const pct = Math.min(100, Math.round((ai.completedSoFar / ai.totalDays) * 100));
+                        return (
+                          <div className="w-full max-w-xs mb-4">
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/20">
+                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <Button
                         className="w-full max-w-xs"
                         onClick={() => handleStartWorkout(heroWorkout.displayId)}
