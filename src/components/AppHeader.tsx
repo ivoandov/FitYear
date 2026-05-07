@@ -73,13 +73,11 @@ export function AppHeader() {
       )}
 
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={(props) => (
-            <Button variant="ghost" size="icon" {...props}>
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          )}
-        />
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" aria-label="User menu">
+            <MoreVertical className="h-5 w-5" />
+          </Button>
+        </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <Link href="/settings">
             <DropdownMenuItem>
