@@ -5,14 +5,6 @@ import { usePathname } from "next/navigation";
 import { Home, ClipboardList, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface NavItem {
-  title: string;
-  url: string;
-  icon: React.ComponentType<{ className?: string }>;
-  testId: string;
-  isFab?: boolean;
-}
-
 function BarbellIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -55,7 +47,7 @@ function TrackIcon({ className }: { className?: string }) {
   );
 }
 
-const navItems: NavItem[] = [
+const navItems = [
   { title: "Home", url: "/", icon: Home, testId: "nav-home" },
   { title: "Exercises", url: "/exercises", icon: BarbellIcon, testId: "nav-exercises" },
   { title: "Track", url: "/track", icon: TrackIcon, testId: "nav-track", isFab: true },
@@ -67,86 +59,35 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav
-      // pointer-events-auto + touch-manipulation = ensure Android Chrome doesn't
-      // funnel taps to the underlying scroll container. style overrides any inherited
-      // pointer-events. inset-x-0 binds left/right reliably on every browser.
-      className="fixed bottom-0 inset-x-0 z-[60] bg-background border-t border-border pointer-events-auto touch-manipulation"
-      style={{
-        pointerEvents: "auto",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-      }}
-    >
-      <ul className="flex items-end justify-around max-w-lg mx-auto px-1 list-none m-0">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
+      <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
         {navItems.map((item) => {
           const isActive =
             pathname === item.url ||
             (item.url === "/" && pathname === "/workouts");
 
           return (
-            <li key={item.url} className="flex-1">
-              <Link
-                href={item.url}
-                className={cn(
-                  "flex flex-col items-center justify-end gap-0.5 py-2 px-1",
-                  // Big tap target: at least 56px tall on every nav button
-                  "min-h-[56px] cursor-pointer select-none",
-                  // Safari iOS: ensure tap highlight is subtle, not invisible
-                  "active:opacity-70",
-                )}
-                style={{ WebkitTapHighlightColor: "rgba(229,255,0,0.18)" }}
-                data-testid={item.testId}
-                prefetch={false}
-              >
-                {item.isFab ? (
-                  <>
-                    <span
-                      className="flex h-12 w-12 -translate-y-3 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-background"
-                      style={{
-                        boxShadow:
-                          "0 0 18px hsl(66 100% 50% / 0.4), 0 4px 10px rgba(0,0,0,0.3)",
-                      }}
-                    >
-                      <item.icon className="h-5 w-5" />
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[10px] -mt-1 font-semibold",
-                        isActive ? "text-primary" : "text-muted-foreground",
-                      )}
-                    >
-                      {item.title}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <item.icon
-                      className={cn(
-                        "h-5 w-5",
-                        isActive ? "text-primary" : "text-muted-foreground",
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        "text-[10px] font-medium",
-                        isActive ? "text-primary" : "text-muted-foreground",
-                      )}
-                    >
-                      {item.title}
-                    </span>
-                    <span
-                      className={cn(
-                        "h-1 w-1 rounded-full",
-                        isActive ? "bg-primary" : "bg-transparent",
-                      )}
-                    />
-                  </>
-                )}
-              </Link>
-            </li>
+            <Link
+              key={item.url}
+              href={item.url}
+              className={cn(
+                "flex flex-col items-center justify-center gap-0.5 w-14 h-14 rounded-full transition-colors",
+                item.isFab
+                  ? "bg-primary text-primary-foreground"
+                  : isActive
+                  ? "text-primary"
+                  : "text-muted-foreground",
+              )}
+              data-testid={item.testId}
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="text-[10px] font-medium leading-none">
+                {item.title}
+              </span>
+            </Link>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }
