@@ -1,10 +1,13 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+
+const ONBOARDED_COOKIE = "fy_onboarded";
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
@@ -49,18 +52,27 @@ export const PATCH = handle(async (request: NextRequest) => {
     .where(eq(userSettings.userId, user.id))
     .limit(1);
 
+  let row;
   if (existing) {
-    const [updated] = await db
+    [row] = await db
       .update(userSettings)
       .set(body)
       .where(eq(userSettings.userId, user.id))
       .returning();
-    return updated;
+  } else {
+    [row] = await db
+      .insert(userSettings)
+      .values({ userId: user.id, ...body })
+      .returning();
   }
 
-  const [created] = await db
-    .insert(userSettings)
-    .values({ userId: user.id, ...body })
-    .returning();
-  return created;
+  const response = NextResponse.json(row);
+  if (typeof body.hasCompletedOnboarding === "boolean") {
+    response.cookies.set(ONBOARDED_COOKIE, body.hasCompletedOnboarding ? "1" : "0", {
+      path: "/",
+      maxAge: COOKIE_MAX_AGE,
+      sameSite: "lax",
+    });
+  }
+  return response;
 });

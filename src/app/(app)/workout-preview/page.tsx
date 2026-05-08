@@ -23,7 +23,7 @@ export default function WorkoutPreviewPage() {
     if (data) {
       setWorkoutData(data);
     } else {
-      router.push("/workouts");
+      router.push("/");
     }
   }, [router]);
 
@@ -49,7 +49,7 @@ export default function WorkoutPreviewPage() {
 
   const handleBack = () => {
     clearWorkoutPreview();
-    router.push("/workouts");
+    router.push("/");
   };
 
   return (

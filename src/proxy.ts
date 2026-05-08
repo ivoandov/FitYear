@@ -8,18 +8,14 @@ const PUBLIC_PATHS = [
   "/favicon.ico",
 ];
 
+const ONBOARDED_COOKIE = "fy_onboarded";
+
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
 export async function proxy(request: NextRequest) {
-  // Forward the pathname so Server Components can read it via headers().
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-pathname", request.nextUrl.pathname);
-
-  let response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  let response = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,9 +29,7 @@ export async function proxy(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          response = NextResponse.next({
-            request: { headers: requestHeaders },
-          });
+          response = NextResponse.next();
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -56,6 +50,19 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  // Optimistic onboarding gate (cookie-based — set at login and on completion).
+  // Only redirect when we have a definitive "0"; missing cookie means we treat
+  // the user as already onboarded so we don't strand mid-session users without
+  // the cookie. Auth callback fills the cookie on next sign-in.
+  if (user && !isPublicPath(pathname) && pathname !== "/onboarding") {
+    const onboarded = request.cookies.get(ONBOARDED_COOKIE)?.value;
+    if (onboarded === "0") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;
