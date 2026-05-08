@@ -1,14 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { routines, routineEntries } from "@/lib/db/schema";
-import { requireUser } from "@/lib/api/auth";
-import { handle } from "@/lib/api/handler";
+import { requireUser, ApiError } from "@/lib/api/auth";
 
-// Hobby plan allows up to 60s; streaming the Anthropic response keeps the
-// connection alive while Opus drafts the program (typically 20-45s for a
-// 90-day plan).
+// Streaming response — Vercel keeps the connection alive as bytes flow, and
+// the client gets immediate progress instead of a 60s blank wall. Persistence
+// happens in /api/ai/save-program once the client has the full JSON.
 export const maxDuration = 60;
 
 const InputSchema = z.object({
@@ -24,46 +21,21 @@ const InputSchema = z.object({
   injuryNotes: z.string().default(""),
 });
 
-interface GeneratedProgram {
-  name: string;
-  weeks: Array<{
-    weekNum: number;
-    days: Array<{
-      dayOfWeek: string;
-      workoutName: string;
-      isRest: boolean;
-      exercises: Array<{
-        name: string;
-        sets: number;
-        reps: string;
-        rest: number;
-        notes?: string;
-      }>;
-    }>;
-  }>;
-}
+export async function POST(request: NextRequest) {
+  try {
+    await requireUser();
+    const input = InputSchema.parse(await request.json());
 
-const DAY_INDEX_BY_NAME: Record<string, number> = {
-  Monday: 1,
-  Tuesday: 2,
-  Wednesday: 3,
-  Thursday: 4,
-  Friday: 5,
-  Saturday: 6,
-  Sunday: 7,
-};
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return Response.json(
+        { error: "ANTHROPIC_API_KEY not configured" },
+        { status: 500 },
+      );
+    }
 
-export const POST = handle(async (request: NextRequest) => {
-  const { user } = await requireUser();
-  const input = InputSchema.parse(await request.json());
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY not configured");
-  }
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const prompt = `You are an expert fitness coach. Generate a ${input.programLength}-day ${input.focus.join(" + ")} training program.
+    const prompt = `You are an expert fitness coach. Generate a ${input.programLength}-day ${input.focus.join(" + ")} training program.
 
 USER PROFILE:
 - Experience: ${input.experience}
@@ -91,75 +63,47 @@ Rules: ${input.daysPerWeek} training days/week, progressive overload every 1-2 w
 equipment-appropriate exercises only, ${input.experience}-level volume/intensity.
 Cover the full ${input.programLength}-day duration in ${Math.ceil(input.programLength / 7)} weeks.`;
 
-  // Use streaming so we don't hit timeout on long programs
-  const stream = await client.messages.stream({
-    model: "claude-opus-4-7",
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
-  });
-  const message = await stream.finalMessage();
+    // Sonnet 4.6 is roughly 3-5x faster than Opus 4.7 for structured JSON
+    // generation and writes solid programs. Lets us stay inside the 60s
+    // function budget on Hobby. Bump to Opus once we move to Pro/Fluid.
+    const anthropicStream = client.messages.stream({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: prompt }],
+    });
 
-  // Extract text content
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new Error("No text response from Anthropic");
-  }
-  let raw = textBlock.text.trim();
-  // Strip markdown code fences if present
-  if (raw.startsWith("```")) {
-    raw = raw.replace(/^```(?:json)?\s*/, "").replace(/```\s*$/, "");
-  }
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const event of anthropicStream) {
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              controller.enqueue(encoder.encode(event.delta.text));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
 
-  let program: GeneratedProgram;
-  try {
-    program = JSON.parse(raw);
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
   } catch (e) {
-    console.error("[generate-program] JSON parse failed. Raw:", raw.slice(0, 500));
-    throw new Error("Fit Bot returned invalid JSON. Try again.");
-  }
-
-  // Persist routine + entries
-  const [routine] = await db
-    .insert(routines)
-    .values({
-      userId: user.id,
-      name: program.name,
-      description: `Built by Fit Bot · ${input.focus.join(" + ")} · ${input.experience}`,
-      defaultDurationDays: input.programLength,
-      isPublic: false,
-    })
-    .returning();
-
-  // Each day in each week becomes a routineEntry. dayIndex is 1-based,
-  // computed as (weekNum-1)*7 + dayOfWeek index.
-  const entries: Array<{
-    routineId: string;
-    dayIndex: number;
-    workoutName: string | null;
-    exercises: unknown;
-  }> = [];
-  for (const week of program.weeks ?? []) {
-    for (const day of week.days ?? []) {
-      const dow = DAY_INDEX_BY_NAME[day.dayOfWeek] ?? 1;
-      const dayIndex = (week.weekNum - 1) * 7 + dow;
-      if (day.isRest) continue;
-      entries.push({
-        routineId: routine.id,
-        dayIndex,
-        workoutName: day.workoutName,
-        exercises: day.exercises,
-      });
+    if (e instanceof ApiError) {
+      return Response.json({ error: e.message }, { status: e.status });
     }
+    console.error("[generate-program]", e);
+    const message = e instanceof Error ? e.message : "Internal Server Error";
+    return Response.json({ error: message }, { status: 500 });
   }
-  if (entries.length) {
-    await db.insert(routineEntries).values(entries);
-  }
-
-  return {
-    routineId: routine.id,
-    name: program.name,
-    weeksGenerated: program.weeks?.length ?? 0,
-    daysGenerated: entries.length,
-    program, // include the full program for client preview
-  };
-});
+}

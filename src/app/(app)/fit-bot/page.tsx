@@ -99,6 +99,8 @@ export default function FitBotPage() {
     }
   }
 
+  const [streamedChars, setStreamedChars] = useState(0);
+
   async function handleGenerate() {
     if (!experience) {
       setError("Pick an experience level first");
@@ -107,21 +109,63 @@ export default function FitBotPage() {
     }
     setStep("generating");
     setError(null);
+    setStreamedChars(0);
     try {
-      const res = await apiRequest("POST", "/api/ai/generate-program", {
-        focus,
-        equipment,
-        experience,
-        daysPerWeek,
-        programLength,
-        extras,
-        imbalanceMuscles,
-        imbalanceNotes,
-        injuryDetails,
-        injuryNotes,
+      // Stream the JSON from Anthropic. The function returns immediately with
+      // a streaming Response, which dodges the 60s blank-wall timeout we used
+      // to hit. We accumulate the text client-side and parse once it's done.
+      const res = await fetch("/api/ai/generate-program", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          focus,
+          equipment,
+          experience,
+          daysPerWeek,
+          programLength,
+          extras,
+          imbalanceMuscles,
+          imbalanceNotes,
+          injuryDetails,
+          injuryNotes,
+        }),
       });
-      const json = await res.json();
-      setResult(json);
+      if (!res.ok || !res.body) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let raw = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        raw += chunk;
+        setStreamedChars(raw.length);
+      }
+      raw = raw.trim();
+      if (raw.startsWith("```")) {
+        raw = raw.replace(/^```(?:json)?\s*/, "").replace(/```\s*$/, "");
+      }
+
+      let program;
+      try {
+        program = JSON.parse(raw);
+      } catch {
+        throw new Error("Fit Bot returned invalid JSON. Try again.");
+      }
+
+      const saveRes = await apiRequest("POST", "/api/ai/save-program", {
+        program,
+        focus,
+        experience,
+        programLength,
+      });
+      const saved = await saveRes.json();
+      setResult({ ...saved, program });
       setStep("preview");
     } catch (e) {
       setError((e as Error).message);
@@ -333,8 +377,13 @@ export default function FitBotPage() {
             <h2 className="text-xl font-semibold">Fit Bot is building your program…</h2>
             <p className="text-sm text-muted-foreground">
               Drafting a {programLength}-day {focus.join(" + ")} plan. This usually
-              takes 20–45 seconds.
+              takes 15–30 seconds.
             </p>
+            {streamedChars > 0 ? (
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {streamedChars.toLocaleString()} characters drafted
+              </p>
+            ) : null}
           </div>
         )}
 
