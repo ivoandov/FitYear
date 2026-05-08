@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -68,10 +69,12 @@ export function ExerciseCard({
             onClick={() => setShowImageDialog(true)}
             data-testid={`image-container-${id}`}
           >
-            <img
+            <Image
               src={imageUrl}
               alt={name}
-              className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              className="object-cover hover:scale-105 transition-transform duration-200"
             />
             <div className="absolute top-0 right-0 w-14 h-14 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.4)_0%,transparent_70%)] pointer-events-none" />
             <button
