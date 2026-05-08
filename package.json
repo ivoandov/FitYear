@@ -17,6 +17,7 @@
     "@anthropic-ai/sdk": "^0.93.0",
     "@base-ui/react": "^1.4.1",
     "@google-cloud/storage": "^7.19.0",
+    "@google/genai": "^2.0.0",
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.3",
