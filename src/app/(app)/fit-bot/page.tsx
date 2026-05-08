@@ -174,7 +174,7 @@ export default function FitBotPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col p-5 sm:p-8">
+    <main className="flex flex-1 flex-col p-5 sm:p-8">
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push("/routines")}
