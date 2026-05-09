@@ -147,18 +147,6 @@ export default function SettingsPage() {
     toast({ title: `${label} sync complete`, description: parts.length > 0 ? parts.join(', ') : 'Nothing new to sync' });
   };
 
-  const syncUpcomingMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest('POST', '/api/calendar/sync-scheduled-workouts');
-      return response.json() as Promise<SyncResult>;
-    },
-    onSuccess: (data) => onSyncSuccess(data, 'Upcoming workouts'),
-    onError: (error: any) => {
-      setSyncResults(null);
-      toast({ title: "Failed to sync calendar", description: error?.message || "Please try again.", variant: "destructive" });
-    },
-  });
-
   const syncPastMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/calendar/sync-completed-workouts');
@@ -462,7 +450,7 @@ export default function SettingsPage() {
                   <Button
                     variant="secondary"
                     onClick={() => syncPastMutation.mutate()}
-                    disabled={syncPastMutation.isPending || syncUpcomingMutation.isPending}
+                    disabled={syncPastMutation.isPending}
                     className="flex-1"
                     data-testid="button-sync-past-workouts"
                   >

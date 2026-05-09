@@ -53,7 +53,7 @@ export default function WorkoutPreviewPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background" data-testid="page-workout-preview">
+    <div className="flex flex-1 flex-col bg-background" data-testid="page-workout-preview">
       <div className="relative h-56 sm:h-72 overflow-hidden">
         {heroImage ? (
           <img
