@@ -200,6 +200,26 @@ export async function updateCalendarEvent(
   }
 }
 
+export async function checkCalendarEventExists(
+  userId: string,
+  eventId: string,
+  calendarId?: string,
+): Promise<boolean> {
+  try {
+    const cal = await getClientForUser(userId);
+    await cal.events.get({
+      calendarId: calendarId || "primary",
+      eventId,
+    });
+    return true;
+  } catch (e) {
+    const code = (e as { code?: number; status?: number }).code ?? (e as { status?: number }).status;
+    if (code === 404 || code === 410) return false;
+    console.error("[calendar] check event failed:", (e as Error).message);
+    return false;
+  }
+}
+
 export async function deleteCalendarEvent(
   userId: string,
   eventId: string,
