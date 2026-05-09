@@ -287,7 +287,7 @@ export function WorkoutEditorDialog({
                     No exercises added yet. Select from below.
                   </div>
                 ) : (
-                  <div className="border rounded-md max-h-[200px] sm:max-h-[280px] overflow-y-auto">
+                  <div className="border rounded-md">
                     <div className="p-2 space-y-1">
                       {selectedExercises.map((exercise, index) => (
                         <div
@@ -373,7 +373,7 @@ export function WorkoutEditorDialog({
                     </Badge>
                   )}
                 </div>
-                <div className="border rounded-md max-h-[300px] sm:max-h-[350px] overflow-y-auto">
+                <div className="border rounded-md">
                   <div className="p-2 space-y-1">
                     {[...filteredExercises]
                       .sort((a, b) => {
