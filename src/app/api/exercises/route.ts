@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { eq, isNull, or, sql } from "drizzle-orm";
+import { eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -14,6 +14,8 @@ import { handle } from "@/lib/api/handler";
  * Returns:
  *   - all rows where user_id IS NULL (the seeded global library)
  *   - plus rows owned by the current user
+ *   - plus any row flagged is_public = true (matches the Replit picker behavior;
+ *     34 migrated rows have non-null user_id but is_public=true)
  *
  * Legacy image_url paths (`/objects/public/...` or `/generated_images/...`)
  * are rewritten on the way out to point at the GCS proxy at `/api/objects/...`.
@@ -34,7 +36,13 @@ export const GET = handle(async () => {
   const rows = await db
     .select()
     .from(exercises)
-    .where(or(isNull(exercises.userId), eq(exercises.userId, user.id)));
+    .where(
+      or(
+        isNull(exercises.userId),
+        eq(exercises.userId, user.id),
+        eq(exercises.isPublic, true),
+      ),
+    );
   return rows.map((r) => ({ ...r, imageUrl: rewriteImageUrl(r.imageUrl) }));
 });
 
