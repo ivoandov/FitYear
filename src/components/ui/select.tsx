@@ -6,7 +6,41 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Auto-label context: <SelectValue /> looks up its rendered text from this
+// map keyed by value, so the trigger shows human-friendly labels (e.g.
+// "Weight and Reps") instead of the raw DB enum ("weight_reps").
+//
+// The map is rebuilt on every Select render by walking children synchronously
+// — that's why items don't need to be mounted (the popup is unmounted while
+// closed) for the trigger to display correctly on first paint.
+type LabelMap = Map<string, React.ReactNode>
+const SelectLabelCtx = React.createContext<LabelMap | null>(null)
+
+function buildLabelMap(children: React.ReactNode): LabelMap {
+  const map: LabelMap = new Map()
+  const walk = (node: React.ReactNode) => {
+    React.Children.forEach(node, (child) => {
+      if (!React.isValidElement(child)) return
+      const props = child.props as { value?: unknown; children?: React.ReactNode }
+      if (child.type === SelectItem && props.value !== undefined && props.value !== null) {
+        map.set(String(props.value), props.children)
+      }
+      if (props.children !== undefined) walk(props.children)
+    })
+  }
+  walk(children)
+  return map
+}
+
+function Select<TValue>(props: SelectPrimitive.Root.Props<TValue>) {
+  const { children } = props
+  const map = React.useMemo(() => buildLabelMap(children), [children])
+  return (
+    <SelectLabelCtx.Provider value={map}>
+      <SelectPrimitive.Root {...props} />
+    </SelectLabelCtx.Provider>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
@@ -18,13 +52,29 @@ function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   )
 }
 
-function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
+function SelectValue({
+  className,
+  placeholder,
+  children,
+  ...props
+}: SelectPrimitive.Value.Props & { placeholder?: React.ReactNode }) {
+  const labels = React.useContext(SelectLabelCtx)
+  // Caller-provided render takes precedence (escape hatch for custom mappings).
+  const render = typeof children === "function"
+    ? (children as (value: unknown) => React.ReactNode)
+    : (value: unknown) => {
+        if (value == null || value === "") return placeholder ?? ""
+        const mapped = labels?.get(String(value))
+        return mapped ?? String(value)
+      }
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
       className={cn("flex flex-1 text-left", className)}
       {...props}
-    />
+    >
+      {render}
+    </SelectPrimitive.Value>
   )
 }
 
@@ -111,11 +161,13 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  value,
   ...props
 }: SelectPrimitive.Item.Props) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
+      value={value}
       className={cn(
         "relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className
