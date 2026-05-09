@@ -10,6 +10,9 @@ import {
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
+// Per-user response — never cache.
+export const dynamic = "force-dynamic";
+
 /**
  * Returns:
  *   - all rows where user_id IS NULL (the seeded global library)
@@ -43,6 +46,9 @@ export const GET = handle(async () => {
         eq(exercises.isPublic, true),
       ),
     );
+  console.log(
+    `[GET /api/exercises] user=${user.id} count=${rows.length} hasPushups=${rows.some((r) => r.name === "Pushups")}`,
+  );
   return rows.map((r) => ({ ...r, imageUrl: rewriteImageUrl(r.imageUrl) }));
 });
 

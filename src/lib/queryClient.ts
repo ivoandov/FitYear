@@ -41,8 +41,14 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
+      // 5 min staleTime: tabs that sat through a deploy refetch on next mount
+      // instead of holding pre-deploy cache forever (was Infinity). Refetch on
+      // mount + reconnect picks up server-side fixes within minutes without
+      // the thrash of refetchOnWindowFocus.
+      staleTime: 5 * 60 * 1000,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
       // Single retry, capped delay — prior settings turned a transient failure
       // into a 9s saga (3 attempts × up to 5s backoff) on flaky cellular.
       retry: 1,
