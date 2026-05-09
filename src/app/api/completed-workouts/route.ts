@@ -42,20 +42,29 @@ export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PostSchema.parse(await request.json());
 
-  // Resolve templateId from the scheduled workout if not provided
-  let templateId = body.templateId ?? null;
-  let scheduledRoutineInstanceId: string | null = null;
-  if (body.scheduledWorkoutId) {
-    const [sw] = await db
-      .select()
-      .from(scheduledWorkouts)
-      .where(eq(scheduledWorkouts.id, body.scheduledWorkoutId))
-      .limit(1);
-    if (sw) {
-      if (!templateId) templateId = sw.templateId ?? null;
-      scheduledRoutineInstanceId = sw.routineInstanceId ?? null;
-    }
-  }
+  // Stage 1: parallel reads — scheduled workout (for templateId/routineInstance/
+  // stale calendar event), calendar-connected check, and selected calendar id.
+  const [scheduledWorkoutRow, calendarConnected, settings] = await Promise.all([
+    body.scheduledWorkoutId
+      ? db
+          .select()
+          .from(scheduledWorkouts)
+          .where(eq(scheduledWorkouts.id, body.scheduledWorkoutId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+    isCalendarConnected(user.id),
+    db
+      .select({ calendarId: userSettings.selectedCalendarId })
+      .from(userSettings)
+      .where(eq(userSettings.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+  ]);
+
+  const templateId = body.templateId ?? scheduledWorkoutRow?.templateId ?? null;
+  const scheduledRoutineInstanceId =
+    scheduledWorkoutRow?.routineInstanceId ?? null;
 
   const [created] = await db
     .insert(completedWorkouts)
@@ -72,56 +81,55 @@ export const POST = handle(async (request: NextRequest) => {
     })
     .returning();
 
-  // Increment routine progress if the source scheduled workout was part of a routine
+  // Stage 2: parallel side effects after the insert succeeds.
+  //   - Routine progress increment
+  //   - Stale "(Scheduled)" event deletion
+  //   - New completed event creation (then a tiny update with the event id)
+  const sideEffects: Promise<unknown>[] = [];
+
   if (scheduledRoutineInstanceId) {
-    await db
-      .update(routineInstances)
-      .set({
-        completedWorkouts: sql`${routineInstances.completedWorkouts} + 1`,
-      })
-      .where(eq(routineInstances.id, scheduledRoutineInstanceId));
-  }
-
-  // Sync to Google Calendar if connected
-  if (await isCalendarConnected(user.id)) {
-    const [settings] = await db
-      .select({ calendarId: userSettings.selectedCalendarId })
-      .from(userSettings)
-      .where(eq(userSettings.userId, user.id))
-      .limit(1);
-
-    // Delete the old "(Scheduled)" event if it exists
-    if (body.scheduledWorkoutId) {
-      const [sw] = await db
-        .select()
-        .from(scheduledWorkouts)
-        .where(eq(scheduledWorkouts.id, body.scheduledWorkoutId))
-        .limit(1);
-      if (sw?.calendarEventId) {
-        await deleteCalendarEvent(
-          user.id,
-          sw.calendarEventId,
-          settings?.calendarId ?? undefined,
-        );
-      }
-    }
-
-    // Create the completed workout event
-    const eventId = await createCalendarEvent(
-      user.id,
-      body.name,
-      created.completedAt,
-      settings?.calendarId ?? undefined,
-      body.localDate,
+    sideEffects.push(
+      db
+        .update(routineInstances)
+        .set({
+          completedWorkouts: sql`${routineInstances.completedWorkouts} + 1`,
+        })
+        .where(eq(routineInstances.id, scheduledRoutineInstanceId)),
     );
-    if (eventId) {
-      await db
-        .update(completedWorkouts)
-        .set({ calendarEventId: eventId })
-        .where(eq(completedWorkouts.id, created.id));
-      created.calendarEventId = eventId;
-    }
   }
+
+  if (calendarConnected) {
+    if (scheduledWorkoutRow?.calendarEventId) {
+      sideEffects.push(
+        deleteCalendarEvent(
+          user.id,
+          scheduledWorkoutRow.calendarEventId,
+          settings?.calendarId ?? undefined,
+        ),
+      );
+    }
+
+    sideEffects.push(
+      (async () => {
+        const eventId = await createCalendarEvent(
+          user.id,
+          body.name,
+          created.completedAt,
+          settings?.calendarId ?? undefined,
+          body.localDate,
+        );
+        if (eventId) {
+          await db
+            .update(completedWorkouts)
+            .set({ calendarEventId: eventId })
+            .where(eq(completedWorkouts.id, created.id));
+          created.calendarEventId = eventId;
+        }
+      })(),
+    );
+  }
+
+  await Promise.all(sideEffects);
 
   return new Response(JSON.stringify(created), {
     status: 201,

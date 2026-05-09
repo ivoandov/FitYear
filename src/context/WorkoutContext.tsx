@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { type Exercise } from "@/data/exercises";
@@ -410,7 +410,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  const startWorkout = (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => {
+  const startWorkout = useCallback((workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => {
     const workoutWithSets: ActiveWorkout = {
       id: workout.id,
       displayId: workout.displayId,
@@ -419,7 +419,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       startedAt: new Date().toISOString(),
       exercises: workout.exercises.map((ex, index) => ({
         ...ex,
-        instanceId: `${workout.displayId}-${index}-${Date.now()}`, // Unique instance ID for this exercise
+        instanceId: `${workout.displayId}-${index}-${Date.now()}`,
         sets: 3,
         defaultWeight: 135,
         defaultReps: 10,
@@ -427,22 +427,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     };
     setActiveWorkout(workoutWithSets);
     setLastCompletedWorkoutId(null);
-  };
+  }, []);
 
-  const endWorkout = async (exerciseSets?: Map<string, ExerciseSetData[]>) => {
-    // Save the workout with whatever progress exists before ending
-    if (activeWorkout) {
-      await completeWorkout(exerciseSets);
-    } else {
-      setActiveWorkout(null);
-      setTrackingProgress(null);
-    }
-  };
-
-  const completeWorkout = async (exerciseSets?: Map<string, ExerciseSetData[]>): Promise<string | null> => {
+  const completeWorkout = useCallback(async (exerciseSets?: Map<string, ExerciseSetData[]>): Promise<string | null> => {
     if (!activeWorkout) return null;
 
-    // Merge set data into exercises by instanceId
     const exercisesWithSets = activeWorkout.exercises.map((exercise) => {
       const sets = exerciseSets?.get(exercise.instanceId);
       if (sets) {
@@ -487,13 +476,10 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         scheduledWorkoutId: scheduledWorkoutId || undefined,
       });
 
-      // Delete the scheduled workout AFTER completed workout is saved
       if (scheduledWorkoutId) {
         deleteScheduledWorkoutMutation.mutate(scheduledWorkoutId);
       }
 
-      // Pull the new id from the API response so the Workout Complete page
-      // knows which row to render.
       let newId: string | null = null;
       try {
         const body = await (created as Response).json();
@@ -507,13 +493,22 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       console.error("[WorkoutContext] completeWorkout failed:", e);
       return null;
     }
-  };
+  }, [activeWorkout, createCompletedMutation, deleteScheduledWorkoutMutation]);
 
-  const isWorkoutCompleted = (displayId: string) => {
+  const endWorkout = useCallback(async (exerciseSets?: Map<string, ExerciseSetData[]>) => {
+    if (activeWorkout) {
+      await completeWorkout(exerciseSets);
+    } else {
+      setActiveWorkout(null);
+      setTrackingProgress(null);
+    }
+  }, [activeWorkout, completeWorkout]);
+
+  const isWorkoutCompleted = useCallback((displayId: string) => {
     return completedWorkouts.some(w => w.displayId === displayId);
-  };
+  }, [completedWorkouts]);
 
-  const restartWorkout = (completedWorkout: CompletedWorkoutRecord) => {
+  const restartWorkout = useCallback((completedWorkout: CompletedWorkoutRecord) => {
     const newDisplayId = `${completedWorkout.id}-restart-${Date.now()}`;
     startWorkout({
       id: completedWorkout.id,
@@ -521,9 +516,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       name: completedWorkout.name,
       exercises: completedWorkout.exercises,
     });
-  };
+  }, [startWorkout]);
 
-  const updateCompletedWorkout = async (id: string, name: string, exercises?: any[], completedAt?: Date): Promise<boolean> => {
+  const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: any[], completedAt?: Date): Promise<boolean> => {
     try {
       const completedAtStr = completedAt ? completedAt.toISOString() : undefined;
       await updateCompletedMutation.mutateAsync({ id, name, exercises, completedAt: completedAtStr });
@@ -532,13 +527,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       console.error("Failed to update completed workout:", error);
       return false;
     }
-  };
+  }, [updateCompletedMutation]);
 
-  const deleteCompletedWorkout = (id: string) => {
+  const deleteCompletedWorkout = useCallback((id: string) => {
     deleteCompletedMutation.mutate(id);
-  };
+  }, [deleteCompletedMutation]);
 
-  const updateActiveWorkout = (name: string, exercises: Exercise[]) => {
+  const updateActiveWorkout = useCallback((name: string, exercises: Exercise[]) => {
     if (activeWorkout) {
       // Build a pool of old instanceIds keyed by exercise id (in order), so we
       // can hand them out to matching exercises that somehow lost their instanceId.
@@ -576,10 +571,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         exercises: updatedExercises,
       });
     }
-  };
+  }, [activeWorkout]);
 
-  return (
-    <WorkoutContext.Provider value={{
+  // Stable context value: prevents the entire consumer subtree from re-rendering
+  // every time the provider re-renders. Tracking screens read from this on every
+  // set/rep edit, so identity stability is the difference between snappy and laggy.
+  const value = useMemo(
+    () => ({
       activeWorkout,
       completedWorkouts,
       isLoading,
@@ -596,7 +594,29 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       saveTrackingProgress,
       clearTrackingProgress,
       flushProgress,
-    }}>
+    }),
+    [
+      activeWorkout,
+      completedWorkouts,
+      isLoading,
+      trackingProgress,
+      lastCompletedWorkoutId,
+      startWorkout,
+      endWorkout,
+      completeWorkout,
+      isWorkoutCompleted,
+      restartWorkout,
+      updateCompletedWorkout,
+      deleteCompletedWorkout,
+      updateActiveWorkout,
+      saveTrackingProgress,
+      clearTrackingProgress,
+      flushProgress,
+    ],
+  );
+
+  return (
+    <WorkoutContext.Provider value={value}>
       {children}
     </WorkoutContext.Provider>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import Image from "next/image";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ interface ExerciseCardProps {
   onRegenerateImage?: (id: string) => void;
 }
 
-export function ExerciseCard({
+function ExerciseCardImpl({
   id,
   name,
   muscleGroups,
@@ -199,3 +199,8 @@ export function ExerciseCard({
     </>
   );
 }
+
+// Cards are pure given props; muscleGroups array identity comes from the parent's
+// memoized allExercises so the shallow compare here is reliable. Skips re-renders
+// on unrelated parent state changes (search input, regen toggles for *other* cards).
+export const ExerciseCard = memo(ExerciseCardImpl);

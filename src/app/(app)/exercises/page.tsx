@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ExerciseCard } from "@/components/ExerciseCard";
 import { AddExerciseDialog, type ExerciseFormData } from "@/components/AddExerciseDialog";
@@ -42,18 +42,19 @@ export default function ExercisesPage() {
     queryKey: ["/api/exercises"],
   });
 
-  // Debug logging for production
-  console.log("Exercises query state:", { isLoading, isError, exerciseCount: dbExercises.length, error: error?.message });
-
-  const allExercises: Exercise[] = dbExercises.map((ex) => ({
-    id: ex.id,
-    name: ex.name,
-    muscleGroups: ex.muscleGroups,
-    description: ex.description,
-    imageUrl: ex.imageUrl || undefined,
-    exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
-    isAssisted: ex.isAssisted || false,
-  }));
+  const allExercises = useMemo<Exercise[]>(
+    () =>
+      dbExercises.map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        muscleGroups: ex.muscleGroups,
+        description: ex.description,
+        imageUrl: ex.imageUrl || undefined,
+        exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
+        isAssisted: ex.isAssisted || false,
+      })),
+    [dbExercises],
+  );
 
   const createMutation = useMutation({
     mutationFn: async (exercise: { name: string; muscleGroups: string[]; description: string; exerciseType: string; isAssisted: boolean }) => {
@@ -129,10 +130,10 @@ export default function ExercisesPage() {
     },
   });
 
-  const handleRegenerateImage = async (id: string) => {
+  const handleRegenerateImage = useCallback(async (id: string) => {
     const exercise = allExercises.find(ex => ex.id === id);
     if (!exercise) return;
-    
+
     setRegeneratingIds(prev => new Set(prev).add(id));
     try {
       await apiRequest("POST", `/api/exercises/${id}/regenerate-image`, {
@@ -145,7 +146,6 @@ export default function ExercisesPage() {
         title: "Regenerating Image",
         description: "A new AI image is being generated. It will appear in a few seconds.",
       });
-      // Refresh after a delay to pick up the generated image
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
         setRegeneratingIds(prev => {
@@ -166,27 +166,28 @@ export default function ExercisesPage() {
         return newSet;
       });
     }
-  };
+  }, [allExercises, toast]);
 
-  const filteredExercises = allExercises.filter((exercise) => {
-    const matchesMuscleGroup = selectedMuscleGroup === "All" || exercise.muscleGroups.includes(selectedMuscleGroup);
-    const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          exercise.muscleGroups.some(g => g.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesMuscleGroup && matchesSearch;
-  });
+  const filteredExercises = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return allExercises.filter((exercise) => {
+      const matchesMuscleGroup = selectedMuscleGroup === "All" || exercise.muscleGroups.includes(selectedMuscleGroup);
+      const matchesSearch = exercise.name.toLowerCase().includes(q) ||
+                            exercise.muscleGroups.some(g => g.toLowerCase().includes(q));
+      return matchesMuscleGroup && matchesSearch;
+    });
+  }, [allExercises, selectedMuscleGroup, searchQuery]);
 
-  const handleAddExercise = (id: string) => {
+  const handleAddExercise = useCallback((id: string) => {
     const exercise = allExercises.find(ex => ex.id === id);
-    if (exercise) {
-      setExerciseToAddToWorkout(exercise);
-    }
-  };
+    if (exercise) setExerciseToAddToWorkout(exercise);
+  }, [allExercises]);
 
-  const handleDeleteExercise = (id: string) => {
+  const handleDeleteExercise = useCallback((id: string) => {
     deleteMutation.mutate(id);
-  };
+  }, [deleteMutation]);
 
-  const handleEditExercise = (id: string) => {
+  const handleEditExercise = useCallback((id: string) => {
     const exercise = allExercises.find(ex => ex.id === id);
     if (exercise) {
       setEditingExercise({
@@ -198,15 +199,15 @@ export default function ExercisesPage() {
         isAssisted: exercise.isAssisted || false,
       });
     }
-  };
+  }, [allExercises]);
 
-  const handleSaveExercise = (data: ExerciseFormData) => {
+  const handleSaveExercise = useCallback((data: ExerciseFormData) => {
     if (data.id) {
       updateMutation.mutate(data as ExerciseFormData & { id: string });
     } else {
       createMutation.mutate(data);
     }
-  };
+  }, [createMutation, updateMutation]);
 
   return (
     <div className="flex-1 overflow-auto h-full">

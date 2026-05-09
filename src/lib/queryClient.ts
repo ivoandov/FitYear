@@ -43,9 +43,11 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
-      retry: 2,
-      retryDelay: (i) => Math.min(1000 * 2 ** i, 5000),
+      // Single retry, capped delay — prior settings turned a transient failure
+      // into a 9s saga (3 attempts × up to 5s backoff) on flaky cellular.
+      retry: 1,
+      retryDelay: (i) => Math.min(500 * 2 ** i, 2000),
     },
-    mutations: { retry: 1 },
+    mutations: { retry: 0 },
   },
 });

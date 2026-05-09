@@ -9,6 +9,7 @@ import {
   boolean,
   uuid,
   real,
+  index,
   pgSchema,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -60,59 +61,84 @@ export const profiles = pgTable("profiles", {
 // exercises with non-UUID short ids ("4", etc). Keeping varchar preserves those
 // IDs verbatim during migration; new rows still default to gen_random_uuid()
 // which produces a UUID stored as text. Only auth.users.id (Supabase) is uuid.
-export const exercises = pgTable("exercises", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id").references(() => authUsers.id, {
-    onDelete: "cascade",
-  }),
-  isPublic: boolean("is_public").notNull().default(true),
-  name: text("name").notNull(),
-  muscleGroups: jsonb("muscle_groups").notNull().default([]),
-  description: text("description").notNull(),
-  imageUrl: text("image_url"),
-  exerciseType: text("exercise_type").notNull().default("weight_reps"),
-  isAssisted: boolean("is_assisted").notNull().default(false),
-});
+export const exercises = pgTable(
+  "exercises",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").references(() => authUsers.id, {
+      onDelete: "cascade",
+    }),
+    isPublic: boolean("is_public").notNull().default(true),
+    name: text("name").notNull(),
+    muscleGroups: jsonb("muscle_groups").notNull().default([]),
+    description: text("description").notNull(),
+    imageUrl: text("image_url"),
+    exerciseType: text("exercise_type").notNull().default("weight_reps"),
+    isAssisted: boolean("is_assisted").notNull().default(false),
+  },
+  (t) => [index("exercises_user_id_idx").on(t.userId)],
+);
 
-export const workoutTemplates = pgTable("workout_templates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id").references(() => authUsers.id, {
-    onDelete: "cascade",
-  }),
-  name: text("name").notNull(),
-  exercises: jsonb("exercises").notNull(),
-});
+export const workoutTemplates = pgTable(
+  "workout_templates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").references(() => authUsers.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    exercises: jsonb("exercises").notNull(),
+  },
+  (t) => [index("workout_templates_user_id_idx").on(t.userId)],
+);
 
-export const scheduledWorkouts = pgTable("scheduled_workouts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id").references(() => authUsers.id, {
-    onDelete: "cascade",
-  }),
-  templateId: varchar("template_id"),
-  name: text("name").notNull(),
-  date: timestamp("date").notNull(),
-  exercises: jsonb("exercises").notNull(),
-  calendarEventId: varchar("calendar_event_id"),
-  routineInstanceId: varchar("routine_instance_id"),
-  routineDayIndex: integer("routine_day_index"),
-});
+export const scheduledWorkouts = pgTable(
+  "scheduled_workouts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").references(() => authUsers.id, {
+      onDelete: "cascade",
+    }),
+    templateId: varchar("template_id"),
+    name: text("name").notNull(),
+    date: timestamp("date").notNull(),
+    exercises: jsonb("exercises").notNull(),
+    calendarEventId: varchar("calendar_event_id"),
+    routineInstanceId: varchar("routine_instance_id"),
+    routineDayIndex: integer("routine_day_index"),
+  },
+  (t) => [
+    index("scheduled_workouts_user_id_idx").on(t.userId),
+    index("scheduled_workouts_routine_instance_id_idx").on(t.routineInstanceId),
+  ],
+);
 
-export const completedWorkouts = pgTable("completed_workouts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id").references(() => authUsers.id, {
-    onDelete: "cascade",
-  }),
-  templateId: varchar("template_id"),
-  displayId: text("display_id").notNull(),
-  name: text("name").notNull(),
-  exercises: jsonb("exercises").notNull(),
-  completedAt: timestamp("completed_at").notNull().defaultNow(),
-  startedAt: timestamp("started_at"),
-  durationSeconds: integer("duration_seconds"),
-  calendarEventId: varchar("calendar_event_id"),
-  routineInstanceId: varchar("routine_instance_id"),
-  routineDayIndex: integer("routine_day_index"),
-});
+export const completedWorkouts = pgTable(
+  "completed_workouts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id").references(() => authUsers.id, {
+      onDelete: "cascade",
+    }),
+    templateId: varchar("template_id"),
+    displayId: text("display_id").notNull(),
+    name: text("name").notNull(),
+    exercises: jsonb("exercises").notNull(),
+    completedAt: timestamp("completed_at").notNull().defaultNow(),
+    startedAt: timestamp("started_at"),
+    durationSeconds: integer("duration_seconds"),
+    calendarEventId: varchar("calendar_event_id"),
+    routineInstanceId: varchar("routine_instance_id"),
+    routineDayIndex: integer("routine_day_index"),
+  },
+  (t) => [
+    index("completed_workouts_user_id_idx").on(t.userId),
+    index("completed_workouts_user_id_completed_at_idx").on(
+      t.userId,
+      t.completedAt.desc(),
+    ),
+  ],
+);
 
 export const userSettings = pgTable("user_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -143,58 +169,74 @@ export const activeWorkouts = pgTable("active_workouts", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const routines = pgTable("routines", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description"),
-  defaultDurationDays: integer("default_duration_days").notNull().default(7),
-  isPublic: boolean("is_public").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const routines = pgTable(
+  "routines",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    defaultDurationDays: integer("default_duration_days").notNull().default(7),
+    isPublic: boolean("is_public").notNull().default(false),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("routines_user_id_idx").on(t.userId)],
+);
 
-export const routineEntries = pgTable("routine_entries", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  routineId: varchar("routine_id")
-    .notNull()
-    .references(() => routines.id, { onDelete: "cascade" }),
-  dayIndex: integer("day_index").notNull(),
-  workoutTemplateId: varchar("workout_template_id"),
-  workoutName: text("workout_name"),
-  exercises: jsonb("exercises"),
-});
+export const routineEntries = pgTable(
+  "routine_entries",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    routineId: varchar("routine_id")
+      .notNull()
+      .references(() => routines.id, { onDelete: "cascade" }),
+    dayIndex: integer("day_index").notNull(),
+    workoutTemplateId: varchar("workout_template_id"),
+    workoutName: text("workout_name"),
+    exercises: jsonb("exercises"),
+  },
+  (t) => [index("routine_entries_routine_id_idx").on(t.routineId)],
+);
 
-export const routineInstances = pgTable("routine_instances", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  routineId: varchar("routine_id").notNull(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  routineName: text("routine_name").notNull(),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
-  durationDays: integer("duration_days").notNull(),
-  totalWorkouts: integer("total_workouts").notNull().default(0),
-  completedWorkouts: integer("completed_workouts").notNull().default(0),
-  skippedWorkouts: integer("skipped_workouts").notNull().default(0),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
-});
+export const routineInstances = pgTable(
+  "routine_instances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    routineId: varchar("routine_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    routineName: text("routine_name").notNull(),
+    startDate: timestamp("start_date").notNull(),
+    endDate: timestamp("end_date").notNull(),
+    durationDays: integer("duration_days").notNull(),
+    totalWorkouts: integer("total_workouts").notNull().default(0),
+    completedWorkouts: integer("completed_workouts").notNull().default(0),
+    skippedWorkouts: integer("skipped_workouts").notNull().default(0),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (t) => [index("routine_instances_user_id_idx").on(t.userId)],
+);
 
-export const exerciseGoals = pgTable("exercise_goals", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  exerciseId: varchar("exercise_id").notNull(),
-  exerciseName: text("exercise_name").notNull(),
-  targetReps: integer("target_reps").notNull(),
-  period: text("period").notNull().default("week"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const exerciseGoals = pgTable(
+  "exercise_goals",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    exerciseId: varchar("exercise_id").notNull(),
+    exerciseName: text("exercise_name").notNull(),
+    targetReps: integer("target_reps").notNull(),
+    period: text("period").notNull().default("week"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("exercise_goals_user_id_idx").on(t.userId)],
+);
 
 export const googleCalendarTokens = pgTable("google_calendar_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -209,18 +251,28 @@ export const googleCalendarTokens = pgTable("google_calendar_tokens", {
 });
 
 // New table for the Workout Complete + History PR Tab features.
-export const prHistory = pgTable("pr_history", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => authUsers.id, { onDelete: "cascade" }),
-  exerciseId: varchar("exercise_id").notNull(),
-  workoutId: varchar("workout_id").notNull(),
-  prType: text("pr_type").notNull(),
-  newValue: real("new_value").notNull(),
-  previousValue: real("previous_value"),
-  achievedAt: timestamp("achieved_at").notNull().defaultNow(),
-});
+export const prHistory = pgTable(
+  "pr_history",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    exerciseId: varchar("exercise_id").notNull(),
+    workoutId: varchar("workout_id").notNull(),
+    prType: text("pr_type").notNull(),
+    newValue: real("new_value").notNull(),
+    previousValue: real("previous_value"),
+    achievedAt: timestamp("achieved_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("pr_history_user_id_idx").on(t.userId),
+    index("pr_history_user_id_achieved_at_idx").on(
+      t.userId,
+      t.achievedAt.desc(),
+    ),
+  ],
+);
 
 // Zod schemas
 export const insertExerciseSchema = createInsertSchema(exercises).omit({
