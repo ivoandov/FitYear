@@ -298,7 +298,7 @@ export function WorkoutEditorDialog({
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, index)}
                           onDragEnd={handleDragEnd}
-                          className={`flex items-center gap-2 p-2 bg-accent rounded-md transition-all ${
+                          className={`flex items-center gap-2 p-2 rounded-[10px] border border-yellow transition-all ${
                             draggedIndex === index ? "opacity-50" : ""
                           } ${
                             dragOverIndex === index ? "ring-2 ring-primary ring-offset-1" : ""
@@ -351,26 +351,33 @@ export function WorkoutEditorDialog({
               <div className="space-y-2">
                 <Label className="text-sm">Available Exercises ({filteredExercises.length})</Label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {allMuscleGroups.map((muscle) => (
-                    <Badge
-                      key={muscle}
-                      variant={selectedMuscleFilters.includes(muscle) ? "default" : "outline"}
-                      className="cursor-pointer text-xs toggle-elevate"
-                      onClick={() => toggleMuscleFilter(muscle)}
-                      data-testid={`filter-muscle-${muscle.toLowerCase().replace(/\s+/g, '-')}`}
-                    >
-                      {muscle}
-                    </Badge>
-                  ))}
+                  {allMuscleGroups.map((muscle) => {
+                    const isActive = selectedMuscleFilters.includes(muscle);
+                    return (
+                      <button
+                        key={muscle}
+                        type="button"
+                        onClick={() => toggleMuscleFilter(muscle)}
+                        className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-medium transition-colors ${
+                          isActive
+                            ? "bg-primary-dim border-yellow text-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        data-testid={`filter-muscle-${muscle.toLowerCase().replace(/\s+/g, '-')}`}
+                      >
+                        {muscle}
+                      </button>
+                    );
+                  })}
                   {selectedMuscleFilters.length > 0 && (
-                    <Badge
-                      variant="ghost"
-                      className="cursor-pointer text-xs text-muted-foreground"
+                    <button
+                      type="button"
                       onClick={() => setSelectedMuscleFilters([])}
+                      className="inline-flex h-7 items-center rounded-full border border-transparent px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
                       data-testid="button-clear-filters"
                     >
                       Clear all
-                    </Badge>
+                    </button>
                   )}
                 </div>
                 <div className="border rounded-md">

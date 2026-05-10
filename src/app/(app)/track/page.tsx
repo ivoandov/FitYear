@@ -650,9 +650,13 @@ export default function TrackPage() {
                     return (
                       <div
                         key={set.setNumber}
-                        className={`grid grid-cols-4 gap-2 sm:gap-4 items-center py-2 rounded-md px-1 sm:px-2 ${
-                          set.completed ? 'bg-accent' : ''
-                        } ${isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
+                        className={`grid grid-cols-4 gap-2 sm:gap-4 items-center py-2 rounded-md px-2 border-l-2 ${
+                          isActive
+                            ? 'border-l-primary bg-primary-dim'
+                            : isCurrentSet
+                              ? 'border-l-muted-foreground/30'
+                              : 'border-l-transparent'
+                        }`}
                         data-testid={`row-set-${set.setNumber}`}
                       >
                         <div className="font-medium text-sm sm:text-base">{set.setNumber}</div>
@@ -665,7 +669,7 @@ export default function TrackPage() {
                             newSets[index].distance = e.target.value === "" ? null : parseFloat(e.target.value);
                             setCurrentSets(newSets);
                           }}
-                          className="text-center text-sm h-9 sm:h-10"
+                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
                           data-testid={`input-distance-${set.setNumber}`}
                         />
                         <Input
@@ -676,7 +680,7 @@ export default function TrackPage() {
                             newSets[index].time = e.target.value === "" ? null : parseInt(e.target.value);
                             setCurrentSets(newSets);
                           }}
-                          className="text-center text-sm h-9 sm:h-10"
+                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
                           data-testid={`input-time-${set.setNumber}`}
                         />
                         <div className="flex justify-center">
@@ -725,9 +729,15 @@ export default function TrackPage() {
                     return (
                       <div
                         key={set.setNumber}
-                        className={`grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center py-2 rounded-md px-1 sm:px-2 ${
-                          set.completed ? 'bg-accent' : ''
-                        } ${isPR ? 'border-2 border-primary' : isActive ? 'border-2 border-primary bg-primary/5' : isCurrentSet ? 'border border-muted-foreground/30' : ''}`}
+                        className={`grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center py-2 rounded-md px-2 border-l-2 ${
+                          isPR
+                            ? 'border-l-primary bg-primary-dim'
+                            : isActive
+                              ? 'border-l-primary bg-primary-dim'
+                              : isCurrentSet
+                                ? 'border-l-muted-foreground/30'
+                                : 'border-l-transparent'
+                        }`}
                         data-testid={`row-set-${set.setNumber}`}
                       >
                         <div className="flex items-center gap-1 font-medium text-sm sm:text-base">
@@ -764,7 +774,7 @@ export default function TrackPage() {
                                 newSets[index].weight = e.target.value === "" ? null : parseFloat(e.target.value);
                                 setCurrentSets(newSets);
                               }}
-                              className="text-center text-sm h-9 sm:h-10 flex-1 min-w-0"
+                              className={`text-center text-sm h-9 sm:h-10 flex-1 min-w-0 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
                               data-testid={`input-weight-${set.setNumber}`}
                             />
                             <Button
@@ -802,7 +812,7 @@ export default function TrackPage() {
                             newSets[index].reps = e.target.value === "" ? null : parseInt(e.target.value);
                             setCurrentSets(newSets);
                           }}
-                          className="text-center text-sm h-9 sm:h-10"
+                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
                           data-testid={`input-reps-${set.setNumber}`}
                         />
                         <div className="flex justify-center">

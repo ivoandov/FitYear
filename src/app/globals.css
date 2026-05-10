@@ -3,48 +3,79 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* B+ Design System — see /design_handoff_fityear/design_handoff_fityear_2/B-Plus Design System.md
+   Direction B (tonal layering) is the visual ground truth.
+   Surfaces: warm near-black base; cards lift; inputs nest LIGHTER inside cards.
+   Borders are alpha-on-white so they read consistently across surface depths. */
+
 :root {
-  --background: hsl(60 5% 6%);
-  --foreground: hsl(0 0% 95%);
-  --border: hsl(60 5% 15%);
-  --card: hsl(0 0% 19%);
-  --card-foreground: hsl(0 0% 95%);
-  --card-border: hsl(0 0% 24%);
-  --popover: hsl(0 0% 19%);
-  --popover-foreground: hsl(0 0% 95%);
-  --primary: hsl(66 100% 50%);
-  --primary-foreground: hsl(60 5% 6%);
-  --secondary: hsl(60 5% 18%);
-  --secondary-foreground: hsl(0 0% 90%);
-  --muted: hsl(60 5% 14%);
-  --muted-foreground: hsl(0 0% 80%);
-  --accent: hsl(66 50% 15%);
-  --accent-foreground: hsl(66 100% 50%);
-  --destructive: hsl(0 70% 50%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --input: hsl(60 5% 18%);
-  --ring: hsl(66 100% 50%);
-  --chart-1: hsl(66 100% 50%);
-  --chart-2: hsl(66 80% 40%);
-  --chart-3: hsl(66 60% 35%);
+  /* Surfaces */
+  --background:        hsl(60 6% 4.5%);   /* #0B0B0A */
+  --foreground:        hsl(0 0% 96%);
+  --card:              hsl(60 7% 8.6%);   /* #161614 — lifts on bg */
+  --card-foreground:   hsl(0 0% 96%);
+  --card-border:       hsla(0, 0%, 100%, 0.10);
+  --popover:           hsl(60 7% 8.6%);
+  --popover-foreground:hsl(0 0% 96%);
+
+  /* Inputs nest LIGHTER than card on purpose — that's what makes a nested
+     input look tappable. Counterintuitive but correct. */
+  --input:             hsl(60 7% 12%);    /* #1F1F1C */
+  --input-focus:       hsl(60 10% 14%);   /* #26261F */
+
+  /* Borders — alpha on white so they work over any surface depth */
+  --border:            hsla(0, 0%, 100%, 0.10);
+  --border-strong:     hsla(0, 0%, 100%, 0.14);
+  --divider:           hsla(0, 0%, 100%, 0.06);
+
+  /* Accent — neon yellow */
+  --primary:            hsl(65 100% 50%); /* #E5FF00 */
+  --primary-foreground: hsl(60 8% 4.5%);  /* #0A0A0A */
+  --primary-dim:        hsla(65, 100%, 50%, 0.14);
+  --primary-border:     hsla(65, 100%, 50%, 0.40);
+
+  /* Text hierarchy */
+  --muted:              hsl(60 7% 12%);
+  --muted-foreground:   hsl(0 0% 64%);
+  --tertiary-foreground:hsl(0 0% 42%);
+
+  /* Secondary / neutral fills */
+  --secondary:           hsl(60 7% 12%);
+  --secondary-foreground:hsl(0 0% 96%);
+  --accent:              hsl(60 7% 12%);
+  --accent-foreground:   hsl(0 0% 96%);
+
+  /* Status */
+  --destructive:           hsl(0 75% 60%);
+  --destructive-foreground:hsl(0 0% 96%);
+  --success:               hsl(145 50% 55%);
+
+  /* Ring / focus */
+  --ring: hsl(65 100% 50%);
+
+  /* Charts */
+  --chart-1: hsl(65 100% 50%);
+  --chart-2: hsl(65 80% 40%);
+  --chart-3: hsl(65 60% 35%);
   --chart-4: hsl(60 10% 40%);
   --chart-5: hsl(60 5% 50%);
 
-  --sidebar: hsl(60 5% 8%);
-  --sidebar-foreground: hsl(0 0% 95%);
-  --sidebar-border: hsl(60 5% 12%);
-  --sidebar-primary: hsl(66 100% 50%);
-  --sidebar-primary-foreground: hsl(60 5% 6%);
-  --sidebar-accent: hsl(66 50% 15%);
-  --sidebar-accent-foreground: hsl(66 100% 50%);
-  --sidebar-ring: hsl(66 100% 50%);
+  /* Sidebar */
+  --sidebar: hsl(60 7% 8.6%);
+  --sidebar-foreground: hsl(0 0% 96%);
+  --sidebar-border: hsla(0, 0%, 100%, 0.10);
+  --sidebar-primary: hsl(65 100% 50%);
+  --sidebar-primary-foreground: hsl(60 8% 4.5%);
+  --sidebar-accent: hsl(60 7% 12%);
+  --sidebar-accent-foreground: hsl(0 0% 96%);
+  --sidebar-ring: hsl(65 100% 50%);
 
   --radius: 0.875rem;
 
   --elevate-1: rgba(255, 255, 255, 0.04);
   --elevate-2: rgba(255, 255, 255, 0.09);
-  --button-outline: rgba(255, 255, 255, 0.1);
-  --badge-outline: rgba(255, 255, 255, 0.05);
+  --button-outline: rgba(255, 255, 255, 0.10);
+  --badge-outline: rgba(255, 255, 255, 0.06);
 
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -52,59 +83,73 @@
 
 .dark {
   /* App is dark-first; .dark mirrors :root tokens for completeness */
-  --background: hsl(60 5% 6%);
-  --foreground: hsl(0 0% 95%);
-  --border: hsl(60 5% 15%);
-  --card: hsl(0 0% 19%);
-  --card-foreground: hsl(0 0% 95%);
-  --popover: hsl(0 0% 19%);
-  --popover-foreground: hsl(0 0% 95%);
-  --primary: hsl(66 100% 50%);
-  --primary-foreground: hsl(60 5% 6%);
-  --secondary: hsl(60 5% 18%);
-  --secondary-foreground: hsl(0 0% 90%);
-  --muted: hsl(60 5% 14%);
-  --muted-foreground: hsl(0 0% 80%);
-  --accent: hsl(66 50% 15%);
-  --accent-foreground: hsl(66 100% 50%);
-  --destructive: hsl(0 70% 50%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --input: hsl(60 5% 18%);
-  --ring: hsl(66 100% 50%);
-  --chart-1: hsl(66 100% 50%);
-  --chart-2: hsl(66 80% 40%);
-  --chart-3: hsl(66 60% 35%);
+  --background:        hsl(60 6% 4.5%);
+  --foreground:        hsl(0 0% 96%);
+  --card:              hsl(60 7% 8.6%);
+  --card-foreground:   hsl(0 0% 96%);
+  --popover:           hsl(60 7% 8.6%);
+  --popover-foreground:hsl(0 0% 96%);
+  --input:             hsl(60 7% 12%);
+  --input-focus:       hsl(60 10% 14%);
+  --border:            hsla(0, 0%, 100%, 0.10);
+  --border-strong:     hsla(0, 0%, 100%, 0.14);
+  --divider:           hsla(0, 0%, 100%, 0.06);
+  --primary:            hsl(65 100% 50%);
+  --primary-foreground: hsl(60 8% 4.5%);
+  --primary-dim:        hsla(65, 100%, 50%, 0.14);
+  --primary-border:     hsla(65, 100%, 50%, 0.40);
+  --muted:              hsl(60 7% 12%);
+  --muted-foreground:   hsl(0 0% 64%);
+  --tertiary-foreground:hsl(0 0% 42%);
+  --secondary:           hsl(60 7% 12%);
+  --secondary-foreground:hsl(0 0% 96%);
+  --accent:              hsl(60 7% 12%);
+  --accent-foreground:   hsl(0 0% 96%);
+  --destructive:           hsl(0 75% 60%);
+  --destructive-foreground:hsl(0 0% 96%);
+  --success:               hsl(145 50% 55%);
+  --ring: hsl(65 100% 50%);
+  --chart-1: hsl(65 100% 50%);
+  --chart-2: hsl(65 80% 40%);
+  --chart-3: hsl(65 60% 35%);
   --chart-4: hsl(60 10% 40%);
   --chart-5: hsl(60 5% 50%);
-  --sidebar: hsl(60 5% 8%);
-  --sidebar-foreground: hsl(0 0% 95%);
-  --sidebar-border: hsl(60 5% 12%);
-  --sidebar-primary: hsl(66 100% 50%);
-  --sidebar-primary-foreground: hsl(60 5% 6%);
-  --sidebar-accent: hsl(66 50% 15%);
-  --sidebar-accent-foreground: hsl(66 100% 50%);
-  --sidebar-ring: hsl(66 100% 50%);
+  --sidebar: hsl(60 7% 8.6%);
+  --sidebar-foreground: hsl(0 0% 96%);
+  --sidebar-border: hsla(0, 0%, 100%, 0.10);
+  --sidebar-primary: hsl(65 100% 50%);
+  --sidebar-primary-foreground: hsl(60 8% 4.5%);
+  --sidebar-accent: hsl(60 7% 12%);
+  --sidebar-accent-foreground: hsl(0 0% 96%);
+  --sidebar-ring: hsl(65 100% 50%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-divider: var(--divider);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-dim: var(--primary-dim);
+  --color-primary-border: var(--primary-border);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-tertiary-foreground: var(--tertiary-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
   --color-input: var(--input);
+  --color-input-focus: var(--input-focus);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -127,6 +172,29 @@
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+}
+
+/* B+ utilities — strong borders, yellow border, primary-dim fill, decorative shadows */
+@utility border-strong {
+  border-color: var(--border-strong);
+}
+@utility border-yellow {
+  border-color: var(--primary-border);
+}
+@utility bg-primary-dim {
+  background-color: var(--primary-dim);
+}
+@utility bg-input-focus {
+  background-color: var(--input-focus);
+}
+@utility text-tertiary-foreground {
+  color: var(--tertiary-foreground);
+}
+@utility shadow-inner-hi {
+  box-shadow: inset 0 1px 0 hsla(0, 0%, 100%, 0.04);
+}
+@utility shadow-cta {
+  box-shadow: 0 4px 14px hsla(65, 100%, 50%, 0.18);
 }
 
 @layer base {
