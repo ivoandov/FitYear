@@ -151,7 +151,7 @@ async function syncTemplates(userMap: Map<string, string>) {
     if (!apply) continue;
     const result = await SUPA`
       INSERT INTO workout_templates (id, name, exercises, user_id)
-      VALUES (${r.id}, ${r.name}, ${SUPA.json(r.exercises as object)},
+      VALUES (${r.id}, ${r.name}, ${SUPA.json(r.exercises as never)},
               ${newUserId ? SUPA.unsafe(`'${newUserId}'::uuid`) : null})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
@@ -205,7 +205,7 @@ async function syncScheduled(userMap: Map<string, string>) {
       INSERT INTO scheduled_workouts (id, user_id, template_id, name, date, exercises, calendar_event_id, routine_instance_id, routine_day_index)
       VALUES (${r.id},
               ${newUserId ? SUPA.unsafe(`'${newUserId}'::uuid`) : null},
-              ${tpl}, ${r.name}, ${r.date}, ${SUPA.json(r.exercises as object)},
+              ${tpl}, ${r.name}, ${r.date}, ${SUPA.json(r.exercises as never)},
               ${r.calendar_event_id}, ${rout}, ${r.routine_day_index})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
@@ -261,7 +261,7 @@ async function syncCompleted(userMap: Map<string, string>) {
       INSERT INTO completed_workouts (id, user_id, template_id, display_id, name, exercises, completed_at, calendar_event_id, routine_instance_id, routine_day_index)
       VALUES (${r.id},
               ${newUserId ? SUPA.unsafe(`'${newUserId}'::uuid`) : null},
-              ${tpl}, ${r.display_id}, ${r.name}, ${SUPA.json(r.exercises as object)},
+              ${tpl}, ${r.display_id}, ${r.name}, ${SUPA.json(r.exercises as never)},
               ${r.completed_at}, ${r.calendar_event_id}, ${rout}, ${r.routine_day_index})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
