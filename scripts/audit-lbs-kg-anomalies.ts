@@ -11,7 +11,7 @@
  * Outputs candidates grouped by user with proposed corrections. Does NOT
  * write — that's a second pass once you've eyeballed the list.
  *
- * Run: npx tsx scripts/_audit-lbs-kg.ts
+ * Run: npx tsx scripts/audit-lbs-kg-anomalies.ts
  *   --user=<email>    only audit this user (default: every user with weightUnit='kg')
  *   --min-sets=N      minimum sets per (user,exercise) before flagging (default: 5)
  *   --json            machine-readable output
@@ -239,7 +239,7 @@ async function main() {
   }
 
   console.log(`\nTotal: ${allFindings.length} suspicious sets across ${byUser.size} user(s).`);
-  console.log("\nNothing written. To apply, re-run scripts/_fix-lbs-kg.ts --apply once you've reviewed.");
+  console.log("\nNothing written. To apply, re-run scripts/fix-lbs-kg-anomalies.ts --apply once you've reviewed.");
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

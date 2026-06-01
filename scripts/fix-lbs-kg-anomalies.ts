@@ -1,7 +1,7 @@
 /**
  * Apply lbs/kg corrections to completed_workouts.exercises[].setsData[].weight.
  *
- * Pulls findings from `_audit-lbs-kg.ts` via its --json mode, filters to
+ * Pulls findings from `audit-lbs-kg-anomalies.ts` via its --json mode, filters to
  * `high` + `medium` confidence (skip `low` — those are real lighter sets),
  * dumps a JSON backup of every affected workout, then updates the nested
  * JSON via jsonb_set.
