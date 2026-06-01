@@ -6,6 +6,7 @@ const PUBLIC_PATHS = [
   "/auth/callback",
   "/_next",
   "/favicon.ico",
+  "/manifest.json",
 ];
 
 const ONBOARDED_COOKIE = "fy_onboarded";
