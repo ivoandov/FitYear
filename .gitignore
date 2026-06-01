@@ -43,3 +43,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Pre-mutation snapshots from scripts/fix-lbs-kg-anomalies.ts. Each
+# backup contains full workout JSON for affected rows.
+/migration/lbs-kg-fix-backups/
