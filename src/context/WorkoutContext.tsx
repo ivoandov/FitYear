@@ -47,6 +47,12 @@ interface TrackingProgress {
   currentExerciseIndex: number;
   currentSetIndex: number;
   restTimerDuration: number;
+  // The display unit the in-memory weights are expressed in. Set by TrackPage
+  // when saving; checked by TrackPage on restore — if it differs from the
+  // current user setting, weights are converted on load. Optional for
+  // backwards compatibility with progress saved before this field existed
+  // (those rows are treated as lbs).
+  weightUnit?: 'lbs' | 'kg';
 }
 
 interface WorkoutContextType {

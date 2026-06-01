@@ -9,10 +9,23 @@ import { Input } from "@/components/ui/input";
 import { ChevronDown } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useWorkout } from "@/context/WorkoutContext";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
+
+// DB always stores weights in lbs. Display + edit in user's preferred unit;
+// convert back to lbs before saving. Rounded to 1 decimal place. Returns
+// `undefined` to slot into SetDetail (whose `weight?: number` is undefined,
+// not null, to match the API/DB JSON shape).
+function lbsToDisplay(lbs: number | null | undefined, unit: 'lbs' | 'kg'): number | undefined {
+  if (lbs == null) return undefined;
+  return unit === 'kg' ? Math.round((lbs / 2.20462) * 10) / 10 : lbs;
+}
+function displayToLbs(val: number | null | undefined, unit: 'lbs' | 'kg'): number | undefined {
+  if (val == null) return undefined;
+  return unit === 'kg' ? Math.round(val * 2.20462 * 10) / 10 : val;
+}
 
 interface SetDetail {
   setNumber?: number;
@@ -63,6 +76,9 @@ export function WorkoutHistoryCard({
   const { toast } = useToast();
   const { enrichExercises } = useExerciseDetails();
 
+  const { data: userSettingsData } = useQuery<{ weightUnit?: string }>({ queryKey: ['/api/user-settings'] });
+  const weightUnit = (userSettingsData?.weightUnit ?? 'lbs') as 'lbs' | 'kg';
+
   const enrichedExercises = useMemo(() => {
     return enrichExercises(exercises.map(ex => ({ ...ex, id: ex.id || "" })));
   }, [exercises, enrichExercises]);
@@ -93,10 +109,11 @@ export function WorkoutHistoryCard({
   );
 
   const startEditing = () => {
+    // Convert stored lbs → display unit when pre-filling edit inputs so the
+    // numbers the user sees match the unit label they see.
     setEditedExercises(enrichedExercises.map(ex => {
-      // If exercise has no sets, seed with one empty set so user can add data
-      const sets = ex.sets.length > 0 
-        ? ex.sets.map(s => ({ ...s }))
+      const sets = ex.sets.length > 0
+        ? ex.sets.map(s => ({ ...s, weight: lbsToDisplay(s.weight, weightUnit) }))
         : [{ setNumber: 1, weight: 0, reps: 0, completed: true }];
       return {
         ...ex,
@@ -116,13 +133,18 @@ export function WorkoutHistoryCard({
   const saveEditing = async () => {
     if (!workoutId) return;
     
-    // Ensure all sets are marked as completed when saving a completed workout edit
+    // Convert display-unit weights back to lbs before persisting (DB always stores lbs).
+    // Ensure all sets are marked as completed when saving a completed workout edit.
     const updatedExercises = editedExercises.map(ex => ({
       id: ex.id,
       name: ex.name,
       muscleGroups: ex.muscleGroups || [],
       exerciseType: ex.exerciseType || 'weight_reps',
-      setsData: ex.sets.map(set => ({ ...set, completed: true })),
+      setsData: ex.sets.map(set => ({
+        ...set,
+        weight: displayToLbs(set.weight, weightUnit),
+        completed: true,
+      })),
     }));
     
     setIsSaving(true);
@@ -209,7 +231,7 @@ export function WorkoutHistoryCard({
                 {totalVolume > 0 && (
                   <div className="flex items-center gap-1">
                     <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                    <span data-testid={`text-history-volume-${id}`}>{totalVolume.toLocaleString()} lbs</span>
+                    <span data-testid={`text-history-volume-${id}`}>{Math.round(lbsToDisplay(totalVolume, weightUnit) ?? 0).toLocaleString()} {weightUnit}</span>
                   </div>
                 )}
               </div>
@@ -305,12 +327,13 @@ export function WorkoutHistoryCard({
                                 <>
                                   <Input
                                     type="number"
+                                    step={weightUnit === 'kg' ? '0.5' : '1'}
                                     value={set.weight ?? ""}
-                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'weight', e.target.value === "" ? 0 : parseInt(e.target.value))}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'weight', e.target.value === "" ? 0 : parseFloat(e.target.value))}
                                     className="w-16 h-8 text-center"
                                     data-testid={`input-weight-${id}-${exIdx}-${setIdx}`}
                                   />
-                                  <span>lbs ×</span>
+                                  <span>{weightUnit} ×</span>
                                   <Input
                                     type="number"
                                     value={set.reps ?? ""}
@@ -339,7 +362,7 @@ export function WorkoutHistoryCard({
                         return (
                           <div key={setIdx} data-testid={`text-set-${id}-${exIdx}-${setIdx}`}>
                             {set.weight != null && set.reps ? (
-                              `Set ${setIdx + 1}: ${set.weight} lbs × ${set.reps}`
+                              `Set ${setIdx + 1}: ${lbsToDisplay(set.weight, weightUnit)} ${weightUnit} × ${set.reps}`
                             ) : set.distance && set.time ? (
                               `Set ${setIdx + 1}: ${set.distance} mi in ${set.time} min`
                             ) : (

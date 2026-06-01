@@ -31,12 +31,24 @@ type TrackingState = "not_started" | "in_set" | "resting";
 
 const TRACKING_STORAGE_KEY = "workout_tracking_progress";
 
+// Pure unit conversion: lbs<->kg. Rounded to 1 decimal place so display values
+// stay clean. Pass-through on equal units or null.
+function convertWeight(val: number | null, from: 'lbs' | 'kg', to: 'lbs' | 'kg'): number | null {
+  if (val == null || from === to) return val;
+  if (from === 'lbs' && to === 'kg') return Math.round((val / 2.20462) * 10) / 10;
+  return Math.round(val * 2.20462 * 10) / 10;
+}
+
 interface SavedTrackingProgress {
   workoutDisplayId: string;
   exerciseSets: [string, SetData[]][]; // Keyed by exercise instanceId for stability during edits/reorders
   currentExerciseIndex: number;
   currentSetIndex: number;
   restTimerDuration: number;
+  // Display unit the in-memory weights are expressed in at save time. Used
+  // to convert weights on restore if the user has since switched units in
+  // Settings. Treated as 'lbs' if absent (back-compat with pre-2026-06 progress).
+  weightUnit?: 'lbs' | 'kg';
 }
 
 export default function TrackPage() {
@@ -172,10 +184,18 @@ export default function TrackPage() {
     if (activeWorkout && !hasLoadedSavedProgress) {
       if (trackingProgress && trackingProgress.workoutDisplayId === activeWorkout.displayId) {
         console.log("Restoring tracking progress from server");
-        // Restore progress - key is the instanceId
+        // If the user switched units in Settings between sessions, the saved
+        // weights are in the previous display unit. Convert each weight to
+        // the current unit so the inputs match the labels they sit under.
+        // Pre-2026-06 saves don't carry a unit; we assume current unit (no
+        // conversion) — same behavior as before this fix for that case.
+        const savedUnit = (trackingProgress.weightUnit ?? weightUnit) as 'lbs' | 'kg';
         const restoredMap = new Map<string, SetData[]>();
         for (const [instanceId, sets] of trackingProgress.exerciseSets) {
-          restoredMap.set(instanceId, sets);
+          const converted = savedUnit === weightUnit
+            ? sets
+            : sets.map(s => ({ ...s, weight: convertWeight(s.weight, savedUnit, weightUnit) }));
+          restoredMap.set(instanceId, converted);
         }
         setExerciseSets(restoredMap);
         setCurrentExerciseIndex(trackingProgress.currentExerciseIndex);
@@ -184,7 +204,31 @@ export default function TrackPage() {
       }
       setHasLoadedSavedProgress(true);
     }
-  }, [activeWorkout, trackingProgress, hasLoadedSavedProgress]);
+  }, [activeWorkout, trackingProgress, hasLoadedSavedProgress, weightUnit]);
+
+  // Live re-conversion: if the user switches units in Settings WHILE a workout
+  // is in progress, every in-memory weight needs to flip to the new unit so
+  // the displayed number and the unit label stay consistent. Without this,
+  // a "60" entered while in lbs would still read "60" after switching to kg
+  // (now mislabelled) and could be saved as 60 lbs from a value meant to be 27.
+  const weightsUnitRef = useRef<'lbs' | 'kg'>(weightUnit);
+  useEffect(() => {
+    if (!hasLoadedSavedProgress) {
+      weightsUnitRef.current = weightUnit;
+      return;
+    }
+    const from = weightsUnitRef.current;
+    if (from === weightUnit) return;
+    weightsUnitRef.current = weightUnit;
+    setExerciseSets(prev => {
+      if (prev.size === 0) return prev;
+      const next = new Map<string, SetData[]>();
+      prev.forEach((sets, key) => {
+        next.set(key, sets.map(s => ({ ...s, weight: convertWeight(s.weight, from, weightUnit) })));
+      });
+      return next;
+    });
+  }, [weightUnit, hasLoadedSavedProgress]);
 
   // Auto-save progress to context whenever tracking state changes
   useEffect(() => {
@@ -195,10 +239,11 @@ export default function TrackPage() {
         currentExerciseIndex,
         currentSetIndex,
         restTimerDuration,
+        weightUnit, // Persist so the next load can re-convert if Settings changed in between
       };
       saveTrackingProgress(progress);
     }
-  }, [activeWorkout, exerciseSets, currentExerciseIndex, currentSetIndex, restTimerDuration, hasLoadedSavedProgress, saveTrackingProgress]);
+  }, [activeWorkout, exerciseSets, currentExerciseIndex, currentSetIndex, restTimerDuration, hasLoadedSavedProgress, saveTrackingProgress, weightUnit]);
 
   // Flush progress when navigating away from the page; also minimize timer so pill persists
   useEffect(() => {
