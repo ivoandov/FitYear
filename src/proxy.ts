@@ -69,7 +69,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // Exclude static media from the auth proxy so the login page's intro video
+  // (and any other public asset) loads for unauthenticated visitors. Image
+  // formats were already excluded; video + audio added 2026-06-01 after the
+  // intro mp4 was getting 307'd to /login.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4|webm|ogg|mp3|wav|m4a)$).*)",
   ],
 };
