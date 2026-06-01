@@ -85,7 +85,7 @@ async function main() {
     proposedLbs: number;
     reps: number;
     medianLbs: number;
-    confidence: "high" | "medium";
+    confidence: "high" | "medium" | "low";
   }> = [];
 
   for (const user of targets) {
