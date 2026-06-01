@@ -2,8 +2,9 @@
 
 import { memo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
@@ -17,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, X, RefreshCw } from "lucide-react";
+import { Plus, Pencil, X, RefreshCw, TrendingUp } from "lucide-react";
 
 interface ExerciseCardProps {
   id: string;
@@ -115,9 +116,15 @@ function ExerciseCardImpl({
               </Badge>
             ))}
           </div>
-          <CardTitle className="text-base sm:text-lg" data-testid={`text-exercise-name-${id}`}>
-            {name}
-          </CardTitle>
+          <Link
+            href={`/exercises/${id}`}
+            className="block hover:underline"
+            data-testid={`link-exercise-detail-${id}`}
+          >
+            <CardTitle className="text-base sm:text-lg" data-testid={`text-exercise-name-${id}`}>
+              {name}
+            </CardTitle>
+          </Link>
         </CardHeader>
         <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
           <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2" data-testid={`text-description-${id}`}>
@@ -136,6 +143,14 @@ function ExerciseCardImpl({
               Edit
             </Button>
           )}
+          <Link
+            href={`/exercises/${id}`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+            data-testid={`button-progress-exercise-${id}`}
+          >
+            <TrendingUp className="h-4 w-4 mr-2" />
+            Progress
+          </Link>
           <Button
             onClick={() => onAdd?.(id)}
             className="flex-1"
