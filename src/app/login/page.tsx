@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -35,35 +36,58 @@ function LoginContent() {
   }
 
   return (
-    <main className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-8 text-center">
-        <div className="space-y-2">
-          <h1 className="text-4xl font-bold text-primary">FitYear</h1>
-          <p className="text-muted-foreground">
-            Track your year, one workout at a time.
-          </p>
-        </div>
+    <div className="fixed inset-0 w-full h-full overflow-hidden">
+      {/* Full-bleed intro video. autoPlay+muted is required for iOS Safari to
+          play inline without a tap. playsInline avoids fullscreening on mobile. */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover"
+        data-testid="video-background"
+      >
+        <source src="/fityear-intro.mp4" type="video/mp4" />
+      </video>
+
+      {/* Darken so the logo + button read against bright frames in the video */}
+      <div className="absolute inset-0 bg-black/40" />
+
+      {/* Bottom-anchored content: logo + Google CTA */}
+      <div className="relative z-10 flex flex-col items-center justify-end h-full pb-16 px-6">
+        <Image
+          src="/fityear-logo.png"
+          alt="FitYear"
+          width={320}
+          height={120}
+          priority
+          className="w-64 sm:w-80 h-auto mb-8"
+          data-testid="img-logo"
+        />
 
         <button
           type="button"
           onClick={signInWithGoogle}
           disabled={busy}
-          className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg bg-primary px-5 font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex h-12 w-full max-w-sm items-center justify-center gap-3 rounded-lg bg-primary px-5 font-bold text-primary-foreground shadow-cta transition-opacity hover:opacity-90 disabled:opacity-50"
+          data-testid="button-login"
         >
           <GoogleIcon />
           {busy ? "Connecting…" : "Continue with Google"}
         </button>
 
         {error ? (
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="mt-3 max-w-sm text-center text-sm text-white drop-shadow">
+            {error}
+          </p>
         ) : null}
 
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-3 max-w-sm text-center text-xs text-white/70 drop-shadow">
           Sign in with the Google account you used before. All your workouts and
           history will be there.
         </p>
       </div>
-    </main>
+    </div>
   );
 }
 
