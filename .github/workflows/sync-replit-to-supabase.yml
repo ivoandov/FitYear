@@ -1,0 +1,40 @@
+name: Sync Replit (Neon) → Supabase
+
+# Bridges the cutover gap. Users still log on the Replit app; this workflow
+# pulls any new exercises/templates/scheduled/completed rows from Neon into
+# Supabase every 6 hours so the new app has parity. Idempotent: the script
+# diffs by id and inserts only missing rows, ON CONFLICT DO NOTHING.
+#
+# Delete this workflow (and the script) once Replit is retired in Phase 10.
+
+on:
+  schedule:
+    # Every 6 hours. Adjust if drift becomes painful at this cadence.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync-replit-to-supabase
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run sync (--apply)
+        env:
+          LEGACY_NEON_DATABASE_URL: ${{ secrets.LEGACY_NEON_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx scripts/sync-replit-to-supabase.ts --apply

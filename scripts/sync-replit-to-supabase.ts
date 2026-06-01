@@ -164,7 +164,11 @@ async function syncTemplates(userMap: Map<string, string>) {
 type ScheduledRow = {
   id: string;
   name: string;
-  date: Date;
+  // Read as text from Neon to bypass postgres-js's JS-Date round-trip, which
+  // re-serializes `timestamp without time zone` as local-time and silently
+  // drifts the stored value by the script-host TZ offset (we saw 2-8h shifts
+  // depending on DST during the initial port). Strings are inserted verbatim.
+  date: string;
   exercises: unknown;
   template_id: string | null;
   user_id: string | null;
@@ -176,7 +180,7 @@ type ScheduledRow = {
 async function syncScheduled(userMap: Map<string, string>) {
   console.log("\n--- scheduled_workouts ---");
   const neonRows = (await NEON<ScheduledRow[]>`
-    SELECT id, name, date, exercises, template_id, user_id, calendar_event_id, routine_instance_id, routine_day_index
+    SELECT id, name, date::text AS date, exercises, template_id, user_id, calendar_event_id, routine_instance_id, routine_day_index
     FROM scheduled_workouts
   `) as ScheduledRow[];
   const supaIdSet = await ids(SUPA, "scheduled_workouts");
@@ -198,14 +202,21 @@ async function syncScheduled(userMap: Map<string, string>) {
     if (r.template_id && !tpl) flags.push("template_id NULLed");
     if (r.routine_instance_id && !rout) flags.push("routine_instance_id NULLed");
     console.log(
-      `  ${apply ? "INSERT" : "would-insert"} scheduled ${r.id} "${r.name}" @${new Date(r.date).toISOString().slice(0, 10)} (user=${newUserId})${flags.length ? `  [${flags.join(", ")}]` : ""}`,
+      `  ${apply ? "INSERT" : "would-insert"} scheduled ${r.id} "${r.name}" @${r.date.slice(0, 10)} (user=${newUserId})${flags.length ? `  [${flags.join(", ")}]` : ""}`,
     );
     if (!apply) continue;
+    // postgres-js auto-converts ISO-timestamp-looking strings to JS Date and
+    // sends them as timestamptz, shifting through the connection's local TZ.
+    // Embed via SUPA.unsafe(quoted-and-validated literal) to bypass.
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(r.date)) {
+      throw new Error(`Neon row ${r.id} has malformed date: ${r.date}`);
+    }
+    const tsLiteral = SUPA.unsafe(`'${r.date}'::timestamp`);
     const result = await SUPA`
       INSERT INTO scheduled_workouts (id, user_id, template_id, name, date, exercises, calendar_event_id, routine_instance_id, routine_day_index)
       VALUES (${r.id},
               ${newUserId ? SUPA.unsafe(`'${newUserId}'::uuid`) : null},
-              ${tpl}, ${r.name}, ${r.date}, ${SUPA.json(r.exercises as never)},
+              ${tpl}, ${r.name}, ${tsLiteral}, ${SUPA.json(r.exercises as never)},
               ${r.calendar_event_id}, ${rout}, ${r.routine_day_index})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
@@ -222,7 +233,8 @@ type CompletedRow = {
   display_id: string;
   name: string;
   exercises: unknown;
-  completed_at: Date;
+  // See ScheduledRow.date for why this is string, not Date.
+  completed_at: string;
   calendar_event_id: string | null;
   routine_instance_id: string | null;
   routine_day_index: number | null;
@@ -231,7 +243,7 @@ type CompletedRow = {
 async function syncCompleted(userMap: Map<string, string>) {
   console.log("\n--- completed_workouts ---");
   const neonRows = (await NEON<CompletedRow[]>`
-    SELECT id, user_id, template_id, display_id, name, exercises, completed_at,
+    SELECT id, user_id, template_id, display_id, name, exercises, completed_at::text AS completed_at,
            calendar_event_id, routine_instance_id, routine_day_index
     FROM completed_workouts
   `) as CompletedRow[];
@@ -254,15 +266,20 @@ async function syncCompleted(userMap: Map<string, string>) {
     if (r.template_id && !tpl) flags.push("template_id NULLed");
     if (r.routine_instance_id && !rout) flags.push("routine_instance_id NULLed");
     console.log(
-      `  ${apply ? "INSERT" : "would-insert"} completed ${r.id} "${r.name}" @${new Date(r.completed_at).toISOString().slice(0, 10)} (user=${newUserId})${flags.length ? `  [${flags.join(", ")}]` : ""}`,
+      `  ${apply ? "INSERT" : "would-insert"} completed ${r.id} "${r.name}" @${r.completed_at.slice(0, 10)} (user=${newUserId})${flags.length ? `  [${flags.join(", ")}]` : ""}`,
     );
     if (!apply) continue;
+    // See note on scheduled INSERT — bypass postgres-js's timestamp coercion.
+    if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(r.completed_at)) {
+      throw new Error(`Neon row ${r.id} has malformed completed_at: ${r.completed_at}`);
+    }
+    const tsLiteral = SUPA.unsafe(`'${r.completed_at}'::timestamp`);
     const result = await SUPA`
       INSERT INTO completed_workouts (id, user_id, template_id, display_id, name, exercises, completed_at, calendar_event_id, routine_instance_id, routine_day_index)
       VALUES (${r.id},
               ${newUserId ? SUPA.unsafe(`'${newUserId}'::uuid`) : null},
               ${tpl}, ${r.display_id}, ${r.name}, ${SUPA.json(r.exercises as never)},
-              ${r.completed_at}, ${r.calendar_event_id}, ${rout}, ${r.routine_day_index})
+              ${tsLiteral}, ${r.calendar_event_id}, ${rout}, ${r.routine_day_index})
       ON CONFLICT (id) DO NOTHING
       RETURNING id
     `;
