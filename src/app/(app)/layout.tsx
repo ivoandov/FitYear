@@ -1,5 +1,6 @@
 import { Providers } from "@/components/Providers";
 import { BottomNav } from "@/components/BottomNav";
+import { AppSidebar } from "@/components/AppSidebar";
 import { FloatingTimerPill } from "@/components/FloatingTimerPill";
 import { AppHeader } from "@/components/AppHeader";
 
@@ -20,7 +21,8 @@ export default function AppLayout({
     <Providers>
       <div className="flex min-h-screen w-full flex-col">
         <AppHeader />
-        <main className="flex flex-1 flex-col overflow-auto pb-20">
+        <AppSidebar />
+        <main className="flex flex-1 flex-col overflow-auto pb-20 md:pb-0 md:pl-20 lg:pl-24">
           {children}
         </main>
         <BottomNav />

@@ -2,6 +2,7 @@ import { google, type calendar_v3 } from "googleapis";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleCalendarTokens } from "@/lib/db/schema";
+import { encryptToken, decryptToken, isEncrypted } from "@/lib/token-crypto";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -43,19 +44,23 @@ export async function handleCalendarCallback(
   if (!tokens.refresh_token) {
     throw new Error("No refresh token received. Please try connecting again.");
   }
+  // Encrypt tokens before persisting. Schema columns are unchanged (text);
+  // we store an `enc:v1:...` envelope instead of raw plaintext.
+  const encryptedRefresh = encryptToken(tokens.refresh_token);
+  const encryptedAccess = tokens.access_token ? encryptToken(tokens.access_token) : null;
   await db
     .insert(googleCalendarTokens)
     .values({
       userId,
-      refreshToken: tokens.refresh_token,
-      accessToken: tokens.access_token ?? null,
+      refreshToken: encryptedRefresh,
+      accessToken: encryptedAccess,
       expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
     })
     .onConflictDoUpdate({
       target: googleCalendarTokens.userId,
       set: {
-        refreshToken: tokens.refresh_token,
-        accessToken: tokens.access_token ?? null,
+        refreshToken: encryptedRefresh,
+        accessToken: encryptedAccess,
         expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
       },
     });
@@ -69,19 +74,40 @@ async function getClientForUser(userId: string): Promise<calendar_v3.Calendar> {
     .limit(1);
   if (!row) throw new Error("Calendar not connected");
 
+  // Decrypt tokens for use. Legacy plaintext rows (pre-encryption deploy) pass
+  // through unchanged; lazy migration below re-encrypts them on next refresh.
+  const refreshToken = decryptToken(row.refreshToken);
+  const accessToken = decryptToken(row.accessToken);
+  if (!refreshToken) throw new Error("Calendar token corrupted");
+
   const oauth2 = createOAuth2Client();
   oauth2.setCredentials({
-    refresh_token: row.refreshToken,
-    access_token: row.accessToken ?? undefined,
+    refresh_token: refreshToken,
+    access_token: accessToken ?? undefined,
     expiry_date: row.expiresAt?.getTime(),
   });
+
+  // Lazy at-rest encryption migration: if the row was stored as plaintext
+  // before this layer landed, re-encrypt now so future reads are protected.
+  // Fire-and-forget; if the write loses a race or fails, the next read retries.
+  if (!isEncrypted(row.refreshToken)) {
+    Promise.resolve(
+      db
+        .update(googleCalendarTokens)
+        .set({
+          refreshToken: encryptToken(refreshToken),
+          accessToken: accessToken ? encryptToken(accessToken) : row.accessToken,
+        })
+        .where(eq(googleCalendarTokens.userId, userId)),
+    ).catch(() => {});
+  }
 
   oauth2.on("tokens", async (newTokens) => {
     if (newTokens.access_token) {
       await db
         .update(googleCalendarTokens)
         .set({
-          accessToken: newTokens.access_token,
+          accessToken: encryptToken(newTokens.access_token),
           expiresAt: newTokens.expiry_date
             ? new Date(newTokens.expiry_date)
             : new Date(Date.now() + 3600 * 1000),

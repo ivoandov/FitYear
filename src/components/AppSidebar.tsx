@@ -40,19 +40,25 @@ function TrackIcon({ className }: { className?: string }) {
 }
 
 const navItems = [
-  { title: "Home", url: "/", icon: Home, testId: "nav-home" },
-  { title: "Exercises", url: "/exercises", icon: BarbellIcon, testId: "nav-exercises" },
-  { title: "Track", url: "/track", icon: TrackIcon, testId: "nav-track", isTrack: true },
-  { title: "Routines", url: "/routines", icon: ClipboardList, testId: "nav-routines" },
-  { title: "History", url: "/history", icon: BarChart3, testId: "nav-history" },
+  { title: "Home", url: "/", icon: Home, testId: "side-home" },
+  { title: "Exercises", url: "/exercises", icon: BarbellIcon, testId: "side-exercises" },
+  { title: "Track", url: "/track", icon: TrackIcon, testId: "side-track", isTrack: true },
+  { title: "Routines", url: "/routines", icon: ClipboardList, testId: "side-routines" },
+  { title: "History", url: "/history", icon: BarChart3, testId: "side-history" },
 ];
 
-export function BottomNav() {
+/**
+ * Desktop sidebar. Mirrors BottomNav's 5 items and B+ token rules, but vertical
+ * and sized for hover targets at md+ breakpoints. Hidden on mobile; BottomNav
+ * fills that role. Track uses the same ring/fill treatment as the bottom nav
+ * (yellow ring inactive, solid yellow fill active) for visual consistency.
+ */
+export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t shadow-inner-hi pb-[env(safe-area-inset-bottom)]">
-      <div className="flex items-stretch justify-around h-[68px] max-w-lg mx-auto px-2">
+    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 z-40 w-20 lg:w-24 flex-col items-center bg-card border-r shadow-inner-hi pt-[calc(env(safe-area-inset-top)+64px)]">
+      <nav className="flex flex-col items-center gap-1.5 py-4 w-full">
         {navItems.map((item) => {
           const isActive =
             pathname === item.url ||
@@ -65,12 +71,12 @@ export function BottomNav() {
             <Link
               key={item.url}
               href={item.url}
-              className="flex-1 flex flex-col items-center justify-center gap-1 py-2"
               data-testid={item.testId}
+              className="flex flex-col items-center justify-center gap-1.5 w-full px-2 py-2.5 rounded-[12px] hover:bg-white/[0.03] transition-colors"
             >
               <div
                 className={cn(
-                  "flex items-center justify-center w-9 h-9 rounded-full transition-colors",
+                  "flex items-center justify-center w-11 h-11 rounded-full transition-colors",
                   showFill && "bg-primary text-primary-foreground",
                   showRing && "border-[1.5px] border-yellow text-foreground",
                   !isTrack && (isActive ? "text-foreground" : "text-muted-foreground"),
@@ -80,7 +86,7 @@ export function BottomNav() {
               </div>
               <span
                 className={cn(
-                  "text-[10px] font-semibold leading-none tracking-wide",
+                  "text-[11px] font-semibold leading-none tracking-wide",
                   showFill
                     ? "text-primary"
                     : isActive
@@ -93,7 +99,7 @@ export function BottomNav() {
             </Link>
           );
         })}
-      </div>
-    </nav>
+      </nav>
+    </aside>
   );
 }

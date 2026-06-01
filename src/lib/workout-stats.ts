@@ -117,28 +117,45 @@ export interface PrHit {
 
 /**
  * Detect PRs in `currentWorkout` versus the user's prior history.
- * Compares each completed set's weight (max across the workout per exercise)
- * and best volume (max weight × reps) to the historical best for that
- * exerciseId across all priorWorkouts.
+ *
+ * For normal exercises (isAssisted = false): higher weight + higher volume = PR.
+ *
+ * For assisted exercises (isAssisted = true — e.g. assisted pull-up machine):
+ * lower weight = PR, because the "weight" is the counter-weight that's helping
+ * you. Less help = harder lift. Volume PR is skipped for assisted (the formula
+ * weight*reps no longer represents work done; mixing it with normal volume
+ * PRs would give false positives every time someone reduced assistance).
+ *
+ * `isAssistedById` maps exercise id → isAssisted. Exercises not in the map
+ * default to false (normal).
  */
 export function detectPRs(
   currentWorkout: Pick<CompletedWorkout, "exercises">,
   priorWorkouts: Pick<CompletedWorkout, "exercises">[],
+  isAssistedById: Map<string, boolean> = new Map(),
 ): PrHit[] {
-  const histMaxWeight = new Map<string, number>();
+  // For normal exercises we track MAX; for assisted we track MIN (over
+  // non-zero weights only, since "0 lbs assist" is a degenerate seed value).
+  const histBestWeight = new Map<string, number>(); // max OR min by mode
   const histMaxVolume = new Map<string, number>();
 
   for (const w of priorWorkouts) {
     const exs = (w.exercises as ExerciseInWorkout[]) || [];
     for (const ex of exs) {
+      const assisted = isAssistedById.get(ex.id) === true;
       for (const s of ex.setsData ?? []) {
         if (!s.completed) continue;
         const wt = s.weight || 0;
-        const vol = wt * (s.reps || 0);
-        const curMaxWt = histMaxWeight.get(ex.id) ?? 0;
-        if (wt > curMaxWt) histMaxWeight.set(ex.id, wt);
-        const curMaxVol = histMaxVolume.get(ex.id) ?? 0;
-        if (vol > curMaxVol) histMaxVolume.set(ex.id, vol);
+        if (wt <= 0) continue; // ignore zero-weight rows for best-tracking
+        const cur = histBestWeight.get(ex.id);
+        if (assisted) {
+          if (cur === undefined || wt < cur) histBestWeight.set(ex.id, wt);
+        } else {
+          if (cur === undefined || wt > cur) histBestWeight.set(ex.id, wt);
+          const vol = wt * (s.reps || 0);
+          const curMaxVol = histMaxVolume.get(ex.id) ?? 0;
+          if (vol > curMaxVol) histMaxVolume.set(ex.id, vol);
+        }
       }
     }
   }
@@ -146,18 +163,30 @@ export function detectPRs(
   const hits: PrHit[] = [];
   const currentExs = (currentWorkout.exercises as ExerciseInWorkout[]) || [];
   for (const ex of currentExs) {
-    let bestWt = 0;
+    const assisted = isAssistedById.get(ex.id) === true;
+    let bestWt = assisted ? Number.POSITIVE_INFINITY : 0;
     let bestVol = 0;
+    let anyWeighted = false;
     for (const s of ex.setsData ?? []) {
       if (!s.completed) continue;
       const wt = s.weight || 0;
-      const vol = wt * (s.reps || 0);
-      if (wt > bestWt) bestWt = wt;
-      if (vol > bestVol) bestVol = vol;
+      if (wt <= 0) continue;
+      anyWeighted = true;
+      if (assisted) {
+        if (wt < bestWt) bestWt = wt;
+      } else {
+        if (wt > bestWt) bestWt = wt;
+        const vol = wt * (s.reps || 0);
+        if (vol > bestVol) bestVol = vol;
+      }
     }
-    const prevWt = histMaxWeight.get(ex.id) ?? null;
-    const prevVol = histMaxVolume.get(ex.id) ?? null;
-    if (bestWt > 0 && (prevWt === null || bestWt > prevWt)) {
+    if (!anyWeighted) continue;
+    const prev = histBestWeight.get(ex.id);
+    const prevWt = prev ?? null;
+    const isWeightPr = assisted
+      ? prev === undefined || bestWt < prev
+      : prev === undefined || bestWt > prev;
+    if (isWeightPr) {
       hits.push({
         exerciseId: ex.id,
         exerciseName: ex.name,
@@ -166,14 +195,18 @@ export function detectPRs(
         previousValue: prevWt,
       });
     }
-    if (bestVol > 0 && (prevVol === null || bestVol > prevVol)) {
-      hits.push({
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        type: "volume",
-        newValue: bestVol,
-        previousValue: prevVol,
-      });
+    // Volume PR only meaningful for non-assisted exercises
+    if (!assisted) {
+      const prevVol = histMaxVolume.get(ex.id) ?? null;
+      if (bestVol > 0 && (prevVol === null || bestVol > prevVol)) {
+        hits.push({
+          exerciseId: ex.id,
+          exerciseName: ex.name,
+          type: "volume",
+          newValue: bestVol,
+          previousValue: prevVol,
+        });
+      }
     }
   }
   return hits;

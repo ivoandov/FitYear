@@ -104,24 +104,48 @@ export default function TrackPage() {
     return enrichExercises(activeWorkout.exercises as any[]);
   }, [activeWorkout?.exercises, enrichExercises]);
 
-  // Historical bests per exerciseId (in lbs/db units) — used for in-workout PR detection
+  // isAssisted lookup — assisted exercises (e.g. assisted pull-up machine)
+  // INVERT weight PR direction: lower counterweight = harder = PR.
+  const isAssistedById = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const ex of exercises) m.set(ex.id, !!ex.isAssisted);
+    return m;
+  }, [exercises]);
+
+  // Historical bests per exerciseId (in lbs/db units) — used for in-workout PR detection.
+  // For normal exercises: best = maximum weight; for assisted: best = minimum weight.
+  // Volume PR only tracked for non-assisted (weight*reps is meaningless when "weight"
+  // is a counter-assist).
   const historicalBests = useMemo(() => {
-    const bests = new Map<string, { maxWeight: number; maxVolume: number }>();
+    const bests = new Map<string, { bestWeight: number; maxVolume: number; assisted: boolean }>();
     for (const w of completedWorkouts) {
       for (const ex of w.exercises as Array<{ id: string; setsData?: Array<{ weight?: number | null; reps?: number | null; completed?: boolean }> }>) {
+        const assisted = isAssistedById.get(ex.id) === true;
         for (const s of ex.setsData ?? []) {
           if (!s.completed) continue;
           const wt = s.weight || 0;
-          const vol = wt * (s.reps || 0);
-          const cur = bests.get(ex.id) ?? { maxWeight: 0, maxVolume: 0 };
-          if (wt > cur.maxWeight) cur.maxWeight = wt;
-          if (vol > cur.maxVolume) cur.maxVolume = vol;
-          bests.set(ex.id, cur);
+          if (wt <= 0) continue; // ignore zero-weight rows
+          const cur = bests.get(ex.id);
+          if (!cur) {
+            bests.set(ex.id, {
+              bestWeight: wt,
+              maxVolume: assisted ? 0 : wt * (s.reps || 0),
+              assisted,
+            });
+            continue;
+          }
+          if (assisted) {
+            if (wt < cur.bestWeight) cur.bestWeight = wt;
+          } else {
+            if (wt > cur.bestWeight) cur.bestWeight = wt;
+            const vol = wt * (s.reps || 0);
+            if (vol > cur.maxVolume) cur.maxVolume = vol;
+          }
         }
       }
     }
     return bests;
-  }, [completedWorkouts]);
+  }, [completedWorkouts, isAssistedById]);
 
   /**
    * Called when a set is marked complete. Compares the set vs historical bests
@@ -138,30 +162,46 @@ export default function TrackPage() {
     setReps: number,
   ) => {
     if (setWeightLbs <= 0 || setReps <= 0) return;
+    const assisted = isAssistedById.get(exerciseId) === true;
     const volume = setWeightLbs * setReps;
-    const hist = historicalBests.get(exerciseId) ?? { maxWeight: 0, maxVolume: 0 };
+    const hist = historicalBests.get(exerciseId);
 
-    // Also consider any earlier sets completed in this workout for the same instance
-    let runningMaxWeight = hist.maxWeight;
-    let runningMaxVolume = hist.maxVolume;
+    // Running best across earlier sets in THIS workout for the same instance.
+    // For normal exercises track max; for assisted track min (over non-zero weights).
+    let runningBestWeight = hist?.bestWeight ?? (assisted ? Number.POSITIVE_INFINITY : 0);
+    let runningMaxVolume = hist?.maxVolume ?? 0;
     const earlierSets = (exerciseSets.get(instanceId) ?? []).slice(0, setIndex);
     for (const s of earlierSets) {
       if (!s.completed) continue;
       const wLbs = toLbs(s.weight) ?? 0;
+      if (wLbs <= 0) continue;
       const r = s.reps ?? 0;
-      if (wLbs > runningMaxWeight) runningMaxWeight = wLbs;
-      const v = wLbs * r;
-      if (v > runningMaxVolume) runningMaxVolume = v;
+      if (assisted) {
+        if (wLbs < runningBestWeight) runningBestWeight = wLbs;
+      } else {
+        if (wLbs > runningBestWeight) runningBestWeight = wLbs;
+        const v = wLbs * r;
+        if (v > runningMaxVolume) runningMaxVolume = v;
+      }
     }
 
     let isPr = false;
-    if (setWeightLbs > runningMaxWeight) {
+    const isWeightPr = assisted
+      ? runningBestWeight === Number.POSITIVE_INFINITY || setWeightLbs < runningBestWeight
+      : setWeightLbs > runningBestWeight;
+    if (isWeightPr) {
       isPr = true;
+      const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
+        ? "—"
+        : `${runningBestWeight} lbs`;
       toast(`🏆 ${exerciseName} — new weight PR!`, {
-        description: `${setWeightLbs} lbs (was ${runningMaxWeight || "—"})`,
+        description: assisted
+          ? `${setWeightLbs} lbs assist (was ${prevLabel}) — less help = harder`
+          : `${setWeightLbs} lbs (was ${prevLabel})`,
       });
     }
-    if (volume > runningMaxVolume) {
+    // Volume PR only meaningful for non-assisted exercises
+    if (!assisted && volume > runningMaxVolume) {
       isPr = true;
       toast(`⭐ ${exerciseName} — new volume PR!`, {
         description: `${setWeightLbs} × ${setReps} = ${volume} lbs (was ${runningMaxVolume || "—"})`,

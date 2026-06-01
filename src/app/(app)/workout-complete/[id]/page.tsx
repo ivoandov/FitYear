@@ -5,7 +5,7 @@ import { Trophy, Flame, Clock, Dumbbell, BarChart3, Zap } from "lucide-react";
 import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { completedWorkouts, prHistory } from "@/lib/db/schema";
+import { completedWorkouts, prHistory, exercises } from "@/lib/db/schema";
 import {
   summarizeWorkout,
   formatDuration,
@@ -57,7 +57,16 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
     workout.completedAt,
     ...prior.map((p) => p.completedAt),
   ]);
-  const prHits = detectPRs(workout, prior);
+
+  // PR detection needs isAssisted per exercise so assisted-machine exercises
+  // invert the weight comparison (less counterweight = harder = PR).
+  const allExercises = await db
+    .select({ id: exercises.id, isAssisted: exercises.isAssisted })
+    .from(exercises);
+  const isAssistedById = new Map(
+    allExercises.map((e) => [e.id, !!e.isAssisted]),
+  );
+  const prHits = detectPRs(workout, prior, isAssistedById);
 
   // Persist new PRs (idempotent — skip if a row already exists for this workout/exercise/type)
   if (prHits.length > 0) {
