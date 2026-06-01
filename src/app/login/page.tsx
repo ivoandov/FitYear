@@ -1,49 +1,43 @@
-"use client";
-
-import { Suspense, useState } from "react";
 import Image from "next/image";
-import { useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { LoginButton } from "./LoginButton";
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginContent />
-    </Suspense>
-  );
-}
+// Server component — emits the video + logo shell in the SSR HTML so the
+// browser starts fetching assets before client JS hydrates. Only the
+// auth button is client (signInWithGoogle + busy/error state).
+export const dynamic = "force-dynamic";
 
-function LoginContent() {
-  const params = useSearchParams();
-  const next = params.get("next") || "/";
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type SearchParams = Promise<{ next?: string | string[] }>;
 
-  async function signInWithGoogle() {
-    setBusy(true);
-    setError(null);
-    const supabase = createSupabaseBrowserClient();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-      },
-    });
-    if (error) {
-      setError(error.message);
-      setBusy(false);
-    }
-  }
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const sp = await searchParams;
+  const rawNext = sp.next;
+  const next =
+    typeof rawNext === "string"
+      ? rawNext
+      : Array.isArray(rawNext) && rawNext[0]
+        ? rawNext[0]
+        : "/";
 
   return (
     <div className="fixed inset-0 w-full h-full overflow-hidden">
       {/* Full-bleed intro video. autoPlay+muted is required for iOS Safari to
-          play inline without a tap. playsInline avoids fullscreening on mobile. */}
+          play inline without a tap. playsInline avoids fullscreening on mobile.
+          poster = first paint (25 KB JPG) while the 1.4 MB MP4 streams in.
+          preload="auto" hints the browser to start downloading immediately.
+          The MP4 is faststart-encoded so the moov atom is at the head —
+          playback begins after the first ~17 KB instead of needing the full
+          file. */}
       <video
         autoPlay
         loop
         muted
         playsInline
+        preload="auto"
+        poster="/fityear-intro.jpg"
         className="absolute inset-0 w-full h-full object-cover"
         data-testid="video-background"
       >
@@ -65,22 +59,7 @@ function LoginContent() {
           data-testid="img-logo"
         />
 
-        <button
-          type="button"
-          onClick={signInWithGoogle}
-          disabled={busy}
-          className="inline-flex h-12 w-full max-w-sm items-center justify-center gap-3 rounded-lg bg-primary px-5 font-bold text-primary-foreground shadow-cta transition-opacity hover:opacity-90 disabled:opacity-50"
-          data-testid="button-login"
-        >
-          <GoogleIcon />
-          {busy ? "Connecting…" : "Continue with Google"}
-        </button>
-
-        {error ? (
-          <p className="mt-3 max-w-sm text-center text-sm text-white drop-shadow">
-            {error}
-          </p>
-        ) : null}
+        <LoginButton next={next} />
 
         <p className="mt-3 max-w-sm text-center text-xs text-white/70 drop-shadow">
           Sign in with the Google account you used before. All your workouts and
@@ -88,34 +67,5 @@ function LoginContent() {
         </p>
       </div>
     </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 48 48"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        fill="#FFC107"
-        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
-      />
-      <path
-        fill="#FF3D00"
-        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
-      />
-      <path
-        fill="#4CAF50"
-        d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
-      />
-      <path
-        fill="#1976D2"
-        d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
-      />
-    </svg>
   );
 }
