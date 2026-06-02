@@ -39,10 +39,16 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // Refreshes the auth session cookie if expired.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Validate the session via LOCAL JWT verification (getClaims) instead of a
+  // network call to the Auth server (getUser). This proxy runs on every
+  // navigation (RSC fetch) AND every /api request, so getUser() was adding a
+  // Supabase round-trip to each one — the main source of tab-switch lag.
+  // Tokens are ES256-signed, so getClaims verifies the signature locally via
+  // WebCrypto against the cached JWKS (no per-request network). It still
+  // refreshes the session cookie through the same cookie handlers when the
+  // token is near expiry, so the refresh-on-expiry behavior is preserved.
+  const { data, error } = await supabase.auth.getClaims();
+  const user = error ? null : (data?.claims ?? null);
 
   const { pathname } = request.nextUrl;
 

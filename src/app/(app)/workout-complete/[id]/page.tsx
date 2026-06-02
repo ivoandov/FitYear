@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Trophy, Flame, Clock, Dumbbell, BarChart3, Zap } from "lucide-react";
 import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { completedWorkouts, prHistory, exercises } from "@/lib/db/schema";
 import {
@@ -20,10 +20,7 @@ const WEEKLY_TARGET_PER_MUSCLE = 20;
 export default async function WorkoutCompletePage({ params }: Ctx) {
   const { id } = await params;
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) notFound();
 
   const [workout] = await db

@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { exercises, completedWorkouts, userSettings } from "@/lib/db/schema";
 import {
@@ -43,10 +43,7 @@ type ExerciseInWorkoutJson = {
 export default async function ExerciseDetailPage({ params }: Ctx) {
   const { id } = await params;
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) redirect(`/login?next=/exercises/${id}`);
 
   // Exercise metadata. Public (userId NULL) or owned by this user.
