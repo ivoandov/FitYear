@@ -16,8 +16,12 @@ type ThemeProviderState = {
 
 const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undefined);
 
-export function ThemeProvider({ children, defaultTheme = "light" }: ThemeProviderProps) {
+export function ThemeProvider({ children, defaultTheme = "dark" }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
+    // Guard: this initializer also runs during SSR, where localStorage is
+    // undefined. Without the guard, mounting this provider crashes server
+    // render for every page under it.
+    if (typeof window === "undefined") return defaultTheme;
     const stored = localStorage.getItem("theme");
     return (stored as Theme) || defaultTheme;
   });
