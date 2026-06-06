@@ -537,6 +537,16 @@ export default function TrackPage() {
     if (isLastExercise) {
       const wasRoutineWorkout = !!activeWorkout?.scheduledWorkoutId;
       const newId = await completeWorkout(toLbsMap(exerciseSets));
+      // Save failed (completeWorkout returns null). The active workout + entered
+      // sets are preserved in state/localStorage, so DON'T navigate away and
+      // DON'T pretend it saved — tell the user and let them tap Finish again.
+      if (!newId) {
+        toast("Couldn't save your workout", {
+          description:
+            "Something went wrong saving. Your progress is kept — check your connection and tap Finish again.",
+        });
+        return;
+      }
       // Routine completion toast: if this was a routine workout, fetch the
       // updated active routine instance to show "Day N complete — Day N+1 unlocked".
       if (newId && wasRoutineWorkout) {
@@ -564,7 +574,7 @@ export default function TrackPage() {
           // Ignore — toast is non-essential
         }
       }
-      router.push(newId ? `/workout-complete/${newId}` : "/");
+      router.push(`/workout-complete/${newId}`);
     } else {
       setCurrentExerciseIndex(currentExerciseIndex + 1);
       setCurrentSetIndex(0);
@@ -617,7 +627,14 @@ export default function TrackPage() {
 
   const handleEndWorkout = async () => {
     const newId = await completeWorkout(toLbsMap(exerciseSets));
-    router.push(newId ? `/workout-complete/${newId}` : "/");
+    if (!newId) {
+      toast("Couldn't save your workout", {
+        description:
+          "Something went wrong saving. Your progress is kept — check your connection and try again.",
+      });
+      return;
+    }
+    router.push(`/workout-complete/${newId}`);
     // endWorkout was identical to completeWorkout when there was an active workout —
     // simplified to a single call for the new flow.
     void endWorkout;
