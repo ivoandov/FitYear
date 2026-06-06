@@ -13,7 +13,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { type Exercise } from "@/data/exercises";
 import { useSettings } from "@/components/SettingsProvider";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 
 interface DBExercise {
   id: string;
@@ -65,17 +65,13 @@ export default function ExercisesPage() {
       setShowAddDialog(false);
       toast({
         title: "Exercise Created",
-        description: "Your custom exercise has been added. An AI image is being generated.",
+        description: "Your custom exercise has been added to your library.",
       });
-      // Refresh again after a delay to pick up the generated image
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-      }, 8000);
     },
-    onError: () => {
+    onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to create exercise. Please try again.",
+        title: "Couldn't create exercise",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -101,10 +97,10 @@ export default function ExercisesPage() {
         description: "Your exercise has been updated successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to update exercise. Please try again.",
+        title: "Couldn't update exercise",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -121,10 +117,10 @@ export default function ExercisesPage() {
         description: "The exercise has been removed from your library.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
-        title: "Error",
-        description: "Failed to delete exercise. Please try again.",
+        title: "Couldn't delete exercise",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -154,10 +150,10 @@ export default function ExercisesPage() {
           return newSet;
         });
       }, 10000);
-    } catch {
+    } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to regenerate image. Please try again.",
+        title: "Couldn't regenerate image",
+        description: describeApiError(error),
         variant: "destructive",
       });
       setRegeneratingIds(prev => {

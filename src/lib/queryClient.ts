@@ -22,6 +22,36 @@ export async function apiRequest(
   return res;
 }
 
+/**
+ * Turn an error thrown by apiRequest/getQueryFn into a human-readable message.
+ * apiRequest throws `Error("<status>: <body>")` where the body is usually our
+ * API's JSON `{ error: "..." }`. Mutations were swallowing this and showing a
+ * generic "Please try again", which made real failures (validation, auth
+ * expiry, server errors) undiagnosable. Use this in mutation onError handlers.
+ */
+export function describeApiError(e: unknown): string {
+  if (!(e instanceof Error)) return "Something went wrong. Please try again.";
+  const m = e.message ?? "";
+  const match = m.match(/^(\d{3}):\s*([\s\S]*)$/);
+  if (match) {
+    const [, status, rawBody] = match;
+    let detail = rawBody.trim();
+    try {
+      const parsed = JSON.parse(rawBody);
+      if (parsed && typeof parsed.error === "string") detail = parsed.error;
+    } catch {
+      // body wasn't JSON — keep the raw text
+    }
+    if (status === "401") return "Your session expired. Please sign in again.";
+    if (status === "413") return "That request was too large.";
+    return detail || `Request failed (${status}). Please try again.`;
+  }
+  if (/failed to fetch|networkerror|network request failed/i.test(m)) {
+    return "Network error. Check your connection and try again.";
+  }
+  return m || "Something went wrong. Please try again.";
+}
+
 type UnauthorizedBehavior = "returnNull" | "throw";
 
 export const getQueryFn: <T>(options: {
