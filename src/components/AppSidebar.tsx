@@ -56,6 +56,10 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname();
 
+  // Hide on fullscreen pages (matches AppHeader + BottomNav) so the workout
+  // preview renders edge-to-edge as the immersive flow it was designed as.
+  if (pathname === "/workout-preview") return null;
+
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 z-40 w-20 lg:w-24 flex-col items-center bg-card border-r shadow-inner-hi pt-[calc(env(safe-area-inset-top)+64px)]">
       <nav className="flex flex-col items-center gap-1.5 py-4 w-full">

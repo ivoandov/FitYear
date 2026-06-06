@@ -50,6 +50,12 @@ const navItems = [
 export function BottomNav() {
   const pathname = usePathname();
 
+  // Hide on fullscreen pages (matches AppHeader). The workout preview is an
+  // immersive flow with its own fixed "Begin Workout" CTA at bottom-0; this
+  // z-50 nav would otherwise render on top of and obscure that button on
+  // mobile, leaving users unable to start (and therefore track) a workout.
+  if (pathname === "/workout-preview") return null;
+
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t shadow-inner-hi pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-stretch justify-around h-[68px] max-w-lg mx-auto px-2">
