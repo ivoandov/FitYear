@@ -10,6 +10,7 @@ import {
   ExerciseProgressChart,
   type ProgressPoint,
 } from "@/components/ExerciseProgressChart";
+import { rewriteImageUrl } from "@/lib/image-url";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -54,6 +55,10 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
     .limit(1);
   if (!exercise) notFound();
   if (exercise.userId && exercise.userId !== user.id) notFound();
+
+  // DB stores legacy `/objects/...` image paths; rewrite to the GCS proxy at
+  // `/api/objects/...` (same as the /api/exercises route) or the thumbnail 404s.
+  const heroImageUrl = rewriteImageUrl(exercise.imageUrl);
 
   // User unit preference
   const [settings] = await db
@@ -156,10 +161,10 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
         </Link>
 
         <div className="flex gap-4 items-start">
-          {exercise.imageUrl ? (
+          {heroImageUrl ? (
             <div className="relative w-24 h-24 rounded-2xl overflow-hidden border bg-input shrink-0">
               <Image
-                src={exercise.imageUrl}
+                src={heroImageUrl}
                 alt={exercise.name}
                 fill
                 sizes="96px"

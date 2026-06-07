@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { rewriteImageUrl } from "@/lib/image-url";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -20,19 +21,10 @@ export const dynamic = "force-dynamic";
  *   - plus any row flagged is_public = true (matches the Replit picker behavior;
  *     34 migrated rows have non-null user_id but is_public=true)
  *
- * Legacy image_url paths (`/objects/public/...` or `/generated_images/...`)
- * are rewritten on the way out to point at the GCS proxy at `/api/objects/...`.
+ * Legacy image_url paths are rewritten via rewriteImageUrl (shared with the
+ * exercise progress page) to point at the GCS proxy at `/api/objects/...`.
  * The DB is not mutated — this is a presentation-layer translation.
  */
-function rewriteImageUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/objects/")) return `/api${url}`;
-  if (url.startsWith("/generated_images/")) {
-    return `/api/objects/exercises/${url.replace("/generated_images/", "")}`;
-  }
-  return url;
-}
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
