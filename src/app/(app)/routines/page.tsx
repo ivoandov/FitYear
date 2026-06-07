@@ -20,7 +20,7 @@ import { Progress } from "@/components/ui/progress";
 import { Plus, Calendar as CalendarIcon, Trash2, Pencil, Play, Globe, Lock, MoreVertical, ChevronLeft, ChevronRight, CheckCircle, X, Copy } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, addDays } from "date-fns";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
 
@@ -73,8 +73,8 @@ export default function RoutinesPage() {
       toast({ title: "Routine created", description: "Your routine has been saved." });
       closeBuilder();
     },
-    onError: () => {
-      toast({ title: "Failed to create routine", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Failed to create routine", description: describeApiError(error), variant: "destructive" });
     },
   });
 
@@ -87,8 +87,8 @@ export default function RoutinesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/routines/public"] });
       queryClient.invalidateQueries({ queryKey: ["/api/workout-templates/routine-usage"] });
     },
-    onError: () => {
-      toast({ title: "Failed to update routine", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Failed to update routine", description: describeApiError(error), variant: "destructive" });
     },
   });
 
@@ -102,8 +102,8 @@ export default function RoutinesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/workout-templates/routine-usage"] });
       toast({ title: "Routine deleted" });
     },
-    onError: () => {
-      toast({ title: "Failed to delete routine", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Failed to delete routine", description: describeApiError(error), variant: "destructive" });
     },
   });
 
@@ -136,8 +136,8 @@ export default function RoutinesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/routine-instances/active"] });
       toast({ title: "Routine cancelled" });
     },
-    onError: () => {
-      toast({ title: "Failed to cancel routine", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Failed to cancel routine", description: describeApiError(error), variant: "destructive" });
     },
   });
 
@@ -154,8 +154,8 @@ export default function RoutinesPage() {
       });
       setUpdateActiveRoutineId(null);
     },
-    onError: () => {
-      toast({ title: "Failed to update active routines", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Failed to update active routines", description: describeApiError(error), variant: "destructive" });
       setUpdateActiveRoutineId(null);
     },
   });

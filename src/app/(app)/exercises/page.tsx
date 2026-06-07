@@ -58,15 +58,36 @@ export default function ExercisesPage() {
 
   const createMutation = useMutation({
     mutationFn: async (exercise: { name: string; muscleGroups: string[]; description: string; exerciseType: string; isAssisted: boolean }) => {
-      return apiRequest("POST", "/api/exercises", exercise);
+      const res = await apiRequest("POST", "/api/exercises", exercise);
+      return res.json() as Promise<{ id: string }>;
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
       setShowAddDialog(false);
       toast({
         title: "Exercise Created",
-        description: "Your custom exercise has been added to your library.",
+        description: "Your custom exercise has been added. Generating an image…",
       });
+      // Best-effort AI image (Imagen via Vertex). Non-blocking: the exercise
+      // already exists, so if generation fails it simply stays imageless. The
+      // card shows the regenerating spinner while it runs (~10-25s), then the
+      // list refreshes to pick up the new image.
+      if (created?.id) {
+        const newId = created.id;
+        setRegeneratingIds(prev => new Set(prev).add(newId));
+        apiRequest("POST", `/api/exercises/${newId}/regenerate-image`, {})
+          .catch(() => {
+            // Generation failed (e.g. Vertex/billing). Exercise still created.
+          })
+          .finally(() => {
+            setRegeneratingIds(prev => {
+              const next = new Set(prev);
+              next.delete(newId);
+              return next;
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
+          });
+      }
     },
     onError: (error) => {
       toast({

@@ -39,7 +39,7 @@ import { MoreVertical } from "lucide-react";
 import { type Exercise } from "@/data/exercises";
 import { useWorkout } from "@/context/WorkoutContext";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
 
@@ -233,8 +233,8 @@ export default function WorkoutsPage() {
     onError: (error) => {
       console.error("Failed to create workout template:", error);
       toast({
-        title: "Error",
-        description: "Failed to create workout. Please try again.",
+        title: "Couldn't create workout",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -253,8 +253,8 @@ export default function WorkoutsPage() {
     onError: (error) => {
       console.error("Failed to update workout template:", error);
       toast({
-        title: "Error",
-        description: "Failed to update workout. Please try again.",
+        title: "Couldn't update workout",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -313,8 +313,8 @@ export default function WorkoutsPage() {
     onError: (error) => {
       console.error("Failed to create workout:", error);
       toast({
-        title: "Error",
-        description: "Failed to schedule workout. Please try again.",
+        title: "Couldn't schedule workout",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -337,8 +337,8 @@ export default function WorkoutsPage() {
     onError: (error) => {
       console.error("Failed to update workout:", error);
       toast({
-        title: "Error",
-        description: "Failed to update workout. Please try again.",
+        title: "Couldn't update workout",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -365,9 +365,10 @@ export default function WorkoutsPage() {
         description: "This workout has been marked as skipped.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to skip workout",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },

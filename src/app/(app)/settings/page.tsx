@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -95,10 +95,10 @@ export default function SettingsPage() {
     onSuccess: (data: { authUrl: string }) => {
       window.location.href = data.authUrl;
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to connect calendar",
-        description: "Please try again.",
+        description: describeApiError(error),
         variant: "destructive",
       });
       setIsConnecting(false);
@@ -119,10 +119,10 @@ export default function SettingsPage() {
         description: "Your Google Calendar has been disconnected.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to disconnect calendar",
-        description: "Please try again.",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -193,10 +193,10 @@ export default function SettingsPage() {
         description: "Your workout sync calendar has been changed.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Failed to update calendar",
-        description: "Please try again.",
+        description: describeApiError(error),
         variant: "destructive",
       });
     },
@@ -764,8 +764,8 @@ function FitYearGoalsCard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] });
     },
-    onError: () => {
-      toast({ title: "Couldn't save settings", variant: "destructive" });
+    onError: (error) => {
+      toast({ title: "Couldn't save settings", description: describeApiError(error), variant: "destructive" });
     },
   });
 
