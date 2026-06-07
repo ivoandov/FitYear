@@ -105,31 +105,43 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     userRef.current = user;
   }, [user]);
 
-  // Helper to load from localStorage
-  const loadFromLocalStorage = useCallback(() => {
+  // Read the active workout + matching tracking progress from localStorage
+  // WITHOUT touching state. localStorage is written synchronously on every
+  // change, so it is the freshest copy on this device. Used for the guest path
+  // and to reconcile against the server copy on load.
+  const readLocal = useCallback((): {
+    workout: ActiveWorkout | null;
+    progress: TrackingProgress | null;
+  } => {
     try {
       const saved = localStorage.getItem(ACTIVE_WORKOUT_STORAGE_KEY);
-      console.log("[WorkoutContext] localStorage has workout:", !!saved);
-      if (saved) {
-        const localWorkout = JSON.parse(saved);
-        console.log("[WorkoutContext] Restored active workout from localStorage:", localWorkout.name);
-        setActiveWorkout(localWorkout);
-        // Also load tracking progress from localStorage
-        const trackingSaved = localStorage.getItem(TRACKING_STORAGE_KEY);
-        if (trackingSaved) {
-          const trackingData = JSON.parse(trackingSaved);
-          if (trackingData.workoutDisplayId === localWorkout.displayId) {
-            console.log("[WorkoutContext] Restored tracking progress from localStorage");
-            setTrackingProgress(trackingData);
-          }
+      if (!saved) return { workout: null, progress: null };
+      const workout = JSON.parse(saved) as ActiveWorkout;
+      let progress: TrackingProgress | null = null;
+      const trackingSaved = localStorage.getItem(TRACKING_STORAGE_KEY);
+      if (trackingSaved) {
+        const trackingData = JSON.parse(trackingSaved);
+        if (trackingData.workoutDisplayId === workout.displayId) {
+          progress = trackingData;
         }
-        return true;
       }
+      return { workout, progress };
     } catch (e) {
-      console.error("[WorkoutContext] Failed to load from localStorage:", e);
+      console.error("[WorkoutContext] Failed to read localStorage:", e);
+      return { workout: null, progress: null };
+    }
+  }, []);
+
+  // Helper to load from localStorage into state (guest path / server fallback)
+  const loadFromLocalStorage = useCallback(() => {
+    const { workout, progress } = readLocal();
+    if (workout) {
+      setActiveWorkout(workout);
+      if (progress) setTrackingProgress(progress);
+      return true;
     }
     return false;
-  }, []);
+  }, [readLocal]);
 
   // Load active workout - from server for authenticated users, localStorage for guests
   useEffect(() => {
@@ -138,29 +150,43 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     console.log("[WorkoutContext] Loading workout, user:", user ? user.id : "guest");
     
     if (user) {
-      // Authenticated user: try server first, then localStorage fallback
+      // Authenticated user: reconcile the server copy with localStorage so a
+      // reload / app restart can never lose progress.
       fetch("/api/active-workout", { credentials: "include" })
-        .then(res => {
-          console.log("[WorkoutContext] Server response status:", res.status);
-          return res.ok ? res.json() : null;
-        })
+        .then(res => (res.ok ? res.json() : null))
         .then(data => {
-          console.log("[WorkoutContext] Server data:", data);
-          if (data && data.workoutData) {
-            console.log("[WorkoutContext] Restored active workout from server:", data.workoutData.name);
-            setActiveWorkout(data.workoutData);
-            if (data.trackingProgress) {
-              setTrackingProgress(data.trackingProgress);
-            }
-          } else {
-            // Fall back to localStorage for backward compatibility
-            console.log("[WorkoutContext] No server data, falling back to localStorage");
-            loadFromLocalStorage();
+          const serverWorkout = (data?.workoutData ?? null) as ActiveWorkout | null;
+          const serverProgress = (data?.trackingProgress ?? null) as TrackingProgress | null;
+          const { workout: localWorkout, progress: localProgress } = readLocal();
+
+          // localStorage on this device is written synchronously on every change,
+          // so for the SAME workout it is always at least as fresh as the server
+          // (whose saves are debounced and can lag or fail). Prefer it whenever it
+          // holds the same workout as the server, or the server has none — so a
+          // lagging/failed server save can never lose the latest sets on reload.
+          // Use the server only when local is empty (a fresh device/install) or
+          // holds a different workout (one started on another device).
+          const preferLocal =
+            !!localWorkout &&
+            (!serverWorkout || serverWorkout.displayId === localWorkout.displayId);
+
+          if (preferLocal && localWorkout) {
+            console.log("[WorkoutContext] Restored from localStorage (freshest copy)");
+            setActiveWorkout(localWorkout);
+            if (localProgress) setTrackingProgress(localProgress);
+            // The save effect re-pushes this to the server, healing a stale or
+            // failed server copy.
+          } else if (serverWorkout) {
+            console.log("[WorkoutContext] Restored from server");
+            setActiveWorkout(serverWorkout);
+            if (serverProgress) setTrackingProgress(serverProgress);
+            // The save effect mirrors this down to localStorage.
           }
           setHasLoadedFromServer(true);
         })
         .catch(err => {
-          console.error("[WorkoutContext] Failed to load active workout from server:", err);
+          // Server unreachable — localStorage is the source of truth.
+          console.error("[WorkoutContext] active-workout load failed, using localStorage:", err);
           loadFromLocalStorage();
           setHasLoadedFromServer(true);
         });
@@ -170,7 +196,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       loadFromLocalStorage();
       setHasLoadedFromServer(true);
     }
-  }, [user, hasLoadedFromServer, loadFromLocalStorage]);
+  }, [user, hasLoadedFromServer, loadFromLocalStorage, readLocal]);
   
   // Reset load state when user changes (login/logout)
   useEffect(() => {
