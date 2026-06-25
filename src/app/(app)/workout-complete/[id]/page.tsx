@@ -224,6 +224,12 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
           exerciseCount={summary.exerciseCount}
           muscleGroups={muscleEntries}
           prCount={prHits.length}
+          prs={prHits.map((h) => ({
+            exerciseName: h.exerciseName,
+            type: h.type,
+            newValue: h.newValue,
+            previousValue: h.previousValue,
+          }))}
           streakDays={streakDays}
         />
         <Link

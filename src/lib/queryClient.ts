@@ -71,13 +71,20 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      // 5 min staleTime: tabs that sat through a deploy refetch on next mount
-      // instead of holding pre-deploy cache forever (was Infinity). Refetch on
-      // mount + reconnect picks up server-side fixes within minutes without
-      // the thrash of refetchOnWindowFocus.
+      // 5 min staleTime: cached data is served instantly on navigation/reopen,
+      // and a background refetch runs on mount when it's older than this.
       staleTime: 5 * 60 * 1000,
+      // 24h gcTime so the cache survives long enough to be persisted to
+      // localStorage (see Providers PersistQueryClientProvider). On app reopen
+      // the persisted cache hydrates and pages paint instantly from it while
+      // revalidating in the background — the fix for the ~5s cold open on
+      // mobile where the home screen fans out ~9 API calls (~374KB total).
+      gcTime: 24 * 60 * 60 * 1000,
       refetchOnMount: true,
-      refetchOnReconnect: true,
+      // refetchOnReconnect off: mobile PWAs fire reconnect on every
+      // foreground/network blip, which re-pulled the whole heavy payload set
+      // and made tab use feel laggy. Mount-based revalidation is enough.
+      refetchOnReconnect: false,
       refetchOnWindowFocus: false,
       // Single retry, capped delay — prior settings turned a transient failure
       // into a 9s saga (3 attempts × up to 5s backoff) on flaky cellular.
