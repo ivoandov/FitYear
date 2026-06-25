@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Trophy, Flame, Clock, Dumbbell, BarChart3, Zap } from "lucide-react";
 import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
+import { WorkoutNameEditor } from "@/components/WorkoutNameEditor";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { completedWorkouts, prHistory, exercises } from "@/lib/db/schema";
@@ -114,7 +115,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
         <div className="rounded-full bg-primary/10 p-5">
           <Trophy className="h-10 w-10 text-primary" />
         </div>
-        <h1 className="text-3xl font-bold">{workout.name}</h1>
+        <WorkoutNameEditor workoutId={workout.id} initialName={workout.name} />
         <p className="text-sm text-muted-foreground">{completedDateLabel}</p>
         {streakDays > 0 ? (
           <div className="flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">

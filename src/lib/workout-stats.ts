@@ -70,6 +70,37 @@ export function summarizeWorkout(
   };
 }
 
+/**
+ * Auto-generate a workout name from the muscle groups trained, e.g.
+ * "Back & Biceps". Used when the user starts a workout without naming it
+ * (the new quick-start flow). Ranks groups by completed-set count and joins
+ * the top two with " & ". Falls back to mere presence (exercise has the group)
+ * when no sets are completed yet, and returns "" when there's no muscle data
+ * at all (caller substitutes a generic name like "Quick Workout").
+ */
+export function deriveWorkoutName(
+  exercises: Pick<ExerciseInWorkout, "muscleGroups" | "setsData">[],
+): string {
+  const byCompleted = new Map<string, number>();
+  const byPresence = new Map<string, number>();
+  for (const ex of exercises) {
+    const groups = ex.muscleGroups ?? [];
+    if (!groups.length) continue;
+    const completed = (ex.setsData ?? []).filter((s) => s.completed).length;
+    for (const g of groups) {
+      byPresence.set(g, (byPresence.get(g) ?? 0) + 1);
+      if (completed > 0) byCompleted.set(g, (byCompleted.get(g) ?? 0) + completed);
+    }
+  }
+  const source = byCompleted.size > 0 ? byCompleted : byPresence;
+  // Map iteration + Array.sort are stable, so ties break by first occurrence.
+  const top = [...source.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([group]) => group);
+  return top.join(" & ");
+}
+
 export function formatDuration(seconds: number | null): string {
   if (seconds == null) return "—";
   const h = Math.floor(seconds / 3600);

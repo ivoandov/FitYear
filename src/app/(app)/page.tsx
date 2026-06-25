@@ -104,7 +104,7 @@ export default function WorkoutsPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [workoutToDelete, setWorkoutToDelete] = useState<{ id: string; name: string; isTemplate?: boolean; isCompleted?: boolean } | null>(null);
   const { toast } = useToast();
-  const { startWorkout, isWorkoutCompleted, completedWorkouts, restartWorkout, updateCompletedWorkout, deleteCompletedWorkout } = useWorkout();
+  const { startWorkout, startEmptyWorkout, isWorkoutCompleted, completedWorkouts, restartWorkout, updateCompletedWorkout, deleteCompletedWorkout } = useWorkout();
   const [editingCompletedWorkout, setEditingCompletedWorkout] = useState<{ id: string; name: string; exercises: Exercise[] } | null>(null);
   const [scheduleAgainWorkout, setScheduleAgainWorkout] = useState<{ name: string; exercises: Exercise[]; templateId?: string } | null>(null);
   const [scheduleAgainDate, setScheduleAgainDate] = useState<Date>(new Date());
@@ -754,6 +754,17 @@ export default function WorkoutsPage() {
   return (
     <div className="flex-1 overflow-auto h-full">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
+        {/* Instant start: open the app and just work out. No name, no
+            pre-planned exercises — add them as you go on the Track screen. */}
+        <Button
+          onClick={() => { startEmptyWorkout(); router.push("/track"); }}
+          className="w-full h-14 text-base font-bold shadow-cta"
+          data-testid="button-start-workout"
+        >
+          <Play className="h-5 w-5 mr-2" />
+          Start Workout
+        </Button>
+
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">

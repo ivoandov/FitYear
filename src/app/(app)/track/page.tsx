@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RestTimer } from "@/components/RestTimer";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy } from "lucide-react";
+import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
+import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy, Dumbbell } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkout } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
@@ -54,10 +55,11 @@ interface SavedTrackingProgress {
 export default function TrackPage() {
   const router = useRouter();
   const { 
-    activeWorkout, 
-    endWorkout, 
-    completeWorkout, 
-    updateActiveWorkout, 
+    activeWorkout,
+    endWorkout,
+    completeWorkout,
+    updateActiveWorkout,
+    discardActiveWorkout,
     completedWorkouts,
     trackingProgress,
     saveTrackingProgress,
@@ -87,6 +89,7 @@ export default function TrackPage() {
   const [restTimerDuration, setRestTimerDuration] = useState(90);
   const [exerciseSets, setExerciseSets] = useState<Map<string, SetData[]>>(new Map()); // Keyed by exercise instanceId for stability
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
   const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
   // Tracks which (instanceId, setIndex) pairs hit a PR during this workout — used
   // to render the persistent neon "PR" badge on those rows.
@@ -103,6 +106,21 @@ export default function TrackPage() {
     if (!activeWorkout?.exercises) return [];
     return enrichExercises(activeWorkout.exercises as any[]);
   }, [activeWorkout?.exercises, enrichExercises]);
+
+  // Library exercises shaped for the Add Exercise picker (mid-workout add).
+  const pickerExercises = useMemo<PickerExercise[]>(
+    () =>
+      exercises.map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        muscleGroups: (ex.muscleGroups || []) as string[],
+        description: ex.description ?? undefined,
+        imageUrl: ex.imageUrl ?? undefined,
+        exerciseType: ex.exerciseType as "weight_reps" | "distance_time" | undefined,
+        isAssisted: ex.isAssisted ?? undefined,
+      })),
+    [exercises],
+  );
 
   // isAssisted lookup — assisted exercises (e.g. assisted pull-up machine)
   // INVERT weight PR direction: lower counterweight = harder = PR.
@@ -640,6 +658,20 @@ export default function TrackPage() {
     void endWorkout;
   };
 
+  // Append exercises picked mid-workout to the live workout. updateActiveWorkout
+  // preserves instanceIds (and tracked sets) for existing exercises and assigns
+  // fresh ones to the additions, then we jump to the first newly added exercise.
+  const handleAddExercises = (picked: PickerExercise[]) => {
+    if (!activeWorkout || picked.length === 0) return;
+    const firstNewIndex = activeWorkout.exercises.length;
+    const merged = [...(activeWorkout.exercises as any[]), ...picked];
+    updateActiveWorkout(activeWorkout.name, merged as any);
+    setIsAddExerciseOpen(false);
+    setCurrentExerciseIndex(firstNewIndex);
+    setCurrentSetIndex(0);
+    setTrackingState("not_started");
+  };
+
   const handleEditSave = (data: WorkoutData) => {
     // Since exerciseSets is now keyed by exercise ID, no remapping needed!
     // Set data stays aligned automatically when exercises are reordered/added/removed
@@ -690,6 +722,61 @@ export default function TrackPage() {
       handlePrimaryAction();
     }
   };
+
+  // Empty workout (quick-start with nothing added yet, or all exercises
+  // removed): show an add-first state. Rendering the normal card here would
+  // crash on the undefined current exercise.
+  if (enrichedWorkoutExercises.length === 0) {
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
+              {activeWorkout.name?.trim() || "New Workout"}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add your first exercise to start tracking
+            </p>
+          </div>
+
+          <Card>
+            <CardContent className="flex flex-col items-center text-center gap-4 py-12 px-6">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-dim">
+                <Dumbbell className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold">No exercises yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Pick exercises as you go — you don&apos;t have to plan ahead.
+                </p>
+              </div>
+              <Button onClick={() => setIsAddExerciseOpen(true)} data-testid="button-add-first-exercise">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Exercise
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Button
+            variant="outline"
+            className="w-full text-sm"
+            onClick={() => { discardActiveWorkout(); router.push("/"); }}
+            data-testid="button-discard-empty-workout"
+          >
+            End Workout
+          </Button>
+        </div>
+
+        <AddExercisesSheet
+          isOpen={isAddExerciseOpen}
+          onClose={() => setIsAddExerciseOpen(false)}
+          exercises={pickerExercises}
+          existingIds={[]}
+          onAdd={handleAddExercises}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -1012,6 +1099,10 @@ export default function TrackPage() {
         </Card>
 
         <div className="flex flex-col gap-2 sm:gap-3">
+          <Button className="w-full text-sm" onClick={() => setIsAddExerciseOpen(true)} data-testid="button-add-exercise">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Exercise
+          </Button>
           <Button variant="outline" className="w-full text-sm" onClick={() => { flushProgress(); setIsEditDialogOpen(true); }} data-testid="button-edit-workout">
             <Pencil className="h-4 w-4 mr-2" />
             Edit Workout
@@ -1033,12 +1124,20 @@ export default function TrackPage() {
             repeatType: "none",
             repeatInterval: 1,
           }}
-          availableExercises={exercises.map(ex => ({ 
-            ...ex, 
+          availableExercises={exercises.map(ex => ({
+            ...ex,
             muscleGroups: (ex.muscleGroups || []) as string[],
             imageUrl: ex.imageUrl ?? undefined,
             exerciseType: ex.exerciseType as "weight_reps" | "distance_time" | undefined,
           }))}
+        />
+
+        <AddExercisesSheet
+          isOpen={isAddExerciseOpen}
+          onClose={() => setIsAddExerciseOpen(false)}
+          exercises={pickerExercises}
+          existingIds={(activeWorkout.exercises as { id: string }[]).map((e) => e.id)}
+          onAdd={handleAddExercises}
         />
 
         <RestTimer />

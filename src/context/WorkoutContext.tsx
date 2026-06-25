@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { deriveWorkoutName } from "@/lib/workout-stats";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -62,6 +63,8 @@ interface WorkoutContextType {
   trackingProgress: TrackingProgress | null;
   lastCompletedWorkoutId: string | null; // Set after completeWorkout() succeeds — used by /workout-complete page
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
+  startEmptyWorkout: () => void;
+  discardActiveWorkout: () => void;
   endWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => void;
   completeWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
@@ -461,6 +464,32 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     setLastCompletedWorkoutId(null);
   }, []);
 
+  // Quick-start: begin an empty, unnamed workout immediately. The user adds
+  // exercises while tracking (TrackPage's Add Exercise picker) and the name is
+  // auto-generated from muscle groups at completion. No name/exercise gate.
+  const startEmptyWorkout = useCallback(() => {
+    const displayId = `quick-${Date.now()}`;
+    const workout: ActiveWorkout = {
+      id: displayId,
+      displayId,
+      scheduledWorkoutId: null,
+      name: "",
+      startedAt: new Date().toISOString(),
+      exercises: [],
+    };
+    setActiveWorkout(workout);
+    setLastCompletedWorkoutId(null);
+  }, []);
+
+  // Throw away the active workout without saving a completed record. Used when
+  // ending an empty quick-start (no exercises) so we don't persist junk. The
+  // save effect picks up the null and clears localStorage + DELETEs the server
+  // active-workout row.
+  const discardActiveWorkout = useCallback(() => {
+    setActiveWorkout(null);
+    setTrackingProgress(null);
+  }, []);
+
   const completeWorkout = useCallback(async (exerciseSets?: Map<string, ExerciseSetData[]>): Promise<string | null> => {
     if (!activeWorkout) return null;
 
@@ -488,6 +517,12 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       };
     });
 
+    // Auto-name from muscle groups if the user never named it (quick-start
+    // flow). Editable afterwards on the workout-complete summary.
+    const resolvedName = activeWorkout.name?.trim()
+      ? activeWorkout.name.trim()
+      : deriveWorkoutName(exercisesWithSets as never) || "Quick Workout";
+
     const scheduledWorkoutId = activeWorkout.scheduledWorkoutId;
     const startedAt = activeWorkout.startedAt
       ? new Date(activeWorkout.startedAt)
@@ -500,7 +535,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     try {
       const created = await createCompletedMutation.mutateAsync({
         displayId: activeWorkout.displayId,
-        name: activeWorkout.name,
+        name: resolvedName,
         exercises: exercisesWithSets,
         completedAt,
         startedAt: startedAt ?? undefined,
@@ -616,6 +651,8 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       trackingProgress,
       lastCompletedWorkoutId,
       startWorkout,
+      startEmptyWorkout,
+      discardActiveWorkout,
       endWorkout,
       completeWorkout,
       isWorkoutCompleted,
@@ -634,6 +671,8 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       trackingProgress,
       lastCompletedWorkoutId,
       startWorkout,
+      startEmptyWorkout,
+      discardActiveWorkout,
       endWorkout,
       completeWorkout,
       isWorkoutCompleted,
