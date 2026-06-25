@@ -57,6 +57,7 @@ export function WorkoutNameEditor({
         <input
           autoFocus
           value={value}
+          onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") save();
