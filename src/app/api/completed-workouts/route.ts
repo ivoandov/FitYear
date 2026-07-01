@@ -16,6 +16,29 @@ import {
   isCalendarConnected,
 } from "@/lib/calendar";
 
+// The stored exercises JSON carries fields the client never reads back from
+// here — imageUrl (~38% of the payload), description, instanceId, and default*
+// are all re-derived from /api/exercises via enrichExercise (or only matter
+// during live tracking). Stripping them shrinks this global, every-page query
+// by ~57% (e.g. 375KB -> ~160KB) with no behavior change. Keep only what the
+// client actually uses: id (enrich key), name/muscleGroups/exerciseType/
+// isAssisted (fallback + stats + PR detection), and setsData (the real data).
+function slimExercises(exercises: unknown): unknown {
+  if (!Array.isArray(exercises)) return exercises;
+  return exercises.map((ex) => {
+    const e = ex as Record<string, unknown>;
+    return {
+      id: e.id,
+      name: e.name,
+      muscleGroups: e.muscleGroups,
+      exerciseType: e.exerciseType,
+      isAssisted: e.isAssisted,
+      completedSets: e.completedSets,
+      setsData: e.setsData,
+    };
+  });
+}
+
 export const GET = handle(async () => {
   const { user } = await requireUser();
   const rows = await db
@@ -23,7 +46,7 @@ export const GET = handle(async () => {
     .from(completedWorkouts)
     .where(eq(completedWorkouts.userId, user.id))
     .orderBy(desc(completedWorkouts.completedAt));
-  return rows;
+  return rows.map((r) => ({ ...r, exercises: slimExercises(r.exercises) }));
 });
 
 const PostSchema = z.object({

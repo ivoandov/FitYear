@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { WorkoutEditorDialog, type WorkoutData } from "@/components/WorkoutEditorDialog";
@@ -123,12 +123,34 @@ export default function WorkoutsPage() {
     queryKey: ["/api/exercises"],
   });
 
+  // Defer secondary/below-fold queries (routine-usage badges + routine
+  // instances) until the page is idle, so the primary content — scheduled
+  // workouts, templates, history — wins network bandwidth first on a cold
+  // mobile load (avoids ~9 requests contending at once). Cached values (from
+  // the persisted query cache) still render immediately; this only gates the
+  // network fetch, not the read.
+  const [deferSecondary, setDeferSecondary] = useState(false);
+  useEffect(() => {
+    const w = window as typeof window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => setDeferSecondary(true), { timeout: 1500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = setTimeout(() => setDeferSecondary(true), 600);
+    return () => clearTimeout(id);
+  }, []);
+
   const { data: templateRoutineUsage = {} } = useQuery<Record<string, string[]>>({
     queryKey: ["/api/workout-templates/routine-usage"],
+    enabled: deferSecondary,
   });
 
   const { data: dbRoutineInstances = [] } = useQuery<DBRoutineInstance[]>({
     queryKey: ["/api/routine-instances"],
+    enabled: deferSecondary,
   });
 
   const routineInstanceMap = new Map<string, string>(
