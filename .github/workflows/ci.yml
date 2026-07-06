@@ -21,7 +21,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # `npm install`, not `npm ci`: esbuild (via vitest) ships ~25 per-platform
+      # binaries as optional deps, and strict `npm ci` cross-platform lockfile
+      # validation is brittle. install resolves the correct Linux binaries at
+      # install time and matches how Vercel installs. cache: npm keeps it fast.
+      - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       # Lint carries pre-existing debt (intentional `any` across the codebase),
       # so keep it visible but non-blocking until a dedicated cleanup pass.
