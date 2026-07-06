@@ -65,7 +65,6 @@ interface WorkoutContextType {
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
   startEmptyWorkout: () => void;
   discardActiveWorkout: () => void;
-  endWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => void;
   completeWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
@@ -566,15 +565,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     }
   }, [activeWorkout, createCompletedMutation, deleteScheduledWorkoutMutation]);
 
-  const endWorkout = useCallback(async (exerciseSets?: Map<string, ExerciseSetData[]>) => {
-    if (activeWorkout) {
-      await completeWorkout(exerciseSets);
-    } else {
-      setActiveWorkout(null);
-      setTrackingProgress(null);
-    }
-  }, [activeWorkout, completeWorkout]);
-
   const isWorkoutCompleted = useCallback((displayId: string) => {
     return completedWorkouts.some(w => w.displayId === displayId);
   }, [completedWorkouts]);
@@ -657,7 +647,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       startWorkout,
       startEmptyWorkout,
       discardActiveWorkout,
-      endWorkout,
       completeWorkout,
       isWorkoutCompleted,
       restartWorkout,
@@ -677,7 +666,6 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       startWorkout,
       startEmptyWorkout,
       discardActiveWorkout,
-      endWorkout,
       completeWorkout,
       isWorkoutCompleted,
       restartWorkout,

@@ -64,9 +64,8 @@ interface SavedTrackingProgress {
 
 export default function TrackPage() {
   const router = useRouter();
-  const { 
+  const {
     activeWorkout,
-    endWorkout,
     completeWorkout,
     updateActiveWorkout,
     discardActiveWorkout,
@@ -681,9 +680,6 @@ export default function TrackPage() {
       return;
     }
     router.push(`/workout-complete/${newId}`);
-    // endWorkout was identical to completeWorkout when there was an active workout —
-    // simplified to a single call for the new flow.
-    void endWorkout;
   };
 
   // Append exercises picked mid-workout to the live workout. updateActiveWorkout

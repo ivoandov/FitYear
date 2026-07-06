@@ -46,11 +46,17 @@ const nextConfig: NextConfig = {
   // Strip "Powered by Vercel" and gzip responses by default — small but free wins.
   compress: true,
   poweredByHeader: false,
+  // Drop console.* (except console.error) from the production client bundle so
+  // we stop shipping the ~dozen console.logs that leak user ids / workout names.
+  // Server console.error stays for logging.
+  compiler: {
+    removeConsole: { exclude: ["error"] },
+  },
   // Tree-shake icon barrels at build time. Without this, each `import { Plus }
   // from "lucide-react"` pulled in the full module graph; this rewrites those
   // imports to direct deep paths so only used icons end up in the client bundle.
   experimental: {
-    optimizePackageImports: ["lucide-react", "react-icons", "date-fns"],
+    optimizePackageImports: ["lucide-react", "date-fns"],
   },
   // Canonical domain: 308 anything that lands on the bare Vercel hostname
   // over to fityear.flyhi.ai. Keeps SEO clean and prevents cookie-domain
