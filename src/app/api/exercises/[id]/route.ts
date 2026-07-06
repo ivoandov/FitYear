@@ -23,7 +23,9 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     .limit(1);
 
   if (!existing) throw new ApiError(404, "Exercise not found");
-  if (existing.userId !== null && existing.userId !== user.id) {
+  // Owner-only. Global seed exercises (userId null) are read-only from the app;
+  // the previous `!== null` guard let ANY user edit the shared library.
+  if (existing.userId !== user.id) {
     throw new ApiError(403, "Not authorized to edit this exercise");
   }
 

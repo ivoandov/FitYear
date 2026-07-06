@@ -9,7 +9,9 @@ import {
   boolean,
   uuid,
   real,
+  date,
   index,
+  primaryKey,
   pgSchema,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -272,6 +274,22 @@ export const prHistory = pgTable(
       t.achievedAt.desc(),
     ),
   ],
+);
+
+// Per-user, per-day counter for paid AI/Imagen endpoints. One row per
+// (user, UTC day, kind); enforceDailyQuota upsert-increments and 429s past the
+// limit. Caps runaway Anthropic/Vertex spend from a single authed user.
+export const aiUsage = pgTable(
+  "ai_usage",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    kind: text("kind").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day, t.kind] })],
 );
 
 // Zod schemas

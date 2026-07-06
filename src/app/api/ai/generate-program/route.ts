@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser, ApiError } from "@/lib/api/auth";
+import { enforceDailyQuota } from "@/lib/api/rate-limit";
 
 // Streaming response — Vercel keeps the connection alive as bytes flow, and
 // the client gets immediate progress instead of a 60s blank wall. Persistence
@@ -23,7 +24,9 @@ const InputSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser();
+    const { user } = await requireUser();
+    // Cap paid Anthropic spend per user per day (counts before the model call).
+    await enforceDailyQuota(user.id, "generate-program", 15);
     const input = InputSchema.parse(await request.json());
 
     if (!process.env.ANTHROPIC_API_KEY) {

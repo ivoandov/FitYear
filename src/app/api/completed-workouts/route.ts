@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -72,7 +72,16 @@ export const POST = handle(async (request: NextRequest) => {
       ? db
           .select()
           .from(scheduledWorkouts)
-          .where(eq(scheduledWorkouts.id, body.scheduledWorkoutId))
+          // Scope to the caller: without the userId filter, user A could pass
+          // user B's scheduledWorkoutId and bump B's routine progress + pull
+          // B's templateId into A's record (IDOR). Not owned by caller -> treated
+          // as absent (no templateId / routineInstance linkage below).
+          .where(
+            and(
+              eq(scheduledWorkouts.id, body.scheduledWorkoutId),
+              eq(scheduledWorkouts.userId, user.id),
+            ),
+          )
           .limit(1)
           .then((rows) => rows[0] ?? null)
       : Promise.resolve(null),

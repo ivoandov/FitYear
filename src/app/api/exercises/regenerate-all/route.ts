@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
-import { and, or, eq, isNull, inArray, type SQL } from "drizzle-orm";
+import { and, eq, isNull, inArray, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { exercises } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { regenerateExerciseImage } from "@/lib/imagen";
 
 /**
@@ -17,17 +18,21 @@ import { regenerateExerciseImage } from "@/lib/imagen";
  *   onlyMissingImage: boolean // default true — skip exercises that already have image_url
  *   limit: number            // default 3, hardcap 3 (60s / ~20s = 3)
  *
- * Auth: user must own each target exercise OR it must be a public seed row
- * (userId === null). Anything else returns 403 for that id and the rest run.
+ * Auth: OWNER-ONLY. Only the caller's own exercises are eligible; the shared
+ * seed library (userId null) is never regenerated from the app (that stays a
+ * CLI job). A per-user daily quota also caps the paid Imagen spend.
  *
  * Returns: { regenerated, failed, skipped, remaining }
  */
 export const maxDuration = 60;
 
 const HARD_CAP = 3;
+const DAILY_LIMIT = 10;
 
 export const POST = handle(async (req: NextRequest) => {
   const { user } = await requireUser();
+  // Count each call before doing paid work so a failed run still counts.
+  await enforceDailyQuota(user.id, "regenerate-all", DAILY_LIMIT);
 
   let body: { ids?: string[]; onlyMissingImage?: boolean; limit?: number } = {};
   try {
@@ -39,9 +44,7 @@ export const POST = handle(async (req: NextRequest) => {
   const onlyMissingImage = body.onlyMissingImage ?? true;
   const limit = Math.min(body.limit ?? HARD_CAP, HARD_CAP);
 
-  const conditions: SQL[] = [
-    or(eq(exercises.userId, user.id), isNull(exercises.userId))!,
-  ];
+  const conditions: SQL[] = [eq(exercises.userId, user.id)];
   if (onlyMissingImage) conditions.push(isNull(exercises.imageUrl));
   if (body.ids?.length) conditions.push(inArray(exercises.id, body.ids));
 
@@ -87,14 +90,5 @@ export const POST = handle(async (req: NextRequest) => {
     }
   }
 
-  return {
-    regenerated,
-    failed,
-    skipped,
-    remaining,
-    note:
-      remaining > 0
-        ? `${remaining} more exercises match. Call this endpoint again to continue, or use scripts/regenerate-exercise-images.ts for full-catalog runs.`
-        : undefined,
-  };
+  return { regenerated, failed, skipped, remaining };
 });

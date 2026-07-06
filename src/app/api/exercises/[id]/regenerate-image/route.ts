@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { exercises } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { regenerateExerciseImage } from "@/lib/imagen";
 
 // Imagen 4 calls take ~10-25s. The default Hobby maxDuration is 10s, so
@@ -23,11 +24,16 @@ export const POST = handle(async (_req: NextRequest, ctx: Ctx) => {
     .limit(1);
 
   if (!existing) throw new ApiError(404, "Exercise not found");
-  // Public exercises (userId === null) are part of the seeded library and
-  // anyone can regen their image; user exercises only by their owner.
-  if (existing.userId !== null && existing.userId !== user.id) {
+  // Owner-only. Regenerating a seed library image from the app was both
+  // shared-resource vandalism (it changes the image for every user) and a paid
+  // Imagen cost anyone could run up. Seed-image regen stays a CLI job
+  // (scripts/regenerate-exercise-images.ts).
+  if (existing.userId !== user.id) {
     throw new ApiError(403, "Not authorized to regenerate this exercise");
   }
+
+  // Cap paid Imagen spend per user per day (counts before the paid call).
+  await enforceDailyQuota(user.id, "regenerate-image", 20);
 
   const { imageUrl, sizeBytes } = await regenerateExerciseImage({
     exerciseId: existing.id,
