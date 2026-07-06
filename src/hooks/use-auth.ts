@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { clearLocalUserData } from "@/lib/session-cleanup";
+
+// Tracks the last signed-in user id on this device so we can detect an account
+// switch (a different user logging in without a clean logout first) and purge
+// the previous user's cached data before it paints.
+const LAST_UID_KEY = "fy_last_uid";
 
 export interface ProfileUser {
   id: string;
@@ -39,7 +45,25 @@ export function useAuth() {
     });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_e, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Belt-and-suspenders privacy purge (complements the explicit logout()
+      // path below). Catches sessions that ended without a clean logout —
+      // crash, cookie expiry, or an OAuth account switch on a shared device.
+      try {
+        if (event === "SIGNED_OUT") {
+          clearLocalUserData();
+        } else if (session?.user) {
+          const prevUid = localStorage.getItem(LAST_UID_KEY);
+          if (prevUid && prevUid !== session.user.id) {
+            // A different account than last time — wipe the previous user's
+            // cached data before this render paints it.
+            clearLocalUserData();
+          }
+          localStorage.setItem(LAST_UID_KEY, session.user.id);
+        }
+      } catch {
+        // localStorage can throw in private mode — never block auth state on it
+      }
       setUser(fromSupabase(session?.user ?? null));
     });
     return () => subscription.unsubscribe();
@@ -47,6 +71,10 @@ export function useAuth() {
 
   function logout() {
     setIsLoggingOut(true);
+    // Purge locally-cached user data BEFORE navigating away so nothing survives
+    // for the next user on a shared device. queryClient.clear() + removing the
+    // persisted cache + the other app-owned localStorage keys (theme kept).
+    clearLocalUserData();
     // POST to /auth/signout — proxy then takes care of redirect
     const form = document.createElement("form");
     form.method = "POST";
