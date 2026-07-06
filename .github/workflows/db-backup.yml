@@ -1,0 +1,50 @@
+name: DB backup
+
+on:
+  schedule:
+    # 08:17 UTC daily (off-peak, non-:00 to avoid GitHub cron congestion).
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump -> GCS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client 17 (match the server major)
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Dump + gzip
+        env:
+          # Session-mode pooler URL (:5432) — pg_dump needs a session; the
+          # transaction pooler (:6543) can't provide one.
+          DATABASE_URL_SESSION: ${{ secrets.DATABASE_URL_SESSION }}
+          PGSSLMODE: require
+        run: |
+          STAMP=$(date -u +%Y-%m-%d_%H%M%S)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          FILE="fityear-$STAMP.sql.gz"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          pg_dump --no-owner --no-privileges "$DATABASE_URL_SESSION" | gzip > "$FILE"
+          ls -lh "$FILE"
+          # sanity: the gzip must decompress to real SQL (guards silent empties)
+          if ! gunzip -c "$FILE" | grep -q "PostgreSQL database dump"; then
+            echo "::error::dump does not look like valid SQL"; exit 1
+          fi
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload to GCS
+        run: |
+          gcloud storage cp "$FILE" "gs://fityear-backups/$FILE"
+          echo "uploaded gs://fityear-backups/$FILE"
