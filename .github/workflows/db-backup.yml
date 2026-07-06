@@ -17,7 +17,9 @@ jobs:
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          # Ubuntu's pg_wrapper resolves bare `pg_dump` to the default (16),
+          # which refuses to dump a 17.x server. Use the 17 binary directly.
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Dump + gzip
         env:
@@ -30,7 +32,7 @@ jobs:
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
           FILE="fityear-$STAMP.sql.gz"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
-          pg_dump --no-owner --no-privileges "$DATABASE_URL_SESSION" | gzip > "$FILE"
+          /usr/lib/postgresql/17/bin/pg_dump --no-owner --no-privileges "$DATABASE_URL_SESSION" | gzip > "$FILE"
           ls -lh "$FILE"
           # sanity: the gzip must decompress to real SQL (guards silent empties)
           if ! gunzip -c "$FILE" | grep -q "PostgreSQL database dump"; then
