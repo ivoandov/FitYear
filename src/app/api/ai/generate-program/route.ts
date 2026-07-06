@@ -105,8 +105,11 @@ Cover the full ${input.programLength}-day duration in ${Math.ceil(input.programL
     if (e instanceof ApiError) {
       return Response.json({ error: e.message }, { status: e.status });
     }
+    // Don't leak internal error text (Zod/SQL/provider details) to the client.
     console.error("[generate-program]", e);
-    const message = e instanceof Error ? e.message : "Internal Server Error";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json(
+      { error: "Something went wrong generating your program. Please try again." },
+      { status: 500 },
+    );
   }
 }

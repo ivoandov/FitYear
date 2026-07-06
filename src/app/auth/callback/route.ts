@@ -10,7 +10,12 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") || "/";
+  const rawNext = url.searchParams.get("next") || "/";
+  // Open-redirect guard: only accept a same-origin path. An absolute
+  // (`https://evil.com`) or protocol-relative (`//evil.com`) `next` would
+  // otherwise redirect the freshly-authenticated user off-site.
+  const next =
+    rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
   if (!code) {
     return NextResponse.redirect(new URL(`/login?error=missing_code`, url));

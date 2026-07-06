@@ -20,9 +20,14 @@ export function handle<T extends (...args: never[]) => Promise<Response | unknow
           { status: e.status },
         );
       }
+      // Log the real error server-side, but never return it: Drizzle/postgres
+      // errors carry SQL fragments, column and constraint names. ApiError
+      // messages are intentional + user-safe and handled above.
       console.error("[api]", e);
-      const message = e instanceof Error ? e.message : "Internal Server Error";
-      return NextResponse.json({ error: message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again." },
+        { status: 500 },
+      );
     }
   };
 }
