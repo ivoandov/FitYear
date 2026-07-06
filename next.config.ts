@@ -84,10 +84,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Wrap with Sentry. No authToken/org/project here, so source-map upload is
-// disabled (errors are still captured; stacks are minified until a
-// SENTRY_AUTH_TOKEN + org/project are added). silent in local dev.
+// Wrap with Sentry. Source maps upload only when SENTRY_AUTH_TOKEN is present
+// in the build env (Vercel production), giving readable stack traces there;
+// local + CI builds have no token, so upload is skipped (no noise, no failure).
 export default withSentryConfig(nextConfig, {
+  org: "flyhiai",
+  project: "javascript-nextjs",
   silent: !process.env.CI,
-  sourcemaps: { disable: true },
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
 });
