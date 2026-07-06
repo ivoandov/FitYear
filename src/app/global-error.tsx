@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Root error boundary. Catches errors thrown in the root layout or any route
@@ -28,6 +29,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
+    Sentry.captureException(error);
     if (isChunkLoadError(error)) {
       const KEY = "fy_chunk_reload_ts";
       const last = Number(sessionStorage.getItem(KEY) || "0");

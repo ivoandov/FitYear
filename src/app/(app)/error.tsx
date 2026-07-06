@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/ui/button";
 import { RotateCcw, Home } from "lucide-react";
 
@@ -38,6 +39,8 @@ export default function AppError({
   const chunkError = isChunkLoadError(error);
 
   useEffect(() => {
+    // Report real render crashes (not the benign deploy-skew chunk errors).
+    if (!chunkError) Sentry.captureException(error);
     if (chunkError) {
       // Reload at most once per ~10s to avoid loops if the reload doesn't help.
       const KEY = "fy_chunk_reload_ts";

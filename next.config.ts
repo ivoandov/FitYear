@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // Content-Security-Policy. Permissive-but-real starting point (tighten later).
 // - default 'self'; scripts/styles allow 'unsafe-inline' because Next injects
@@ -23,7 +24,7 @@ const CSP = [
   "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co",
   "media-src 'self'",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co",
+  "connect-src 'self' https://*.supabase.co https://*.ingest.us.sentry.io",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -83,4 +84,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Wrap with Sentry. No authToken/org/project here, so source-map upload is
+// disabled (errors are still captured; stacks are minified until a
+// SENTRY_AUTH_TOKEN + org/project are added). silent in local dev.
+export default withSentryConfig(nextConfig, {
+  silent: !process.env.CI,
+  sourcemaps: { disable: true },
+});

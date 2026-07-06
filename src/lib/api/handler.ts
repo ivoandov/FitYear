@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { ApiError } from "./auth";
 
 /**
@@ -22,8 +23,11 @@ export function handle<T extends (...args: never[]) => Promise<Response | unknow
       }
       // Log the real error server-side, but never return it: Drizzle/postgres
       // errors carry SQL fragments, column and constraint names. ApiError
-      // messages are intentional + user-safe and handled above.
+      // messages are intentional + user-safe and handled above. Report the
+      // genuine 500 to Sentry (ApiError 4xx never reach here, so they aren't
+      // reported as errors).
       console.error("[api]", e);
+      Sentry.captureException(e);
       return NextResponse.json(
         { error: "Something went wrong. Please try again." },
         { status: 500 },
