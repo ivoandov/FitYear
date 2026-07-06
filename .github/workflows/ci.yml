@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel an in-flight run when a newer commit lands on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Lint carries pre-existing debt (intentional `any` across the codebase),
+      # so keep it visible but non-blocking until a dedicated cleanup pass.
+      - name: lint (non-blocking)
+        run: npm run lint
+        continue-on-error: true
+      - run: npm run test
+      - name: build
+        run: npm run build
+        env:
+          # DATABASE_URL is the only var the build's module-init requires (the
+          # Drizzle client throws if it's unset at import). The public Supabase
+          # vars get inlined into the client bundle. The build never connects to
+          # anything, so these are only satisfying import-time guards.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
