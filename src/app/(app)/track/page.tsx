@@ -10,6 +10,16 @@ import { RestTimer } from "@/components/RestTimer";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy, Dumbbell } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -90,6 +100,8 @@ export default function TrackPage() {
   const [exerciseSets, setExerciseSets] = useState<Map<string, SetData[]>>(new Map()); // Keyed by exercise instanceId for stability
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
+  // Discard-confirm for finishing a workout with zero logged sets (junk guard).
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
   // Tracks which (instanceId, setIndex) pairs hit a PR during this workout — used
   // to render the persistent neon "PR" badge on those rows.
@@ -551,8 +563,19 @@ export default function TrackPage() {
     return converted;
   };
 
+  // True if any set in the whole in-memory workout has been marked complete.
+  // Guards the "End Workout with nothing logged" case so we never save a junk
+  // history row (which would fabricate progress and consume a scheduled slot).
+  const hasAnyCompletedSet = () =>
+    [...exerciseSets.values()].some((s) => s.some((set) => set.completed));
+
   const handleFinishExercise = async () => {
     if (isLastExercise) {
+      // Nothing logged -> offer to discard instead of saving a junk workout.
+      if (!hasAnyCompletedSet()) {
+        setShowDiscardConfirm(true);
+        return;
+      }
       const wasRoutineWorkout = !!activeWorkout?.scheduledWorkoutId;
       const newId = await completeWorkout(toLbsMap(exerciseSets));
       // Save failed (completeWorkout returns null). The active workout + entered
@@ -644,6 +667,11 @@ export default function TrackPage() {
   };
 
   const handleEndWorkout = async () => {
+    // Nothing logged -> confirm discard rather than persisting an empty record.
+    if (!hasAnyCompletedSet()) {
+      setShowDiscardConfirm(true);
+      return;
+    }
     const newId = await completeWorkout(toLbsMap(exerciseSets));
     if (!newId) {
       toast("Couldn't save your workout", {
@@ -1139,6 +1167,36 @@ export default function TrackPage() {
           existingIds={(activeWorkout.exercises as { id: string }[]).map((e) => e.id)}
           onAdd={handleAddExercises}
         />
+
+        <AlertDialog
+          open={showDiscardConfirm}
+          onOpenChange={(open) => !open && setShowDiscardConfirm(false)}
+        >
+          <AlertDialogContent data-testid="dialog-discard-workout">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Discard this workout?</AlertDialogTitle>
+              <AlertDialogDescription>
+                You haven&apos;t logged any sets. Nothing will be saved to your
+                history. You can keep going and mark a set complete instead.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-discard">
+                Keep going
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="button-confirm-discard"
+                onClick={() => {
+                  setShowDiscardConfirm(false);
+                  discardActiveWorkout();
+                  router.push("/");
+                }}
+              >
+                Discard workout
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <RestTimer />
       </div>

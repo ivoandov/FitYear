@@ -510,9 +510,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           setsData: normalizedSets,
         };
       }
+      // Untouched exercise (user never opened it): record it honestly as zero
+      // completed sets with no set data. Previously this fabricated
+      // `completedSets: exercise.sets` (a constant 3) with an empty setsData,
+      // which polluted streaks/PRs and let a just-started workout look logged.
       return {
         ...exercise,
-        completedSets: exercise.sets,
+        completedSets: 0,
         setsData: [],
       };
     });
