@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { deriveWorkoutName } from "@/lib/workout-stats";
+import { deriveWorkoutName, type SetData } from "@/lib/workout-stats";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -33,18 +33,12 @@ export interface CompletedWorkoutRecord {
   calendarEventId?: string | null;
 }
 
-interface ExerciseSetData {
-  setNumber: number;
-  weight: number | null;
-  reps: number | null;
-  distance: number | null;
-  time: number | null;
-  completed: boolean;
-}
-
-interface TrackingProgress {
+// TrackingProgress is the durable snapshot of an in-progress workout (persisted
+// to localStorage + the active-workout server row). Exported so TrackPage can
+// build/consume the exact same shape instead of a copy-pasted duplicate.
+export interface TrackingProgress {
   workoutDisplayId: string;
-  exerciseSets: [string, ExerciseSetData[]][]; // Keyed by exercise instanceId for stability during edits/reorders
+  exerciseSets: [string, SetData[]][]; // Keyed by exercise instanceId for stability during edits/reorders
   currentExerciseIndex: number;
   currentSetIndex: number;
   restTimerDuration: number;
@@ -65,7 +59,7 @@ interface WorkoutContextType {
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
   startEmptyWorkout: () => void;
   discardActiveWorkout: () => void;
-  completeWorkout: (exerciseSets?: Map<string, ExerciseSetData[]>) => Promise<string | null>;
+  completeWorkout: (exerciseSets?: Map<string, SetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
   updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date) => Promise<boolean>;
@@ -489,7 +483,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     setTrackingProgress(null);
   }, []);
 
-  const completeWorkout = useCallback(async (exerciseSets?: Map<string, ExerciseSetData[]>): Promise<string | null> => {
+  const completeWorkout = useCallback(async (exerciseSets?: Map<string, SetData[]>): Promise<string | null> => {
     if (!activeWorkout) return null;
 
     const exercisesWithSets = activeWorkout.exercises.map((exercise) => {

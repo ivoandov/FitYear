@@ -22,38 +22,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy, Dumbbell } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { useWorkout } from "@/context/WorkoutContext";
+import { useWorkout, type TrackingProgress } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
 import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { convertWeight, lbsToDisplay, displayToLbs, LB_PER_KG } from "@/lib/units";
+import { type SetData } from "@/lib/workout-stats";
 import { toast } from "sonner";
-
-interface SetData {
-  setNumber: number;
-  weight: number | null;
-  reps: number | null;
-  distance: number | null;
-  time: number | null;
-  completed: boolean;
-}
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
 const TRACKING_STORAGE_KEY = "workout_tracking_progress";
-
-interface SavedTrackingProgress {
-  workoutDisplayId: string;
-  exerciseSets: [string, SetData[]][]; // Keyed by exercise instanceId for stability during edits/reorders
-  currentExerciseIndex: number;
-  currentSetIndex: number;
-  restTimerDuration: number;
-  // Display unit the in-memory weights are expressed in at save time. Used
-  // to convert weights on restore if the user has since switched units in
-  // Settings. Treated as 'lbs' if absent (back-compat with pre-2026-06 progress).
-  weightUnit?: 'lbs' | 'kg';
-}
 
 export default function TrackPage() {
   const router = useRouter();
@@ -290,7 +270,7 @@ export default function TrackPage() {
   // Auto-save progress to context whenever tracking state changes
   useEffect(() => {
     if (activeWorkout && hasLoadedSavedProgress && exerciseSets.size > 0) {
-      const progress: SavedTrackingProgress = {
+      const progress: TrackingProgress = {
         workoutDisplayId: activeWorkout.displayId,
         exerciseSets: Array.from(exerciseSets.entries()),
         currentExerciseIndex,

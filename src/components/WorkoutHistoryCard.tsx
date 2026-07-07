@@ -17,6 +17,7 @@ import {
   lbsToDisplay as lbsToDisplayShared,
   displayToLbs as displayToLbsShared,
 } from "@/lib/units";
+import { type SetData } from "@/lib/workout-stats";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
 // convert back to lbs before saving. These thin wrappers route through the
@@ -30,14 +31,9 @@ function displayToLbs(val: number | null | undefined, unit: 'lbs' | 'kg'): numbe
   return displayToLbsShared(val, unit) ?? undefined;
 }
 
-interface SetDetail {
-  setNumber?: number;
-  weight?: number;
-  reps?: number;
-  distance?: number;
-  time?: number;
-  completed?: boolean;
-}
+// The edit form needs every field optional (empty inputs), so this is the
+// canonical SetData with all fields optional rather than a separate shape.
+type SetDetail = Partial<SetData>;
 
 interface ExerciseDetail {
   id?: string;
