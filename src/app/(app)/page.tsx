@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkoutMutations } from "@/hooks/use-workout-mutations";
@@ -187,45 +187,68 @@ export default function WorkoutsPage() {
     };
   }
 
-  const allAvailableExercises: Exercise[] = dbExercises.map((ex) => ({
-    id: ex.id,
-    name: ex.name,
-    muscleGroups: ex.muscleGroups,
-    description: ex.description,
-    imageUrl: ex.imageUrl || undefined,
-    exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
-  }));
+  // These derived lists recompute only when their source query data changes,
+  // not on every render (dialog toggles, date selection). getWorkoutImageUrl's
+  // per-exercise lookup is backed by exerciseImageById (below) instead of an
+  // O(n) find per call.
+  const allAvailableExercises = useMemo<Exercise[]>(
+    () =>
+      dbExercises.map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        muscleGroups: ex.muscleGroups,
+        description: ex.description,
+        imageUrl: ex.imageUrl || undefined,
+        exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
+      })),
+    [dbExercises],
+  );
 
-  const scheduledWorkouts: ScheduledWorkout[] = dbWorkouts.map((w) => {
-    // Parse date as UTC and create a local date with the same calendar date
-    // This prevents timezone shift (e.g., UTC midnight becoming previous day in local time)
-    const utcDate = new Date(w.date);
-    const localDate = new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
-    
-    return {
-      id: w.id,
-      name: w.name,
-      date: localDate,
-      exercises: (w.exercises as any[]).map((ex: any) => ({
-        ...ex,
-        muscleGroups: ex.muscleGroups || [],
-      })) as Exercise[],
-      templateId: w.templateId,
-      routineInstanceId: w.routineInstanceId,
-    };
-  });
+  const scheduledWorkouts = useMemo<ScheduledWorkout[]>(
+    () =>
+      dbWorkouts.map((w) => {
+        // Parse date as UTC and create a local date with the same calendar date
+        // This prevents timezone shift (e.g., UTC midnight becoming previous day in local time)
+        const utcDate = new Date(w.date);
+        const localDate = new Date(utcDate.getUTCFullYear(), utcDate.getUTCMonth(), utcDate.getUTCDate());
 
-  const workoutTemplates: WorkoutTemplate[] = dbTemplates.map((t) => ({
-    id: t.id,
-    name: t.name,
-    exercises: (t.exercises as any[]).map((ex: any) => ({
-      ...ex,
-      muscleGroups: ex.muscleGroups || [],
-    })) as Exercise[],
-  }));
+        return {
+          id: w.id,
+          name: w.name,
+          date: localDate,
+          exercises: (w.exercises as any[]).map((ex: any) => ({
+            ...ex,
+            muscleGroups: ex.muscleGroups || [],
+          })) as Exercise[],
+          templateId: w.templateId,
+          routineInstanceId: w.routineInstanceId,
+        };
+      }),
+    [dbWorkouts],
+  );
 
-  const originalWorkoutIds = new Set<string>();
-  {
+  const workoutTemplates = useMemo<WorkoutTemplate[]>(
+    () =>
+      dbTemplates.map((t) => ({
+        id: t.id,
+        name: t.name,
+        exercises: (t.exercises as any[]).map((ex: any) => ({
+          ...ex,
+          muscleGroups: ex.muscleGroups || [],
+        })) as Exercise[],
+      })),
+    [dbTemplates],
+  );
+
+  // exerciseId -> imageUrl, so getWorkoutImageUrl is O(1) per exercise.
+  const exerciseImageById = useMemo(() => {
+    const m = new Map<string, string | undefined>();
+    for (const ex of allAvailableExercises) m.set(ex.id, ex.imageUrl ?? undefined);
+    return m;
+  }, [allAvailableExercises]);
+
+  const originalWorkoutIds = useMemo(() => {
+    const ids = new Set<string>();
     const templateGroups = new Map<string, ScheduledWorkout[]>();
     for (const w of scheduledWorkouts) {
       if (w.templateId && !w.routineInstanceId) {
@@ -237,10 +260,11 @@ export default function WorkoutsPage() {
     templateGroups.forEach((workouts) => {
       if (workouts.length > 1) {
         workouts.sort((a, b) => a.date.getTime() - b.date.getTime());
-        originalWorkoutIds.add(workouts[0].id);
+        ids.add(workouts[0].id);
       }
     });
-  }
+    return ids;
+  }, [scheduledWorkouts]);
 
   const getTemplateCompletionCount = (templateId: string): number => {
     return completedWorkouts.filter(w => w.templateId === templateId).length;
@@ -573,36 +597,28 @@ export default function WorkoutsPage() {
     }
   };
 
-  const getDisplayedWorkouts = () => {
-    const workouts: (ScheduledWorkout & { displayId: string })[] = [];
-
-    scheduledWorkouts.forEach((workout) => {
-      workouts.push({
-        ...workout,
-        displayId: workout.id,
-      });
-    });
-
-    return workouts.sort((a, b) => a.date.getTime() - b.date.getTime());
-  };
-
-  const displayedWorkouts = getDisplayedWorkouts();
-  const todayWorkouts = displayedWorkouts.filter(
-    (w) => format(w.date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
-  );
-  const upcomingWorkouts = displayedWorkouts.filter(
-    (w) => format(w.date, "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
+  const displayedWorkouts = useMemo(
+    () =>
+      scheduledWorkouts
+        .map((workout) => ({ ...workout, displayId: workout.id }))
+        .sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [scheduledWorkouts],
   );
 
-  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-  const selectedDateWorkouts = displayedWorkouts.filter(
-    (w) => format(w.date, "yyyy-MM-dd") === selectedDateStr
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const todayWorkouts = useMemo(
+    () => displayedWorkouts.filter((w) => format(w.date, "yyyy-MM-dd") === todayKey),
+    [displayedWorkouts, todayKey],
+  );
+  const upcomingWorkouts = useMemo(
+    () => displayedWorkouts.filter((w) => format(w.date, "yyyy-MM-dd") !== todayKey),
+    [displayedWorkouts, todayKey],
   );
 
   const getWorkoutImageUrl = (exercises: Exercise[]) => {
     for (const ex of exercises) {
-      const sourceExercise = allAvailableExercises.find(e => e.id === ex.id);
-      if (sourceExercise?.imageUrl) return sourceExercise.imageUrl;
+      const sourceImage = exerciseImageById.get(ex.id);
+      if (sourceImage) return sourceImage;
       if (ex.imageUrl) return ex.imageUrl;
     }
     return null;
@@ -703,6 +719,7 @@ export default function WorkoutsPage() {
               const heroImage = getWorkoutImageUrl(heroWorkout.exercises);
               const heroCompleted = isWorkoutCompleted(heroWorkout.displayId);
               const heroPastDue = !heroCompleted && isBefore(startOfDay(heroWorkout.date), startOfDay(new Date()));
+              const heroRoutine = activeRoutineForHero(heroWorkout, activeRoutineInstances);
 
               return (
                 <>
@@ -751,17 +768,11 @@ export default function WorkoutsPage() {
                       />
                     </div>
                     <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 py-8" style={{ minHeight: '320px' }}>
-                      {(() => {
-                        const ai = activeRoutineForHero(heroWorkout, activeRoutineInstances);
-                        if (!ai) return null;
-                        return (
-                          <>
-                            <p className="text-xs uppercase tracking-wide text-white/70 mb-2">
-                              Day {ai.dayNumber} of {ai.totalDays} · {ai.routineName}
-                            </p>
-                          </>
-                        );
-                      })()}
+                      {heroRoutine ? (
+                        <p className="text-xs uppercase tracking-wide text-white/70 mb-2">
+                          Day {heroRoutine.dayNumber} of {heroRoutine.totalDays} · {heroRoutine.routineName}
+                        </p>
+                      ) : null}
                       <h3 className="text-2xl sm:text-3xl font-bold text-white mb-1">
                         {heroWorkout.name}
                       </h3>
@@ -769,7 +780,7 @@ export default function WorkoutsPage() {
                         {heroWorkout.exercises.length} exercises
                       </p>
                       {(() => {
-                        const ai = activeRoutineForHero(heroWorkout, activeRoutineInstances);
+                        const ai = heroRoutine;
                         if (!ai) return null;
                         const pct = Math.min(100, Math.round((ai.completedSoFar / ai.totalDays) * 100));
                         return (
