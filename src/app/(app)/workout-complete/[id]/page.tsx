@@ -13,6 +13,7 @@ import {
   calcStreak,
   detectPRs,
 } from "@/lib/workout-stats";
+import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -39,6 +40,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
   // Prior completed workouts (excluding this one) — for streak + PR detection
   const prior = await db
     .select({
+      id: completedWorkouts.id,
       exercises: completedWorkouts.exercises,
       completedAt: completedWorkouts.completedAt,
     })
@@ -50,7 +52,21 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
       ),
     );
 
-  const summary = summarizeWorkout(workout);
+  // Phase 4c: assemble this workout + all prior from the normalized tables for
+  // the summary + PR detection, falling back to each row's jsonb.
+  const normalized = await assembleNormalizedExercises([
+    workout.id,
+    ...prior.map((p) => p.id),
+  ]);
+  const workoutForStats = {
+    ...workout,
+    exercises: (normalized.get(workout.id) ?? workout.exercises) as unknown,
+  };
+  const priorForStats = prior.map((p) => ({
+    exercises: (normalized.get(p.id) ?? p.exercises) as unknown,
+  }));
+
+  const summary = summarizeWorkout(workoutForStats);
   const streakDays = calcStreak([
     workout.completedAt,
     ...prior.map((p) => p.completedAt),
@@ -64,7 +80,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
   const isAssistedById = new Map(
     allExercises.map((e) => [e.id, !!e.isAssisted]),
   );
-  const prHits = detectPRs(workout, prior, isAssistedById);
+  const prHits = detectPRs(workoutForStats, priorForStats, isAssistedById);
 
   // Persist new PRs (idempotent — skip if a row already exists for this workout/exercise/type)
   if (prHits.length > 0) {

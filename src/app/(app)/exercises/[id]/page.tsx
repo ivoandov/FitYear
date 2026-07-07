@@ -13,6 +13,7 @@ import {
 import { rewriteImageUrl } from "@/lib/image-url";
 import { lbsToDisplay } from "@/lib/units";
 import { localDateKey } from "@/lib/date";
+import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -77,9 +78,16 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
     .where(eq(completedWorkouts.userId, user.id))
     .orderBy(desc(completedWorkouts.completedAt));
 
+  // Phase 4c: prefer the normalized rows (assembled), falling back to the
+  // stored jsonb per workout. The enumeration index over the assembled sets
+  // (which are in set_number order == the jsonb array order) is the jsonb array
+  // index the fix-set-weight endpoint expects.
+  const normalized = await assembleNormalizedExercises(workouts.map((w) => w.id));
+
   const points: ProgressPoint[] = [];
   for (const w of workouts) {
-    const exs = (w.exercises as ExerciseInWorkoutJson[]) ?? [];
+    const exs = (normalized.get(w.id) ??
+      (Array.isArray(w.exercises) ? w.exercises : [])) as ExerciseInWorkoutJson[];
     const match = exs.find((e) => e.id === id);
     if (!match?.setsData) continue;
     const completedSets = match.setsData

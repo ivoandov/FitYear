@@ -92,9 +92,19 @@ export async function seedCompletedFor(
       ],
     },
   ]);
-  await sql`
+  const [cw] = await sql`
     insert into completed_workouts (user_id, display_id, name, exercises, completed_at)
-    values (${userId}::uuid, ${`e2e-pr-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())`;
+    values (${userId}::uuid, ${`e2e-pr-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())
+    returning id`;
+  // Mirror into the normalized tables so seeds match real (dual-written) rows.
+  const [we] = await sql`
+    insert into workout_exercises
+      (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)
+    values (${cw.id}, ${exerciseId}, 0, 'PR Exercise', ${JSON.stringify(["Chest"])}::jsonb, 'weight_reps', false)
+    returning id`;
+  await sql`
+    insert into workout_sets (workout_exercise_id, set_number, weight_lbs, reps, distance, time, completed)
+    values (${we.id}, 1, ${weightLbs}, ${reps}, 0, 0, true)`;
 }
 
 // Seed an exercise owned by a specific user. `is_public=false` on purpose so
