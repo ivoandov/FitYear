@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/hooks/use-toast";
 import { displayToLbs, type WeightUnit } from "@/lib/units";
 import type { SetData } from "@/lib/workout-stats";
 
@@ -108,7 +108,8 @@ export function usePrDetection(
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
           ? "—"
           : `${runningBestWeight} lbs`;
-        toast(`🏆 ${exerciseName} — new weight PR!`, {
+        toast({
+          title: `🏆 ${exerciseName} — new weight PR!`,
           description: assisted
             ? `${setWeightLbs} lbs assist (was ${prevLabel}) — less help = harder`
             : `${setWeightLbs} lbs (was ${prevLabel})`,
@@ -117,7 +118,8 @@ export function usePrDetection(
       // Volume PR only meaningful for non-assisted exercises
       if (!assisted && volume > runningMaxVolume) {
         isPr = true;
-        toast(`⭐ ${exerciseName} — new volume PR!`, {
+        toast({
+          title: `⭐ ${exerciseName} — new volume PR!`,
           description: `${setWeightLbs} × ${setReps} = ${volume} lbs (was ${runningMaxVolume || "—"})`,
         });
       }

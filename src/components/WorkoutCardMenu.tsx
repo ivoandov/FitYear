@@ -47,6 +47,7 @@ export function WorkoutCardMenu({
           variant="ghost"
           size="icon"
           className={triggerClassName}
+          aria-label={`Options for ${name}`}
           data-testid={`button-workout-menu-${displayId}`}
         >
           <MoreVertical className="h-4 w-4" />

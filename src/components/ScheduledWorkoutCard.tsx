@@ -86,6 +86,7 @@ export function ScheduledWorkoutCard({
             size="icon"
             className="shrink-0 aspect-square"
             onClick={() => onStart(workout.displayId)}
+            aria-label={`Start ${workout.name}`}
             data-testid={`button-start-workout-${workout.displayId}`}
           >
             <Play className="h-4 w-4" />

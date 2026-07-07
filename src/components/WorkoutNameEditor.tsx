@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Pencil, Check, X } from "lucide-react";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
-import { toast } from "sonner";
+import { toast } from "@/hooks/use-toast";
 
 /**
  * Inline-editable workout title on the completion summary. The name is
@@ -45,7 +45,7 @@ export function WorkoutNameEditor({
     } catch (e) {
       setName(prev);
       setValue(prev);
-      toast("Couldn't rename workout", { description: describeApiError(e) });
+      toast({ title: "Couldn't rename workout", description: describeApiError(e) });
     } finally {
       setSaving(false);
     }

@@ -686,7 +686,8 @@ export default function WorkoutsPage() {
           <div className="flex items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" data-testid="button-calendar">
+                <Button variant="outline" size="icon" aria-label="Open calendar"
+                  data-testid="button-calendar">
                   <CalendarIcon className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
@@ -936,6 +937,7 @@ export default function WorkoutsPage() {
                       <Button
                         size="icon"
                         onClick={() => handleRestartWorkout(workout)}
+                        aria-label={`Repeat ${workout.name}`}
                         data-testid={`button-restart-workout-${index}`}
                       >
                         <Play className="h-4 w-4" />
@@ -945,6 +947,7 @@ export default function WorkoutsPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            aria-label={`Options for ${workout.name}`}
                             data-testid={`button-recent-workout-menu-${index}`}
                           >
                             <MoreVertical className="h-4 w-4" />
@@ -1017,6 +1020,7 @@ export default function WorkoutsPage() {
                           variant="ghost"
                           size="icon"
                           className={templateImage ? 'text-white' : ''}
+                          aria-label={`Options for ${template.name}`}
                           data-testid={`button-library-workout-menu-${template.id}`}
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -1068,6 +1072,7 @@ export default function WorkoutsPage() {
                       size="icon"
                       className="shrink-0 aspect-square"
                       onClick={() => handleStartFromTemplate(template.id)}
+                      aria-label={`Start ${template.name}`}
                       data-testid={`button-start-library-workout-${template.id}`}
                     >
                       <Play className="h-4 w-4" />

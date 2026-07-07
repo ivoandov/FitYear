@@ -85,6 +85,7 @@ function ExerciseCardImpl({
               <button
                 className="absolute top-2 right-2 text-white drop-shadow-lg hover:text-red-400 transition-colors z-10"
                 onClick={handleDeleteClick}
+                aria-label={`Delete ${name}`}
                 data-testid={`button-delete-exercise-${id}`}
               >
                 <X className="h-6 w-6" strokeWidth={3} />
@@ -98,6 +99,7 @@ function ExerciseCardImpl({
                   onRegenerateImage(id);
                 }}
                 disabled={isRegenerating}
+                aria-label={`Regenerate image for ${name}`}
                 data-testid={`button-regenerate-image-${id}`}
               >
                 <RefreshCw className={`h-4 w-4 ${isRegenerating ? 'animate-spin' : ''}`} strokeWidth={2.5} />
@@ -108,6 +110,7 @@ function ExerciseCardImpl({
           <button
             className="absolute top-2 right-2 text-muted-foreground hover:text-red-500 transition-colors z-10"
             onClick={handleDeleteClick}
+            aria-label={`Delete ${name}`}
             data-testid={`button-delete-exercise-${id}`}
           >
             <X className="h-5 w-5" strokeWidth={2.5} />

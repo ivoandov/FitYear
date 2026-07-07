@@ -34,7 +34,7 @@ import {
   getDefaultSets as getDefaultSetsHelper,
 } from "@/lib/track-helpers";
 import { usePrDetection } from "@/hooks/use-pr-detection";
-import { toast } from "sonner";
+import { toast } from "@/hooks/use-toast";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
@@ -430,7 +430,8 @@ export default function TrackPage() {
       // sets are preserved in state/localStorage, so DON'T navigate away and
       // DON'T pretend it saved — tell the user and let them tap Finish again.
       if (!newId) {
-        toast("Couldn't save your workout", {
+        toast({
+          title: "Couldn't save your workout",
           description:
             "Something went wrong saving. Your progress is kept — check your connection and tap Finish again.",
         });
@@ -449,11 +450,13 @@ export default function TrackPage() {
             if (ri) {
               const day = ri.completedWorkouts;
               if (day < ri.totalWorkouts) {
-                toast(`🎯 Day ${day} complete — Day ${day + 1} unlocked`, {
+                toast({
+                  title: `🎯 Day ${day} complete — Day ${day + 1} unlocked`,
                   description: ri.routineName,
                 });
               } else {
-                toast(`🏁 Routine complete: ${ri.routineName}`, {
+                toast({
+                  title: `🏁 Routine complete: ${ri.routineName}`,
                   description: `${ri.totalWorkouts} workouts done`,
                 });
               }
@@ -522,7 +525,8 @@ export default function TrackPage() {
     }
     const newId = await completeWorkout(toLbsMap(exerciseSets));
     if (!newId) {
-      toast("Couldn't save your workout", {
+      toast({
+        title: "Couldn't save your workout",
         description:
           "Something went wrong saving. Your progress is kept — check your connection and try again.",
       });
@@ -678,6 +682,7 @@ export default function TrackPage() {
                 size="icon"
                 onClick={handlePreviousExercise}
                 disabled={currentExerciseIndex === 0}
+                aria-label="Previous exercise"
                 data-testid="button-previous-exercise"
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -695,6 +700,7 @@ export default function TrackPage() {
                 size="icon"
                 onClick={handleNextExercise}
                 disabled={currentExerciseIndex === enrichedWorkoutExercises.length - 1}
+                aria-label="Next exercise"
                 data-testid="button-next-exercise"
               >
                 <ChevronRight className="h-5 w-5" />
@@ -771,6 +777,7 @@ export default function TrackPage() {
                   size="icon"
                   variant="ghost"
                   onClick={() => setTrackingState("resting")}
+                  aria-label="Start rest timer"
                   data-testid="button-start-rest-timer"
                 >
                   <Play className="h-4 w-4" />
