@@ -19,17 +19,22 @@ type ExerciseLike = {
   setsData?: SetLike[];
 };
 
+// The transaction handle drizzle hands to db.transaction's callback, so the
+// same row-writing logic can run standalone (its own tx) or be composed into a
+// caller's transaction (Phase 4d: atomic with the completed_workouts write).
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 /**
- * Phase 4 dual-write: mirror a completed workout's exercises + sets into the
- * normalized workout_exercises / workout_sets tables. Replaces any existing
- * normalized rows for the workout (so it's correct for edits too), all in one
- * transaction so a partial normalized state can never exist.
- *
- * IMPORTANT: callers run this BEST-EFFORT (try/catch, report to Sentry) so a
- * failure here can never break the primary jsonb write, which remains the
- * source of truth until reads are switched over (Phase 4c).
+ * Write a completed workout's exercises + sets into the normalized
+ * workout_exercises / workout_sets tables, using the caller's transaction.
+ * Replaces any existing normalized rows for the workout (so it's correct for
+ * edits too). Since Phase 4d the normalized tables are the SOLE store, so
+ * callers run this INSIDE the same transaction as the completed_workouts
+ * insert/update — a failure rolls the whole save back (authoritative, not
+ * best-effort), so a workout can never persist without its sets.
  */
-export async function writeNormalizedWorkout(
+export async function writeNormalizedRows(
+  tx: Tx,
   completedWorkoutId: string,
   exercises: unknown,
 ): Promise<void> {
@@ -37,43 +42,49 @@ export async function writeNormalizedWorkout(
     ? (exercises as ExerciseLike[])
     : [];
 
-  await db.transaction(async (tx) => {
-    // Replace existing rows (cascade drops their sets) so edits re-sync cleanly.
-    await tx
-      .delete(workoutExercises)
-      .where(eq(workoutExercises.completedWorkoutId, completedWorkoutId));
+  // Replace existing rows (cascade drops their sets) so edits re-sync cleanly.
+  await tx
+    .delete(workoutExercises)
+    .where(eq(workoutExercises.completedWorkoutId, completedWorkoutId));
 
-    for (let position = 0; position < exs.length; position++) {
-      const ex = exs[position];
-      const [we] = await tx
-        .insert(workoutExercises)
-        .values({
-          completedWorkoutId,
-          exerciseId: ex.id ?? "",
-          position,
-          nameSnapshot: ex.name ?? null,
-          muscleGroupsSnapshot: (ex.muscleGroups ?? null) as never,
-          exerciseType: ex.exerciseType ?? null,
-          isAssisted: ex.isAssisted ?? null,
-        })
-        .returning({ id: workoutExercises.id });
+  for (let position = 0; position < exs.length; position++) {
+    const ex = exs[position];
+    const [we] = await tx
+      .insert(workoutExercises)
+      .values({
+        completedWorkoutId,
+        exerciseId: ex.id ?? "",
+        position,
+        nameSnapshot: ex.name ?? null,
+        muscleGroupsSnapshot: (ex.muscleGroups ?? null) as never,
+        exerciseType: ex.exerciseType ?? null,
+        isAssisted: ex.isAssisted ?? null,
+      })
+      .returning({ id: workoutExercises.id });
 
-      const sets = Array.isArray(ex.setsData) ? ex.setsData : [];
-      if (sets.length > 0) {
-        await tx.insert(workoutSets).values(
-          sets.map((s, i) => ({
-            workoutExerciseId: we.id,
-            setNumber: s.setNumber ?? i + 1,
-            weightLbs: s.weight ?? null,
-            reps: s.reps ?? null,
-            distance: s.distance ?? null,
-            time: s.time ?? null,
-            completed: !!s.completed,
-          })),
-        );
-      }
+    const sets = Array.isArray(ex.setsData) ? ex.setsData : [];
+    if (sets.length > 0) {
+      await tx.insert(workoutSets).values(
+        sets.map((s, i) => ({
+          workoutExerciseId: we.id,
+          setNumber: s.setNumber ?? i + 1,
+          weightLbs: s.weight ?? null,
+          reps: s.reps ?? null,
+          distance: s.distance ?? null,
+          time: s.time ?? null,
+          completed: !!s.completed,
+        })),
+      );
     }
-  });
+  }
+}
+
+/** Standalone variant: runs its own transaction. */
+export async function writeNormalizedWorkout(
+  completedWorkoutId: string,
+  exercises: unknown,
+): Promise<void> {
+  await db.transaction((tx) => writeNormalizedRows(tx, completedWorkoutId, exercises));
 }
 
 /** One exercise in the same slim shape the API has always returned from jsonb. */

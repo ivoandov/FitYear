@@ -125,7 +125,9 @@ export const completedWorkouts = pgTable(
     templateId: varchar("template_id"),
     displayId: text("display_id").notNull(),
     name: text("name").notNull(),
-    exercises: jsonb("exercises").notNull(),
+    // Phase 4d: the per-set data lives in workout_exercises / workout_sets. The
+    // legacy `exercises` jsonb column was retired here (renamed to
+    // exercises_legacy in the DB as a parachute, pending a final drop).
     completedAt: timestamp("completed_at").notNull().defaultNow(),
     startedAt: timestamp("started_at"),
     durationSeconds: integer("duration_seconds"),

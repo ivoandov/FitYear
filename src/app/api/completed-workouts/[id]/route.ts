@@ -1,13 +1,12 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
 import { completedWorkouts, userSettings } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { deleteCalendarEvent, isCalendarConnected } from "@/lib/calendar";
-import { writeNormalizedWorkout } from "@/lib/db/normalized-workout";
+import { writeNormalizedRows } from "@/lib/db/normalized-workout";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,25 +35,31 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;
-  if (body.exercises !== undefined) update.exercises = body.exercises;
   if (body.completedAt !== undefined) update.completedAt = new Date(body.completedAt);
 
-  const [updated] = await db
-    .update(completedWorkouts)
-    .set(update)
-    .where(eq(completedWorkouts.id, id))
-    .returning();
-
-  // Phase 4 dual-write (best-effort): re-sync the normalized rows when the
-  // exercises changed. Never fails the request; jsonb stays authoritative.
-  if (body.exercises !== undefined) {
-    try {
-      await writeNormalizedWorkout(id, body.exercises);
-    } catch (e) {
-      console.error("[dual-write] normalized update failed", e);
-      Sentry.captureException(e);
+  // Phase 4d: update the row and re-sync its normalized exercises/sets in ONE
+  // transaction (the normalized tables are the sole store). A set-write failure
+  // rolls the whole edit back rather than leaving the workout half-updated.
+  const updated = await db.transaction(async (tx) => {
+    let row;
+    if (Object.keys(update).length > 0) {
+      [row] = await tx
+        .update(completedWorkouts)
+        .set(update)
+        .where(eq(completedWorkouts.id, id))
+        .returning();
+    } else {
+      [row] = await tx
+        .select()
+        .from(completedWorkouts)
+        .where(eq(completedWorkouts.id, id))
+        .limit(1);
     }
-  }
+    if (body.exercises !== undefined) {
+      await writeNormalizedRows(tx, id, body.exercises);
+    }
+    return row;
+  });
 
   return updated;
 });

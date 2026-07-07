@@ -72,22 +72,19 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
       id: completedWorkouts.id,
       name: completedWorkouts.name,
       completedAt: completedWorkouts.completedAt,
-      exercises: completedWorkouts.exercises,
     })
     .from(completedWorkouts)
     .where(eq(completedWorkouts.userId, user.id))
     .orderBy(desc(completedWorkouts.completedAt));
 
-  // Phase 4c: prefer the normalized rows (assembled), falling back to the
-  // stored jsonb per workout. The enumeration index over the assembled sets
-  // (which are in set_number order == the jsonb array order) is the jsonb array
-  // index the fix-set-weight endpoint expects.
+  // Phase 4d: assemble the per-set data from the normalized tables (sole store).
+  // The enumeration index over the assembled sets (in set_number order) is what
+  // the fix-set-weight endpoint expects as setIdx.
   const normalized = await assembleNormalizedExercises(workouts.map((w) => w.id));
 
   const points: ProgressPoint[] = [];
   for (const w of workouts) {
-    const exs = (normalized.get(w.id) ??
-      (Array.isArray(w.exercises) ? w.exercises : [])) as ExerciseInWorkoutJson[];
+    const exs = (normalized.get(w.id) ?? []) as ExerciseInWorkoutJson[];
     const match = exs.find((e) => e.id === id);
     if (!match?.setsData) continue;
     const completedSets = match.setsData

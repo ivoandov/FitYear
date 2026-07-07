@@ -52,22 +52,20 @@ export async function seedCompletedWorkout(
   userId: string,
   name: string,
 ): Promise<void> {
-  const exercises = JSON.stringify([
-    {
-      id: "seed-ex",
-      name: "Bench Press",
-      muscleGroups: ["Chest"],
-      exerciseType: "weight_reps",
-      isAssisted: false,
-      completedSets: 1,
-      setsData: [
-        { setNumber: 1, weight: 135, reps: 5, distance: 0, time: 0, completed: true },
-      ],
-    },
-  ]);
+  // Phase 4d: seed the normalized tables (the sole store), not a jsonb blob, so
+  // the seed matches how real workouts are stored + read.
+  const [cw] = await sql`
+    insert into completed_workouts (user_id, display_id, name, completed_at)
+    values (${userId}::uuid, ${`e2e-${Date.now()}-${counter++}`}, ${name}, now())
+    returning id`;
+  const [we] = await sql`
+    insert into workout_exercises
+      (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)
+    values (${cw.id}, 'seed-ex', 0, 'Bench Press', ${JSON.stringify(["Chest"])}::jsonb, 'weight_reps', false)
+    returning id`;
   await sql`
-    insert into completed_workouts (user_id, display_id, name, exercises, completed_at)
-    values (${userId}::uuid, ${`e2e-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())`;
+    insert into workout_sets (workout_exercise_id, set_number, weight_lbs, reps, distance, time, completed)
+    values (${we.id}, 1, 135, 5, 0, 0, true)`;
 }
 
 // Seed a completed workout containing a specific exercise id at a given weight,
@@ -79,24 +77,11 @@ export async function seedCompletedFor(
   weightLbs: number,
   reps: number,
 ): Promise<void> {
-  const exercises = JSON.stringify([
-    {
-      id: exerciseId,
-      name: "PR Exercise",
-      muscleGroups: ["Chest"],
-      exerciseType: "weight_reps",
-      isAssisted: false,
-      completedSets: 1,
-      setsData: [
-        { setNumber: 1, weight: weightLbs, reps, distance: 0, time: 0, completed: true },
-      ],
-    },
-  ]);
+  // Phase 4d: normalized tables only (no jsonb blob).
   const [cw] = await sql`
-    insert into completed_workouts (user_id, display_id, name, exercises, completed_at)
-    values (${userId}::uuid, ${`e2e-pr-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())
+    insert into completed_workouts (user_id, display_id, name, completed_at)
+    values (${userId}::uuid, ${`e2e-pr-${Date.now()}-${counter++}`}, ${name}, now())
     returning id`;
-  // Mirror into the normalized tables so seeds match real (dual-written) rows.
   const [we] = await sql`
     insert into workout_exercises
       (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)

@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
-import { writeNormalizedWorkout, assembleNormalizedExercises } from "@/lib/db/normalized-workout";
+import { writeNormalizedRows, assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 import {
   completedWorkouts,
   scheduledWorkouts,
@@ -18,29 +18,6 @@ import {
   isCalendarConnected,
 } from "@/lib/calendar";
 
-// The stored exercises JSON carries fields the client never reads back from
-// here — imageUrl (~38% of the payload), description, instanceId, and default*
-// are all re-derived from /api/exercises via enrichExercise (or only matter
-// during live tracking). Stripping them shrinks this global, every-page query
-// by ~57% (e.g. 375KB -> ~160KB) with no behavior change. Keep only what the
-// client actually uses: id (enrich key), name/muscleGroups/exerciseType/
-// isAssisted (fallback + stats + PR detection), and setsData (the real data).
-function slimExercises(exercises: unknown): unknown {
-  if (!Array.isArray(exercises)) return exercises;
-  return exercises.map((ex) => {
-    const e = ex as Record<string, unknown>;
-    return {
-      id: e.id,
-      name: e.name,
-      muscleGroups: e.muscleGroups,
-      exerciseType: e.exerciseType,
-      isAssisted: e.isAssisted,
-      completedSets: e.completedSets,
-      setsData: e.setsData,
-    };
-  });
-}
-
 export const GET = handle(async () => {
   const { user } = await requireUser();
   const rows = await db
@@ -49,23 +26,20 @@ export const GET = handle(async () => {
     .where(eq(completedWorkouts.userId, user.id))
     .orderBy(desc(completedWorkouts.completedAt));
 
-  // Phase 4c: assemble `exercises[]` from the normalized tables (byte-identical
-  // slim shape), falling back to the stored jsonb for any workout that somehow
-  // has no normalized rows (shouldn't happen post-backfill; warn if it does and
-  // the jsonb actually had exercises).
+  // Phase 4d: assemble `exercises[]` from the normalized tables (the sole store)
+  // in the slim shape clients have always consumed. A workout with no normalized
+  // rows is unexpected post-cutover (parity-verified) — return an empty list and
+  // flag it to Sentry rather than crashing.
   const normalized = await assembleNormalizedExercises(rows.map((r) => r.id));
   return rows.map((r) => {
     const norm = normalized.get(r.id);
-    if (norm && norm.length > 0) return { ...r, exercises: norm };
-    const jsonbExs = Array.isArray(r.exercises) ? r.exercises : [];
-    if (jsonbExs.length > 0) {
-      console.warn("[4c] no normalized rows for completed workout", r.id);
+    if (!norm || norm.length === 0) {
       Sentry.captureMessage(
-        `completed-workout ${r.id} served from jsonb (no normalized rows)`,
+        `completed-workout ${r.id} has no normalized rows`,
         "warning",
       );
     }
-    return { ...r, exercises: slimExercises(r.exercises) };
+    return { ...r, exercises: norm ?? [] };
   });
 });
 
@@ -118,31 +92,27 @@ export const POST = handle(async (request: NextRequest) => {
   const scheduledRoutineInstanceId =
     scheduledWorkoutRow?.routineInstanceId ?? null;
 
-  const [created] = await db
-    .insert(completedWorkouts)
-    .values({
-      userId: user.id,
-      templateId,
-      displayId: body.displayId,
-      name: body.name,
-      exercises: body.exercises,
-      completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
-      startedAt: body.startedAt ? new Date(body.startedAt) : null,
-      durationSeconds: body.durationSeconds ?? null,
-      routineInstanceId: scheduledRoutineInstanceId,
-    })
-    .returning();
-
-  // Phase 4 dual-write (best-effort): mirror into the normalized tables. Never
-  // fails the request — the jsonb above stays the source of truth until reads
-  // are switched over. A failure is reported to Sentry and reconciled by the
-  // backfill script.
-  try {
-    await writeNormalizedWorkout(created.id, body.exercises);
-  } catch (e) {
-    console.error("[dual-write] normalized insert failed", e);
-    Sentry.captureException(e);
-  }
+  // Phase 4d: insert the workout and its normalized exercises/sets in ONE
+  // transaction — the normalized tables are the sole store, so a failure to
+  // write the sets must roll the whole save back (the request then 500s and the
+  // client retries) rather than persist a workout with no sets.
+  const created = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(completedWorkouts)
+      .values({
+        userId: user.id,
+        templateId,
+        displayId: body.displayId,
+        name: body.name,
+        completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
+        startedAt: body.startedAt ? new Date(body.startedAt) : null,
+        durationSeconds: body.durationSeconds ?? null,
+        routineInstanceId: scheduledRoutineInstanceId,
+      })
+      .returning();
+    await writeNormalizedRows(tx, row.id, body.exercises);
+    return row;
+  });
 
   // Stage 2: parallel side effects after the insert succeeds.
   //   - Routine progress increment

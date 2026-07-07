@@ -1,5 +1,15 @@
-import type { CompletedWorkout } from "@/lib/db/schema";
 import { localDateKey } from "@/lib/date";
+
+// These operate on the ASSEMBLED workout shape (exercises[] built from the
+// normalized tables), not a raw DB row — so they're typed locally rather than
+// Pick<CompletedWorkout, ...>. Since Phase 4d the completed_workouts row has no
+// `exercises` column at all.
+export interface WorkoutForSummary {
+  exercises: unknown;
+  completedAt: Date | string;
+  startedAt: Date | string | null;
+  durationSeconds: number | null;
+}
 
 export interface SetData {
   setNumber: number;
@@ -28,7 +38,7 @@ export interface WorkoutSummary {
 }
 
 export function summarizeWorkout(
-  workout: Pick<CompletedWorkout, "exercises" | "completedAt" | "startedAt" | "durationSeconds">,
+  workout: WorkoutForSummary,
 ): WorkoutSummary {
   const exercises = (workout.exercises as ExerciseInWorkout[]) || [];
   let totalSets = 0;
@@ -157,8 +167,8 @@ export interface PrHit {
  * default to false (normal).
  */
 export function detectPRs(
-  currentWorkout: Pick<CompletedWorkout, "exercises">,
-  priorWorkouts: Pick<CompletedWorkout, "exercises">[],
+  currentWorkout: { exercises: unknown },
+  priorWorkouts: { exercises: unknown }[],
   isAssistedById: Map<string, boolean> = new Map(),
 ): PrHit[] {
   // For normal exercises we track MAX; for assisted we track MIN (over

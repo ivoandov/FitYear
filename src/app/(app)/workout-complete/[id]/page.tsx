@@ -41,7 +41,6 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
   const prior = await db
     .select({
       id: completedWorkouts.id,
-      exercises: completedWorkouts.exercises,
       completedAt: completedWorkouts.completedAt,
     })
     .from(completedWorkouts)
@@ -52,18 +51,18 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
       ),
     );
 
-  // Phase 4c: assemble this workout + all prior from the normalized tables for
-  // the summary + PR detection, falling back to each row's jsonb.
+  // Phase 4d: assemble this workout + all prior from the normalized tables (sole
+  // store) for the summary + PR detection.
   const normalized = await assembleNormalizedExercises([
     workout.id,
     ...prior.map((p) => p.id),
   ]);
   const workoutForStats = {
     ...workout,
-    exercises: (normalized.get(workout.id) ?? workout.exercises) as unknown,
+    exercises: (normalized.get(workout.id) ?? []) as unknown,
   };
   const priorForStats = prior.map((p) => ({
-    exercises: (normalized.get(p.id) ?? p.exercises) as unknown,
+    exercises: (normalized.get(p.id) ?? []) as unknown,
   }));
 
   const summary = summarizeWorkout(workoutForStats);
