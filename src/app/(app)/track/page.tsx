@@ -29,6 +29,10 @@ import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { convertWeight, lbsToDisplay, displayToLbs, LB_PER_KG } from "@/lib/units";
 import { type SetData } from "@/lib/workout-stats";
+import {
+  getLastRecordedValues as getLastRecordedValuesHelper,
+  getDefaultSets as getDefaultSetsHelper,
+} from "@/lib/track-helpers";
 import { toast } from "sonner";
 
 type TrackingState = "not_started" | "in_set" | "resting";
@@ -309,71 +313,13 @@ export default function TrackPage() {
     clearTrackingProgress();
   };
 
-  // Find the best set (highest weight) for an exercise from the most recent workout that contained it
-  const getLastRecordedValues = (exerciseId: string): { weight: number; reps: number; distance: number; time: number } | null => {
-    // Sort completed workouts by date descending to get most recent first
-    const sortedWorkouts = [...completedWorkouts].sort((a, b) => 
-      b.completedAt.getTime() - a.completedAt.getTime()
-    );
-    
-    for (const workout of sortedWorkouts) {
-      const exercise = workout.exercises.find(ex => ex.id === exerciseId) as any;
-      if (exercise?.setsData && exercise.setsData.length > 0) {
-        const completedSets = exercise.setsData.filter((s: any) => s.completed);
-        if (completedSets.length > 0) {
-          // For weight/reps exercises, show the set with the highest weight
-          // For distance/time exercises, show the set with the longest distance
-          const bestSet = completedSets.reduce((best: any, s: any) => {
-            const sWeight = s.weight ?? 0;
-            const bestWeight = best.weight ?? 0;
-            const sDistance = s.distance ?? 0;
-            const bestDistance = best.distance ?? 0;
-            if (sWeight !== bestWeight) return sWeight > bestWeight ? s : best;
-            return sDistance > bestDistance ? s : best;
-          });
-          return {
-            weight: bestSet.weight ?? null,
-            reps: bestSet.reps ?? null,
-            distance: bestSet.distance ?? null,
-            time: bestSet.time ?? null,
-          };
-        }
-      }
-    }
-    return null;
-  };
+  // Thin wrappers over the tested helpers in lib/track-helpers, closing over
+  // the current completed workouts + display unit.
+  const getLastRecordedValues = (exerciseId: string) =>
+    getLastRecordedValuesHelper(completedWorkouts, exerciseId);
 
-  const getDefaultSets = (exerciseId?: string, exerciseType?: string): SetData[] => {
-    const lastValues = exerciseId ? getLastRecordedValues(exerciseId) : null;
-    
-    // Distance/time exercises default to 1 set, weight/reps default to 3 sets
-    const isDistanceTime = exerciseType === "distance_time";
-    
-    if (lastValues) {
-      const displayWeight = fromLbs(lastValues.weight);
-      if (isDistanceTime) {
-        return [
-          { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
-        ];
-      }
-      return [
-        { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
-        { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
-        { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
-      ];
-    }
-    
-    if (isDistanceTime) {
-      return [
-        { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
-      ];
-    }
-    return [
-      { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
-      { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
-      { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
-    ];
-  };
+  const getDefaultSets = (exerciseId?: string, exerciseType?: string): SetData[] =>
+    getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType);
 
   const getCurrentSets = (): SetData[] => {
     const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
