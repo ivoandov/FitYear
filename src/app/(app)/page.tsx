@@ -112,7 +112,7 @@ export default function WorkoutsPage() {
   const [updateFutureTemplateId, setUpdateFutureTemplateId] = useState<string | null>(null);
   const [isUpdatingFuture, setIsUpdatingFuture] = useState(false);
 
-  const { data: dbWorkouts = [], isLoading } = useQuery<DBScheduledWorkout[]>({
+  const { data: dbWorkouts = [], isLoading, isError, error } = useQuery<DBScheduledWorkout[]>({
     queryKey: ["/api/scheduled-workouts"],
   });
 
@@ -768,6 +768,30 @@ export default function WorkoutsPage() {
         <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12">
           <div className="text-center py-12">
             <p className="text-muted-foreground">Loading workouts...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Explicit error state: without this a failed /api/scheduled-workouts fetch
+  // fell through to the empty "No workouts scheduled" state, which could lead a
+  // user to recreate data they hadn't actually lost. Offer a retry instead.
+  if (isError) {
+    return (
+      <div className="flex-1 overflow-auto h-full">
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12">
+          <div className="text-center py-12 space-y-4">
+            <p className="text-destructive" data-testid="text-workouts-error">
+              Couldn&apos;t load your workouts. {describeApiError(error)}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] })}
+              data-testid="button-retry-workouts"
+            >
+              Try again
+            </Button>
           </div>
         </div>
       </div>
