@@ -1,4 +1,5 @@
 import type { CompletedWorkout } from "@/lib/db/schema";
+import { localDateKey } from "@/lib/date";
 
 export interface SetData {
   setNumber: number;
@@ -113,19 +114,14 @@ export function formatDuration(seconds: number | null): string {
 
 export function calcStreak(completedAtList: Date[]): number {
   if (!completedAtList.length) return 0;
-  // Bucket completed_at into local-date strings, sort descending
-  const days = new Set(
-    completedAtList.map((d) => {
-      const x = new Date(d);
-      return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-    }),
-  );
+  // Bucket completed_at into local-date keys
+  const days = new Set(completedAtList.map((d) => localDateKey(new Date(d))));
   const today = new Date();
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const cursor = new Date(today);
     cursor.setDate(today.getDate() - i);
-    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+    const key = localDateKey(cursor);
     if (days.has(key)) {
       streak++;
     } else if (i === 0) {

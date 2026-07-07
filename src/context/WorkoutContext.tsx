@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useRef, useCal
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { deriveWorkoutName, type SetData } from "@/lib/workout-stats";
+import { parseServerDate, localDateKey } from "@/lib/date";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -332,20 +333,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const completedWorkouts: CompletedWorkoutRecord[] = completedWorkoutsData.map((w: any) => {
-    // Parse the date ensuring it's treated as local time if no timezone is specified
-    let completedAt: Date;
-    if (w.completedAt) {
-      const dateStr = w.completedAt;
-      // If the date string doesn't have timezone info, treat it as UTC and convert to local
-      if (!dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
-        completedAt = new Date(dateStr + 'Z');
-      } else {
-        completedAt = new Date(dateStr);
-      }
-    } else {
-      completedAt = new Date();
-    }
-    
+    // Robustly parse the server timestamp (no-tz strings treated as UTC).
+    const completedAt = w.completedAt ? parseServerDate(w.completedAt) : new Date();
+
     return {
       id: w.id,
       displayId: w.displayId,
@@ -371,8 +361,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       durationSeconds?: number;
       scheduledWorkoutId?: string;
     }) => {
-      const localDate = workout.completedAt;
-      const localDateStr = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, "0")}-${String(localDate.getDate()).padStart(2, "0")}`;
+      const localDateStr = localDateKey(workout.completedAt);
 
       return apiRequest("POST", "/api/completed-workouts", {
         displayId: workout.displayId,

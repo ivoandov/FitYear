@@ -18,6 +18,7 @@ import {
   displayToLbs as displayToLbsShared,
 } from "@/lib/units";
 import { type SetData } from "@/lib/workout-stats";
+import { localDateKey } from "@/lib/date";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
 // convert back to lbs before saving. These thin wrappers route through the
@@ -84,7 +85,7 @@ export function WorkoutHistoryCard({
 
   const syncCalendarMutation = useMutation({
     mutationFn: async () => {
-      const localDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const localDateStr = localDateKey(date);
       return apiRequest("POST", `/api/completed-workouts/${workoutId}/sync-calendar`, { localDate: localDateStr });
     },
     onSuccess: () => {

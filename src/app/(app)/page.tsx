@@ -40,6 +40,7 @@ import { type Exercise } from "@/data/exercises";
 import { useWorkout } from "@/context/WorkoutContext";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
+import { localDateKey } from "@/lib/date";
 import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
 
@@ -320,7 +321,7 @@ export default function WorkoutsPage() {
   const createMutation = useMutation({
     mutationFn: async (workout: { name: string; date: Date; exercises: Exercise[]; templateId?: string }) => {
       // Send both UTC timestamp and local date string for correct calendar sync
-      const localDate = `${workout.date.getFullYear()}-${String(workout.date.getMonth() + 1).padStart(2, '0')}-${String(workout.date.getDate()).padStart(2, '0')}`;
+      const localDate = localDateKey(workout.date);
       return apiRequest("POST", "/api/scheduled-workouts", {
         name: workout.name,
         date: workout.date.toISOString(),
@@ -345,7 +346,7 @@ export default function WorkoutsPage() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...workout }: { id: string; name: string; date: Date; exercises: Exercise[] }) => {
       // Send both UTC timestamp and local date string for correct handling
-      const localDate = `${workout.date.getFullYear()}-${String(workout.date.getMonth() + 1).padStart(2, '0')}-${String(workout.date.getDate()).padStart(2, '0')}`;
+      const localDate = localDateKey(workout.date);
       return apiRequest("PUT", `/api/scheduled-workouts/${id}`, {
         name: workout.name,
         date: workout.date.toISOString(),
@@ -438,7 +439,7 @@ export default function WorkoutsPage() {
           
           for (let i = 0; i < numOccurrences; i++) {
             const workoutDate = addDays(data.date, intervalDays * i);
-            const localDate = `${workoutDate.getFullYear()}-${String(workoutDate.getMonth() + 1).padStart(2, '0')}-${String(workoutDate.getDate()).padStart(2, '0')}`;
+            const localDate = localDateKey(workoutDate);
             await apiRequest("POST", "/api/scheduled-workouts", {
               name: data.name,
               date: workoutDate.toISOString(),
@@ -529,7 +530,7 @@ export default function WorkoutsPage() {
           
           for (let i = 0; i < numOccurrences; i++) {
             const workoutDate = addDays(data.date, intervalDays * i);
-            const localDate = `${workoutDate.getFullYear()}-${String(workoutDate.getMonth() + 1).padStart(2, '0')}-${String(workoutDate.getDate()).padStart(2, '0')}`;
+            const localDate = localDateKey(workoutDate);
             await apiRequest("POST", "/api/scheduled-workouts", {
               name: data.name,
               date: workoutDate.toISOString(),
@@ -675,7 +676,7 @@ export default function WorkoutsPage() {
 
   const confirmScheduleAgain = async () => {
     if (scheduleAgainWorkout) {
-      const localDate = `${scheduleAgainDate.getFullYear()}-${String(scheduleAgainDate.getMonth() + 1).padStart(2, '0')}-${String(scheduleAgainDate.getDate()).padStart(2, '0')}`;
+      const localDate = localDateKey(scheduleAgainDate);
       try {
         await apiRequest("POST", "/api/scheduled-workouts", {
           name: scheduleAgainWorkout.name,

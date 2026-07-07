@@ -8,6 +8,7 @@ import {
   createCalendarEvent,
   isCalendarConnected,
 } from "@/lib/calendar";
+import { localDateKey } from "@/lib/date";
 
 export const maxDuration = 60;
 
@@ -19,7 +20,7 @@ type SyncedWorkout = {
 };
 
 function localDateString(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return localDateKey(d);
 }
 
 export const POST = handle(async () => {

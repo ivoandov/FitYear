@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleCalendarTokens } from "@/lib/db/schema";
 import { encryptToken, decryptToken, isEncrypted } from "@/lib/token-crypto";
+import { localDateKey } from "@/lib/date";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -163,14 +164,13 @@ function dateRange(d: Date | string, localDateStr?: string) {
   if (localDateStr) {
     startDateStr = localDateStr;
     const [y, m, dd] = localDateStr.split("-").map(Number);
-    const end = new Date(y, m - 1, dd + 1);
-    endDateStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+    endDateStr = localDateKey(new Date(y, m - 1, dd + 1));
   } else {
     const date = typeof d === "string" ? new Date(d) : d;
-    startDateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    startDateStr = localDateKey(date);
     const end = new Date(date);
     end.setDate(end.getDate() + 1);
-    endDateStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+    endDateStr = localDateKey(end);
   }
   return { startDateStr, endDateStr };
 }

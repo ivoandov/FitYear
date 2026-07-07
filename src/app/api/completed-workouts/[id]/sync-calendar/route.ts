@@ -6,6 +6,7 @@ import { completedWorkouts, userSettings } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { createCalendarEvent, isCalendarConnected } from "@/lib/calendar";
+import { localDateKey } from "@/lib/date";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -45,9 +46,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   const date = workout.completedAt instanceof Date
     ? workout.completedAt
     : new Date(workout.completedAt);
-  const localDateStr =
-    body?.localDate ??
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const localDateStr = body?.localDate ?? localDateKey(date);
 
   const eventId = await createCalendarEvent(
     user.id,

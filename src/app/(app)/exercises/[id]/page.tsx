@@ -12,6 +12,7 @@ import {
 } from "@/components/ExerciseProgressChart";
 import { rewriteImageUrl } from "@/lib/image-url";
 import { lbsToDisplay } from "@/lib/units";
+import { localDateKey } from "@/lib/date";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -100,9 +101,10 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
       const e = epley1RM(s.weight, s.reps);
       if (e > best1RM) best1RM = e;
     }
-    // Drizzle returns timestamp columns as Date; use UTC slice for a stable
-    // YYYY-MM-DD that doesn't shift across client TZs.
-    const dateStr = new Date(w.completedAt).toISOString().slice(0, 10);
+    // Bucket by local calendar day (the app-wide convention, matching
+    // calcStreak) instead of a UTC slice, which shifted late-evening workouts
+    // into the next day and made the chart disagree with the streak.
+    const dateStr = localDateKey(w.completedAt);
     points.push({
       workoutId: w.id,
       workoutName: w.name,

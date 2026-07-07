@@ -4,6 +4,7 @@ import { completedWorkouts, userSettings } from "@/lib/db/schema";
 import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { createCalendarEvent, isCalendarConnected } from "@/lib/calendar";
+import { localDateKey } from "@/lib/date";
 
 // Iterates all completed workouts; per-workout calendar API calls add up.
 // Bumping past Hobby's default 10s; ~1 event per ~300ms keeps us well under 60s
@@ -18,7 +19,7 @@ type SyncedWorkout = {
 };
 
 function localDateString(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return localDateKey(d);
 }
 
 export const POST = handle(async () => {
