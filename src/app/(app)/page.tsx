@@ -274,6 +274,28 @@ export default function WorkoutsPage() {
     }
   };
 
+  // Schedule the recurring instances of a workout from data.date, spaced by the
+  // repeat interval (daily=7 occurrences, else 4). Returns the count scheduled.
+  // The caller owns query invalidation + the success toast (they differ per
+  // flow). Was duplicated verbatim in two handleSaveWorkout branches.
+  const scheduleRecurring = async (data: WorkoutData, templateId: string): Promise<number> => {
+    const intervalDays = data.repeatType === "daily" ? 1
+      : data.repeatType === "weekly" ? 7
+      : (data.repeatInterval || 1);
+    const numOccurrences = data.repeatType === "daily" ? 7 : 4;
+    for (let i = 0; i < numOccurrences; i++) {
+      const workoutDate = addDays(data.date, intervalDays * i);
+      await apiRequest("POST", "/api/scheduled-workouts", {
+        name: data.name,
+        date: workoutDate.toISOString(),
+        localDate: localDateKey(workoutDate),
+        exercises: data.exercises,
+        templateId,
+      });
+    }
+    return numOccurrences;
+  };
+
   const handleSaveWorkout = async (data: WorkoutData) => {
     if (editingCompletedWorkout) {
       updateCompletedWorkout(editingCompletedWorkout.id, data.name, data.exercises, data.date);
@@ -287,30 +309,12 @@ export default function WorkoutsPage() {
             exercises: data.exercises,
           });
           const template = await templateRes.json();
-          
-          // Calculate dates for recurring workouts
-          const intervalDays = data.repeatType === "daily" ? 1 
-            : data.repeatType === "weekly" ? 7 
-            : (data.repeatInterval || 1);
-          
-          // Schedule next 4 occurrences starting from the selected date
-          const numOccurrences = data.repeatType === "daily" ? 7 : 4;
-          
-          for (let i = 0; i < numOccurrences; i++) {
-            const workoutDate = addDays(data.date, intervalDays * i);
-            const localDate = localDateKey(workoutDate);
-            await apiRequest("POST", "/api/scheduled-workouts", {
-              name: data.name,
-              date: workoutDate.toISOString(),
-              localDate,
-              exercises: data.exercises,
-              templateId: template.id,
-            });
-          }
-          
+
+          const numOccurrences = await scheduleRecurring(data, template.id);
+
           queryClient.invalidateQueries({ queryKey: ["/api/workout-templates"] });
           queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
-          
+
           toast({
             title: "Workout Updated & Scheduled",
             description: `${data.name} updated and ${numOccurrences} future workouts scheduled.`,
@@ -378,29 +382,12 @@ export default function WorkoutsPage() {
           exercises: data.exercises,
         });
         const template = await templateRes.json();
-        
-        // Calculate dates for recurring workouts
+
         if (data.repeatType && data.repeatType !== "none") {
-          const intervalDays = data.repeatType === "daily" ? 1 
-            : data.repeatType === "weekly" ? 7 
-            : (data.repeatInterval || 1);
-          
-          const numOccurrences = data.repeatType === "daily" ? 7 : 4;
-          
-          for (let i = 0; i < numOccurrences; i++) {
-            const workoutDate = addDays(data.date, intervalDays * i);
-            const localDate = localDateKey(workoutDate);
-            await apiRequest("POST", "/api/scheduled-workouts", {
-              name: data.name,
-              date: workoutDate.toISOString(),
-              localDate,
-              exercises: data.exercises,
-              templateId: template.id,
-            });
-          }
-          
+          const numOccurrences = await scheduleRecurring(data, template.id);
+
           queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
-          
+
           toast({
             title: "Workout Created",
             description: `${data.name} scheduled with ${numOccurrences} occurrences.`,
