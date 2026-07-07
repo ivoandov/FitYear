@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Trophy, Dumbbell } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Dumbbell } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkout, type TrackingProgress } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
@@ -33,6 +33,7 @@ import {
   getLastRecordedValues as getLastRecordedValuesHelper,
   getDefaultSets as getDefaultSetsHelper,
 } from "@/lib/track-helpers";
+import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "sonner";
 
 type TrackingState = "not_started" | "in_set" | "resting";
@@ -78,9 +79,6 @@ export default function TrackPage() {
   // Discard-confirm for finishing a workout with zero logged sets (junk guard).
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
-  // Tracks which (instanceId, setIndex) pairs hit a PR during this workout — used
-  // to render the persistent neon "PR" badge on those rows.
-  const [prSetMarkers, setPrSetMarkers] = useState<Map<string, Set<number>>>(new Map());
   const restCloseProcessed = useRef(false);
 
   const { data: exercises = [] } = useQuery<Exercise[]>({
@@ -109,120 +107,13 @@ export default function TrackPage() {
     [exercises],
   );
 
-  // isAssisted lookup — assisted exercises (e.g. assisted pull-up machine)
-  // INVERT weight PR direction: lower counterweight = harder = PR.
-  const isAssistedById = useMemo(() => {
-    const m = new Map<string, boolean>();
-    for (const ex of exercises) m.set(ex.id, !!ex.isAssisted);
-    return m;
-  }, [exercises]);
-
-  // Historical bests per exerciseId (in lbs/db units) — used for in-workout PR detection.
-  // For normal exercises: best = maximum weight; for assisted: best = minimum weight.
-  // Volume PR only tracked for non-assisted (weight*reps is meaningless when "weight"
-  // is a counter-assist).
-  const historicalBests = useMemo(() => {
-    const bests = new Map<string, { bestWeight: number; maxVolume: number; assisted: boolean }>();
-    for (const w of completedWorkouts) {
-      for (const ex of w.exercises as Array<{ id: string; setsData?: Array<{ weight?: number | null; reps?: number | null; completed?: boolean }> }>) {
-        const assisted = isAssistedById.get(ex.id) === true;
-        for (const s of ex.setsData ?? []) {
-          if (!s.completed) continue;
-          const wt = s.weight || 0;
-          if (wt <= 0) continue; // ignore zero-weight rows
-          const cur = bests.get(ex.id);
-          if (!cur) {
-            bests.set(ex.id, {
-              bestWeight: wt,
-              maxVolume: assisted ? 0 : wt * (s.reps || 0),
-              assisted,
-            });
-            continue;
-          }
-          if (assisted) {
-            if (wt < cur.bestWeight) cur.bestWeight = wt;
-          } else {
-            if (wt > cur.bestWeight) cur.bestWeight = wt;
-            const vol = wt * (s.reps || 0);
-            if (vol > cur.maxVolume) cur.maxVolume = vol;
-          }
-        }
-      }
-    }
-    return bests;
-  }, [completedWorkouts, isAssistedById]);
-
-  /**
-   * Called when a set is marked complete. Compares the set vs historical bests
-   * (and any earlier set in THIS workout for the same exercise) and fires PR
-   * toasts when applicable. Updates `prSetMarkers` so the row keeps a neon
-   * border + PR badge for the rest of the workout.
-   */
-  const checkForPRs = (
-    exerciseId: string,
-    instanceId: string,
-    exerciseName: string,
-    setIndex: number,
-    setWeightLbs: number,
-    setReps: number,
-  ) => {
-    if (setWeightLbs <= 0 || setReps <= 0) return;
-    const assisted = isAssistedById.get(exerciseId) === true;
-    const volume = setWeightLbs * setReps;
-    const hist = historicalBests.get(exerciseId);
-
-    // Running best across earlier sets in THIS workout for the same instance.
-    // For normal exercises track max; for assisted track min (over non-zero weights).
-    let runningBestWeight = hist?.bestWeight ?? (assisted ? Number.POSITIVE_INFINITY : 0);
-    let runningMaxVolume = hist?.maxVolume ?? 0;
-    const earlierSets = (exerciseSets.get(instanceId) ?? []).slice(0, setIndex);
-    for (const s of earlierSets) {
-      if (!s.completed) continue;
-      const wLbs = toLbs(s.weight) ?? 0;
-      if (wLbs <= 0) continue;
-      const r = s.reps ?? 0;
-      if (assisted) {
-        if (wLbs < runningBestWeight) runningBestWeight = wLbs;
-      } else {
-        if (wLbs > runningBestWeight) runningBestWeight = wLbs;
-        const v = wLbs * r;
-        if (v > runningMaxVolume) runningMaxVolume = v;
-      }
-    }
-
-    let isPr = false;
-    const isWeightPr = assisted
-      ? runningBestWeight === Number.POSITIVE_INFINITY || setWeightLbs < runningBestWeight
-      : setWeightLbs > runningBestWeight;
-    if (isWeightPr) {
-      isPr = true;
-      const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
-        ? "—"
-        : `${runningBestWeight} lbs`;
-      toast(`🏆 ${exerciseName} — new weight PR!`, {
-        description: assisted
-          ? `${setWeightLbs} lbs assist (was ${prevLabel}) — less help = harder`
-          : `${setWeightLbs} lbs (was ${prevLabel})`,
-      });
-    }
-    // Volume PR only meaningful for non-assisted exercises
-    if (!assisted && volume > runningMaxVolume) {
-      isPr = true;
-      toast(`⭐ ${exerciseName} — new volume PR!`, {
-        description: `${setWeightLbs} × ${setReps} = ${volume} lbs (was ${runningMaxVolume || "—"})`,
-      });
-    }
-
-    if (isPr) {
-      setPrSetMarkers((prev) => {
-        const next = new Map(prev);
-        const setForInstance = new Set(next.get(instanceId) ?? []);
-        setForInstance.add(setIndex);
-        next.set(instanceId, setForInstance);
-        return next;
-      });
-    }
-  };
+  // In-workout PR detection (historical bests + toasts + persistent markers)
+  // lives in usePrDetection; TrackPage just wires it up and reads prSetMarkers.
+  const { prSetMarkers, checkForPRs } = usePrDetection(
+    completedWorkouts,
+    exercises,
+    weightUnit,
+  );
 
   // The unit the in-memory weights are currently expressed in. Single source of
   // truth for conversions: the restore effect seeds it, the live effect below
@@ -464,6 +355,7 @@ export default function TrackPage() {
             currentSetIndex,
             wLbs,
             reps,
+            exerciseSets,
           );
         }
       }
@@ -886,7 +778,10 @@ export default function TrackPage() {
                         <div className="flex items-center gap-1 font-medium text-sm sm:text-base">
                           {set.setNumber}
                           {isPR ? (
-                            <span className="rounded bg-primary/20 px-1 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wide">
+                            <span
+                              className="rounded bg-primary/20 px-1 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wide"
+                              data-testid={`pr-badge-${set.setNumber}`}
+                            >
                               PR
                             </span>
                           ) : null}
@@ -983,6 +878,7 @@ export default function TrackPage() {
                                       index,
                                       wLbs,
                                       reps,
+                                      exerciseSets,
                                     );
                                   }
                                 }

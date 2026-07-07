@@ -70,6 +70,33 @@ export async function seedCompletedWorkout(
     values (${userId}::uuid, ${`e2e-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())`;
 }
 
+// Seed a completed workout containing a specific exercise id at a given weight,
+// so the tracker's historical-bests (PR detection) has a prior best to beat.
+export async function seedCompletedFor(
+  userId: string,
+  exerciseId: string,
+  name: string,
+  weightLbs: number,
+  reps: number,
+): Promise<void> {
+  const exercises = JSON.stringify([
+    {
+      id: exerciseId,
+      name: "PR Exercise",
+      muscleGroups: ["Chest"],
+      exerciseType: "weight_reps",
+      isAssisted: false,
+      completedSets: 1,
+      setsData: [
+        { setNumber: 1, weight: weightLbs, reps, distance: 0, time: 0, completed: true },
+      ],
+    },
+  ]);
+  await sql`
+    insert into completed_workouts (user_id, display_id, name, exercises, completed_at)
+    values (${userId}::uuid, ${`e2e-pr-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())`;
+}
+
 // Seed an exercise owned by a specific user. `is_public=false` on purpose so
 // the test proves the catalog is fully shared regardless of the legacy flag
 // (before Item 9, is_public=false hid it from other users).
