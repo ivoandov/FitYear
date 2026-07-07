@@ -12,7 +12,14 @@ import { useWorkout } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
+import { localDateKey } from "@/lib/date";
 import type { ExerciseGoal } from "@/lib/db/schema";
+
+// Pure range check (module scope so it isn't reallocated per render, and so it's
+// safe to use inside the memos below without being a dependency).
+function isWithinRange(date: Date, start: Date, end: Date): boolean {
+  return (isAfter(date, start) || isEqual(date, start)) && (isBefore(date, end) || isEqual(date, end));
+}
 
 export default function HistoryPage() {
   const { completedWorkouts } = useWorkout();
@@ -77,19 +84,24 @@ export default function HistoryPage() {
     };
   }), [completedWorkouts, enrichExercise]);
 
-  const now = new Date();
-  const todayEnd = endOfDay(now);
-  const weekStartsOn = weekStartDay === "monday" ? 1 : 0;
-  const calendarWeekStart = startOfWeek(now, { weekStartsOn });
-  const monthStart = startOfMonth(now);
-  
-  const last7DaysStart = new Date(now);
-  last7DaysStart.setDate(last7DaysStart.getDate() - 6);
-  last7DaysStart.setHours(0, 0, 0, 0);
-
-  const isWithinRange = (date: Date, start: Date, end: Date) => {
-    return (isAfter(date, start) || isEqual(date, start)) && (isBefore(date, end) || isEqual(date, end));
-  };
+  // Recompute the date boundaries only when the local day (or the week-start
+  // setting) changes, not on every render. Previously these were fresh Date
+  // objects each render and were used as memo deps below, so the expensive
+  // aggregations (weekly muscle sets, goal progress) never hit their cache.
+  const dayKey = localDateKey(new Date());
+  const { todayEnd, calendarWeekStart, monthStart, last7DaysStart } = useMemo(() => {
+    const now = new Date();
+    const weekStartsOn = weekStartDay === "monday" ? 1 : 0;
+    const last7 = new Date(now);
+    last7.setDate(last7.getDate() - 6);
+    last7.setHours(0, 0, 0, 0);
+    return {
+      todayEnd: endOfDay(now),
+      calendarWeekStart: startOfWeek(now, { weekStartsOn }),
+      monthStart: startOfMonth(now),
+      last7DaysStart: last7,
+    };
+  }, [dayKey, weekStartDay]);
 
   const workoutsThisWeek = historyData.filter((w) =>
     isWithinRange(w.date, calendarWeekStart, todayEnd)
@@ -103,13 +115,13 @@ export default function HistoryPage() {
   const totalVolume = historyData.reduce((sum, w) => sum + w.totalVolume, 0);
   const totalSetsCompleted = historyData.reduce((sum, w) => sum + w.totalSets, 0);
 
-  const calculateWeeklySetsByMuscle = () => {
+  const weeklySetsByMuscleGroup = useMemo(() => {
     const setsByMuscle: { [key: string]: number } = {};
 
     historyData.forEach((workout) => {
       if (isWithinRange(workout.date, last7DaysStart, todayEnd)) {
         workout.exercises?.forEach((exercise) => {
-          const setCount = exercise.sets?.filter((s: any) => 
+          const setCount = exercise.sets?.filter((s: any) =>
             (s.weight != null && s.reps) || (s.distance && s.time) || s.completed
           ).length || 0;
           exercise.muscleGroups?.forEach((muscle: string) => {
@@ -125,7 +137,7 @@ export default function HistoryPage() {
       sets: setsByMuscle[muscle] || 0,
       maxSets: 20,
     }));
-  };
+  }, [historyData, last7DaysStart, todayEnd, muscleGroups]);
 
   // Calculate rolling 7-day reps per exercise for goals (weekly progress)
   const goalProgress = useMemo(() => {
@@ -168,8 +180,6 @@ export default function HistoryPage() {
     });
     return repsByGoalId;
   }, [completedWorkouts, goals]);
-
-  const weeklySetsByMuscleGroup = calculateWeeklySetsByMuscle();
 
   const stats = [
     { label: "Total Workouts", value: totalWorkouts.toString(), icon: Calendar, testId: "total-workouts" },
