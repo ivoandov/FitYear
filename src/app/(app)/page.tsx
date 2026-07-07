@@ -45,6 +45,7 @@ import { localDateKey } from "@/lib/date";
 import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
 import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
+import { ScheduledWorkoutCard } from "@/components/ScheduledWorkoutCard";
 
 interface ScheduledWorkout {
   id: string;
@@ -808,60 +809,24 @@ export default function WorkoutsPage() {
                         const isCompleted = isWorkoutCompleted(workout.displayId);
                         const workoutImage = getWorkoutImageUrl(workout.exercises);
                         return (
-                          <div key={workout.displayId} className="aspect-square" data-testid={`card-workout-${workout.displayId}`}>
-                            <Card className="border-0 h-full flex flex-col relative overflow-hidden">
-                              {workoutImage && (
-                                <>
-                                  <img src={workoutImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30" />
-                                </>
-                              )}
-                              <div className="relative flex items-start justify-between p-4 sm:p-5 z-10">
-                                <CardTitle className={`text-lg sm:text-xl font-semibold flex-1 break-words line-clamp-2 ${workoutImage ? 'text-white' : ''}`}>
-                                  {workout.name}
-                                </CardTitle>
-                                <WorkoutCardMenu
-                                  displayId={workout.displayId}
-                                  workoutId={workout.id}
-                                  name={workout.name}
-                                  templateId={workout.templateId}
-                                  routineInstanceId={workout.routineInstanceId}
-                                  triggerClassName={workoutImage ? 'text-white' : undefined}
-                                  onEdit={handleEditWorkout}
-                                  onEditTemplate={handleEditTemplate}
-                                  onSkip={handleSkipWorkout}
-                                  onDelete={handleDeleteWorkout}
-                                />
-                              </div>
-                              {!workoutImage && (
-                                <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
-                                  <Dumbbell className="h-12 w-12 sm:h-14 sm:w-14 text-primary opacity-60" />
-                                </div>
-                              )}
-                              {workoutImage && <div className="flex-1" />}
-                              <div className="relative px-4 sm:px-5 pb-4 sm:pb-5 flex items-center justify-between gap-2 z-10">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className={`text-sm sm:text-base ${workoutImage ? 'text-white/70' : 'text-muted-foreground'}`}>
-                                    {format(workout.date, "MMM d, yyyy")}
-                                  </p>
-                                  {isCompleted && (
-                                    <Badge variant="outline" className="text-green-500 border-green-500">
-                                      <Check className="h-3 w-3 mr-1" />
-                                      Done
-                                    </Badge>
-                                  )}
-                                </div>
-                                <Button
-                                  size="icon"
-                                  className="shrink-0 aspect-square"
-                                  onClick={() => handleStartWorkout(workout.displayId)}
-                                  data-testid={`button-start-workout-${workout.displayId}`}
-                                >
-                                  <Play className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </Card>
-                          </div>
+                          <ScheduledWorkoutCard
+                            key={workout.displayId}
+                            workout={workout}
+                            imageUrl={workoutImage}
+                            onStart={handleStartWorkout}
+                            onEdit={handleEditWorkout}
+                            onEditTemplate={handleEditTemplate}
+                            onSkip={handleSkipWorkout}
+                            onDelete={handleDeleteWorkout}
+                            badges={
+                              isCompleted ? (
+                                <Badge variant="outline" className="text-green-500 border-green-500">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Done
+                                </Badge>
+                              ) : null
+                            }
+                          />
                         );
                       })}
                     </div>
@@ -881,75 +846,42 @@ export default function WorkoutsPage() {
                 const isPastDue = !isCompleted && isBefore(startOfDay(workout.date), startOfDay(new Date()));
                 const workoutImage = getWorkoutImageUrl(workout.exercises);
                 return (
-                  <div key={workout.displayId} className="aspect-square" data-testid={`card-workout-${workout.displayId}`}>
-                    <Card className="border-0 h-full flex flex-col relative overflow-hidden">
-                      {workoutImage && (
-                        <>
-                          <img src={workoutImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30" />
-                        </>
-                      )}
-                      <div className="relative flex items-start justify-between p-4 sm:p-5 z-10">
-                        <CardTitle className={`text-lg sm:text-xl md:text-[1.75rem] font-semibold flex-1 break-words line-clamp-2 ${workoutImage ? 'text-white' : ''}`}>
-                          {workout.name}
-                        </CardTitle>
-                        <WorkoutCardMenu
-                          displayId={workout.displayId}
-                          workoutId={workout.id}
-                          name={workout.name}
-                          templateId={workout.templateId}
-                          routineInstanceId={workout.routineInstanceId}
-                          triggerClassName={workoutImage ? 'text-white' : undefined}
-                          onEdit={handleEditWorkout}
-                          onEditTemplate={handleEditTemplate}
-                          onSkip={handleSkipWorkout}
-                          onDelete={handleDeleteWorkout}
-                        />
-                      </div>
-                      {!workoutImage && (
-                        <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
-                          <Dumbbell className="h-12 w-12 sm:h-14 sm:w-14 text-primary opacity-60" />
-                        </div>
-                      )}
-                      {workoutImage && <div className="flex-1" />}
-                      <div className="relative px-4 sm:px-5 pb-4 sm:pb-5 flex items-center justify-between gap-2 z-10">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className={`text-sm sm:text-base ${workoutImage ? 'text-white/70' : 'text-muted-foreground'}`}>
-                            {format(workout.date, "MMM d, yyyy")}
-                          </p>
-                          {isPastDue && (
-                            <Badge variant="outline" className="text-red-500 border-red-500 bg-red-950/30">
-                              Past Due
-                            </Badge>
-                          )}
-                          {isCompleted && (
-                            <Badge variant="outline" className="text-green-500 border-green-500">
-                              <Check className="h-3 w-3 mr-1" />
-                              Done
-                            </Badge>
-                          )}
-                          {workout.routineInstanceId && (
-                            <Badge variant="outline" className="text-primary border-primary/50">
-                              {routineInstanceMap.get(workout.routineInstanceId) || "Routine"}
-                            </Badge>
-                          )}
-                          {originalWorkoutIds.has(workout.id) && (
-                            <Badge variant="outline" className="text-blue-400 border-blue-400/50" data-testid={`badge-original-${workout.displayId}`}>
-                              Original
-                            </Badge>
-                          )}
-                        </div>
-                        <Button
-                          size="icon"
-                          className="shrink-0 aspect-square"
-                          onClick={() => handleStartWorkout(workout.displayId)}
-                          data-testid={`button-start-workout-${workout.displayId}`}
-                        >
-                          <Play className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </Card>
-                  </div>
+                  <ScheduledWorkoutCard
+                    key={workout.displayId}
+                    workout={workout}
+                    imageUrl={workoutImage}
+                    titleExtraClass="md:text-[1.75rem]"
+                    onStart={handleStartWorkout}
+                    onEdit={handleEditWorkout}
+                    onEditTemplate={handleEditTemplate}
+                    onSkip={handleSkipWorkout}
+                    onDelete={handleDeleteWorkout}
+                    badges={
+                      <>
+                        {isPastDue && (
+                          <Badge variant="outline" className="text-red-500 border-red-500 bg-red-950/30">
+                            Past Due
+                          </Badge>
+                        )}
+                        {isCompleted && (
+                          <Badge variant="outline" className="text-green-500 border-green-500">
+                            <Check className="h-3 w-3 mr-1" />
+                            Done
+                          </Badge>
+                        )}
+                        {workout.routineInstanceId && (
+                          <Badge variant="outline" className="text-primary border-primary/50">
+                            {routineInstanceMap.get(workout.routineInstanceId) || "Routine"}
+                          </Badge>
+                        )}
+                        {originalWorkoutIds.has(workout.id) && (
+                          <Badge variant="outline" className="text-blue-400 border-blue-400/50" data-testid={`badge-original-${workout.displayId}`}>
+                            Original
+                          </Badge>
+                        )}
+                      </>
+                    }
+                  />
                 );
               })}
             </div>
