@@ -104,10 +104,11 @@ export async function seedExercise(
   userId: string,
   name: string,
   muscleGroups: string[] = ["Forearms"],
+  exerciseType: "weight_reps" | "distance_time" = "weight_reps",
 ): Promise<string> {
   const [row] = await sql`
     insert into exercises (user_id, is_public, name, muscle_groups, description, exercise_type)
-    values (${userId}::uuid, false, ${name}, ${JSON.stringify(muscleGroups)}::jsonb, 'seeded by e2e', 'weight_reps')
+    values (${userId}::uuid, false, ${name}, ${JSON.stringify(muscleGroups)}::jsonb, 'seeded by e2e', ${exerciseType})
     returning id`;
   return row.id as string;
 }

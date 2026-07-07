@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { RestTimer } from "@/components/RestTimer";
+import { SetRow } from "@/components/track/SetRow";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
@@ -27,7 +27,7 @@ import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
 import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
-import { convertWeight, lbsToDisplay, displayToLbs, LB_PER_KG } from "@/lib/units";
+import { convertWeight, lbsToDisplay, displayToLbs } from "@/lib/units";
 import { type SetData } from "@/lib/workout-stats";
 import {
   getLastRecordedValues as getLastRecordedValuesHelper,
@@ -330,6 +330,39 @@ export default function TrackPage() {
       reps: next.reps ?? current.reps,
     };
     return updated;
+  };
+
+  // Unified set-complete handler for both exercise types (was two near-identical
+  // inline checkbox handlers). Distance/time sets don't propagate or PR-check.
+  const handleToggleSetComplete = (index: number, checked: boolean) => {
+    const isDistanceTime = currentExercise?.exerciseType === "distance_time";
+    let newSets = [...sets];
+    newSets[index].completed = checked;
+    if (checked && !isDistanceTime) {
+      newSets = propagateToNextSet(newSets, index);
+    }
+    setCurrentSets(newSets);
+    if (!checked) return;
+
+    if (!isDistanceTime) {
+      // PR check (in-workout)
+      const completedSet = newSets[index];
+      const wLbs = toLbs(completedSet.weight) ?? 0;
+      const reps = completedSet.reps ?? 0;
+      if (currentExercise && activeWorkout) {
+        const ex = activeWorkout.exercises[currentExerciseIndex];
+        if (ex) {
+          checkForPRs(ex.id, ex.instanceId, currentExercise.name, index, wLbs, reps, exerciseSets);
+        }
+      }
+    }
+    if (restTimerOnManualComplete) {
+      setTrackingState("resting");
+    }
+    if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
+      setCurrentSetIndex(currentSetIndex + 1);
+      setTrackingState("not_started");
+    }
   };
 
   const handlePrimaryAction = () => {
@@ -671,237 +704,45 @@ export default function TrackPage() {
           <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
             <div className="space-y-3 sm:space-y-4">
               {currentExercise.exerciseType === "distance_time" ? (
-                <>
-                  <div className="grid grid-cols-4 gap-2 sm:gap-4 font-semibold text-xs sm:text-sm pb-2 border-b">
-                    <div>Set</div>
-                    <div className="text-center">Distance (mi)</div>
-                    <div className="text-center">Time (min)</div>
-                    <div className="text-center">Done</div>
-                  </div>
-                  {sets.map((set, index) => {
-                    const isCurrentSet = index === currentSetIndex && !set.completed;
-                    const isActive = isCurrentSet && trackingState === "in_set";
-                    
-                    return (
-                      <div
-                        key={set.setNumber}
-                        className={`grid grid-cols-4 gap-2 sm:gap-4 items-center py-2 rounded-md px-2 border-l-2 ${
-                          isActive
-                            ? 'border-l-primary bg-primary-dim'
-                            : isCurrentSet
-                              ? 'border-l-muted-foreground/30'
-                              : 'border-l-transparent'
-                        }`}
-                        data-testid={`row-set-${set.setNumber}`}
-                      >
-                        <div className="font-medium text-sm sm:text-base">{set.setNumber}</div>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          value={set.distance ?? ""}
-                          onChange={(e) => {
-                            const newSets = [...sets];
-                            newSets[index].distance = e.target.value === "" ? null : parseFloat(e.target.value);
-                            setCurrentSets(newSets);
-                          }}
-                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
-                          data-testid={`input-distance-${set.setNumber}`}
-                        />
-                        <Input
-                          type="number"
-                          value={set.time ?? ""}
-                          onChange={(e) => {
-                            const newSets = [...sets];
-                            newSets[index].time = e.target.value === "" ? null : parseInt(e.target.value);
-                            setCurrentSets(newSets);
-                          }}
-                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
-                          data-testid={`input-time-${set.setNumber}`}
-                        />
-                        <div className="flex justify-center">
-                          <Checkbox
-                            checked={set.completed}
-                            onCheckedChange={(checked) => {
-                              const newSets = [...sets];
-                              newSets[index].completed = !!checked;
-                              setCurrentSets(newSets);
-                              if (checked) {
-                                // Start rest timer if setting is enabled
-                                if (restTimerOnManualComplete) {
-                                  setTrackingState("resting");
-                                }
-                                // If completing the current set, advance to next
-                                if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
-                                  setCurrentSetIndex(currentSetIndex + 1);
-                                  setTrackingState("not_started");
-                                }
-                              }
-                            }}
-                            data-testid={`checkbox-complete-${set.setNumber}`}
-                            className="h-5 w-5 sm:h-6 sm:w-6"
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
+                <div className="grid grid-cols-4 gap-2 sm:gap-4 font-semibold text-xs sm:text-sm pb-2 border-b">
+                  <div>Set</div>
+                  <div className="text-center">Distance (mi)</div>
+                  <div className="text-center">Time (min)</div>
+                  <div className="text-center">Done</div>
+                </div>
               ) : (
-                <>
-                  <div className="grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center font-semibold text-xs sm:text-sm pb-2 border-b">
-                    <div>Set</div>
-                    <div className="text-center">Weight ({weightUnit})</div>
-                    <div className="text-center">Reps</div>
-                    <div className="text-center">Done</div>
-                  </div>
-                  {sets.map((set, index) => {
-                    const isCurrentSet = index === currentSetIndex && !set.completed;
-                    const isActive = isCurrentSet && trackingState === "in_set";
-                    const currentInstanceId = activeWorkout?.exercises[currentExerciseIndex]?.instanceId;
-                    const isPR = currentInstanceId
-                      ? prSetMarkers.get(currentInstanceId)?.has(index) ?? false
-                      : false;
-
-                    return (
-                      <div
-                        key={set.setNumber}
-                        className={`grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center py-2 rounded-md px-2 border-l-2 ${
-                          isPR
-                            ? 'border-l-primary bg-primary-dim'
-                            : isActive
-                              ? 'border-l-primary bg-primary-dim'
-                              : isCurrentSet
-                                ? 'border-l-muted-foreground/30'
-                                : 'border-l-transparent'
-                        }`}
-                        data-testid={`row-set-${set.setNumber}`}
-                      >
-                        <div className="flex items-center gap-1 font-medium text-sm sm:text-base">
-                          {set.setNumber}
-                          {isPR ? (
-                            <span
-                              className="rounded bg-primary/20 px-1 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wide"
-                              data-testid={`pr-badge-${set.setNumber}`}
-                            >
-                              PR
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                          <div className="flex items-center gap-1 sm:gap-1.5 justify-center">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="px-1.5 text-xs font-semibold shrink-0"
-                              onClick={() => {
-                                const newSets = [...sets];
-                                const current = newSets[index].weight ?? 0;
-                                newSets[index].weight = Math.max(0, Math.round((current - weightIncrement) * 10) / 10);
-                                setCurrentSets(newSets);
-                              }}
-                              data-testid={`button-weight-minus-${set.setNumber}`}
-                            >
-                              -{weightIncrement}
-                            </Button>
-                            <Input
-                              type="number"
-                              step={weightUnit === 'kg' ? '0.5' : '1'}
-                              value={set.weight ?? ""}
-                              onChange={(e) => {
-                                const newSets = [...sets];
-                                newSets[index].weight = e.target.value === "" ? null : parseFloat(e.target.value);
-                                setCurrentSets(newSets);
-                              }}
-                              className={`text-center text-sm h-9 sm:h-10 flex-1 min-w-0 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
-                              data-testid={`input-weight-${set.setNumber}`}
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="px-1.5 text-xs font-semibold shrink-0"
-                              onClick={() => {
-                                const newSets = [...sets];
-                                const current = newSets[index].weight ?? 0;
-                                newSets[index].weight = Math.round((current + weightIncrement) * 10) / 10;
-                                setCurrentSets(newSets);
-                              }}
-                              data-testid={`button-weight-plus-${set.setNumber}`}
-                            >
-                              +{weightIncrement}
-                            </Button>
-                          </div>
-                          {showKgConversion && set.weight != null && weightUnit === 'lbs' && (
-                            <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-kg-conversion-${set.setNumber}`}>
-                              {(set.weight / LB_PER_KG).toFixed(1)} kg
-                            </p>
-                          )}
-                          {showKgConversion && set.weight != null && weightUnit === 'kg' && (
-                            <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-lbs-conversion-${set.setNumber}`}>
-                              {(set.weight * LB_PER_KG).toFixed(0)} lbs
-                            </p>
-                          )}
-                        </div>
-                        <Input
-                          type="number"
-                          value={set.reps ?? ""}
-                          onChange={(e) => {
-                            const newSets = [...sets];
-                            newSets[index].reps = e.target.value === "" ? null : parseInt(e.target.value);
-                            setCurrentSets(newSets);
-                          }}
-                          className={`text-center text-sm h-9 sm:h-10 ${set.completed ? 'bg-transparent border-transparent text-muted-foreground' : ''}`}
-                          data-testid={`input-reps-${set.setNumber}`}
-                        />
-                        <div className="flex justify-center">
-                          <Checkbox
-                            checked={set.completed}
-                            onCheckedChange={(checked) => {
-                              let newSets = [...sets];
-                              newSets[index].completed = !!checked;
-                              if (checked) {
-                                newSets = propagateToNextSet(newSets, index);
-                              }
-                              setCurrentSets(newSets);
-                              if (checked) {
-                                // PR check (in-workout)
-                                const completedSet = newSets[index];
-                                const wLbs = toLbs(completedSet.weight) ?? 0;
-                                const reps = completedSet.reps ?? 0;
-                                if (currentExercise && activeWorkout) {
-                                  const ex = activeWorkout.exercises[currentExerciseIndex];
-                                  if (ex) {
-                                    checkForPRs(
-                                      ex.id,
-                                      ex.instanceId,
-                                      currentExercise.name,
-                                      index,
-                                      wLbs,
-                                      reps,
-                                      exerciseSets,
-                                    );
-                                  }
-                                }
-
-                                if (restTimerOnManualComplete) {
-                                  setTrackingState("resting");
-                                }
-                                if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
-                                  setCurrentSetIndex(currentSetIndex + 1);
-                                  setTrackingState("not_started");
-                                }
-                              }
-                            }}
-                            data-testid={`checkbox-complete-${set.setNumber}`}
-                            className="h-5 w-5 sm:h-6 sm:w-6"
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
+                <div className="grid grid-cols-[2rem_1fr_4.5rem_2.5rem] sm:grid-cols-[2.5rem_1fr_6rem_2.5rem] gap-x-2 sm:gap-x-3 items-center font-semibold text-xs sm:text-sm pb-2 border-b">
+                  <div>Set</div>
+                  <div className="text-center">Weight ({weightUnit})</div>
+                  <div className="text-center">Reps</div>
+                  <div className="text-center">Done</div>
+                </div>
               )}
-
+              {sets.map((set, index) => {
+                const isCurrentSet = index === currentSetIndex && !set.completed;
+                const isActive = isCurrentSet && trackingState === "in_set";
+                const currentInstanceId = activeWorkout?.exercises[currentExerciseIndex]?.instanceId;
+                const isPR = !!currentInstanceId && (prSetMarkers.get(currentInstanceId)?.has(index) ?? false);
+                return (
+                  <SetRow
+                    key={set.setNumber}
+                    set={set}
+                    isDistanceTime={currentExercise.exerciseType === "distance_time"}
+                    isCurrentSet={isCurrentSet}
+                    isActive={isActive}
+                    isPR={isPR}
+                    weightUnit={weightUnit}
+                    weightIncrement={weightIncrement}
+                    showKgConversion={showKgConversion}
+                    onFieldChange={(field, value) => {
+                      const newSets = [...sets];
+                      newSets[index][field] = value;
+                      setCurrentSets(newSets);
+                    }}
+                    onToggleComplete={(checked) => handleToggleSetComplete(index, checked)}
+                  />
+                );
+              })}
               {allSetsCompleted && (
                 <Button
                   variant="outline"
