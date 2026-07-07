@@ -55,4 +55,17 @@ test("completing a workout dual-writes matching normalized rows", async ({
     (r) => Number(r.weight_lbs) === 135 && Number(r.reps) === 5,
   );
   expect(match).toBeTruthy();
+
+  // Phase 4c: the GET /api/completed-workouts response is now assembled from the
+  // normalized tables. Assert the assembled payload contains the logged set in
+  // the same shape clients expect (exercises[].setsData[]).
+  const res = await page.request.get("/api/completed-workouts");
+  expect(res.ok()).toBeTruthy();
+  const list = (await res.json()) as Array<{
+    exercises?: Array<{ setsData?: Array<{ weight: number | null; reps: number | null; completed: boolean }> }>;
+  }>;
+  const flatSets = (list[0]?.exercises ?? []).flatMap((e) => e.setsData ?? []);
+  expect(
+    flatSets.some((s) => s.weight === 135 && s.reps === 5 && s.completed === true),
+  ).toBeTruthy();
 });

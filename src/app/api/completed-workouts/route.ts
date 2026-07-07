@@ -3,7 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
-import { writeNormalizedWorkout } from "@/lib/db/normalized-workout";
+import { writeNormalizedWorkout, assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 import {
   completedWorkouts,
   scheduledWorkouts,
@@ -48,7 +48,25 @@ export const GET = handle(async () => {
     .from(completedWorkouts)
     .where(eq(completedWorkouts.userId, user.id))
     .orderBy(desc(completedWorkouts.completedAt));
-  return rows.map((r) => ({ ...r, exercises: slimExercises(r.exercises) }));
+
+  // Phase 4c: assemble `exercises[]` from the normalized tables (byte-identical
+  // slim shape), falling back to the stored jsonb for any workout that somehow
+  // has no normalized rows (shouldn't happen post-backfill; warn if it does and
+  // the jsonb actually had exercises).
+  const normalized = await assembleNormalizedExercises(rows.map((r) => r.id));
+  return rows.map((r) => {
+    const norm = normalized.get(r.id);
+    if (norm && norm.length > 0) return { ...r, exercises: norm };
+    const jsonbExs = Array.isArray(r.exercises) ? r.exercises : [];
+    if (jsonbExs.length > 0) {
+      console.warn("[4c] no normalized rows for completed workout", r.id);
+      Sentry.captureMessage(
+        `completed-workout ${r.id} served from jsonb (no normalized rows)`,
+        "warning",
+      );
+    }
+    return { ...r, exercises: slimExercises(r.exercises) };
+  });
 });
 
 const PostSchema = z.object({
