@@ -85,6 +85,23 @@ export async function seedExercise(
   return row.id as string;
 }
 
+// Seed the server-side active workout (+ tracking progress) for a user, so a
+// fresh browser context restores it on /track. Used to construct states the UI
+// won't build directly (e.g. the same exercise added twice).
+export async function seedActiveWorkout(
+  userId: string,
+  workoutData: unknown,
+  trackingProgress: unknown,
+): Promise<void> {
+  await sql`
+    insert into active_workouts (user_id, workout_data, tracking_progress, updated_at)
+    values (${userId}::uuid, ${JSON.stringify(workoutData)}::jsonb, ${JSON.stringify(trackingProgress)}::jsonb, now())
+    on conflict (user_id) do update set
+      workout_data = excluded.workout_data,
+      tracking_progress = excluded.tracking_progress,
+      updated_at = now()`;
+}
+
 export async function completedWorkoutCount(userId: string): Promise<number> {
   const r = await sql`select count(*)::int as n from completed_workouts where user_id = ${userId}::uuid`;
   return r[0].n as number;

@@ -50,7 +50,11 @@ export default function TrackPage() {
   } = useWorkout();
   const { restTimerOnManualComplete, showKgConversion } = useSettings();
   
-  const { data: userSettingsData } = useQuery<{ weightUnit?: string }>({ queryKey: ['/api/user-settings'] });
+  // `settingsPending` is true only until the query settles (data OR error), so
+  // the restore effect can wait for the real unit instead of racing the 'lbs'
+  // default. On error it settles with no data -> we fall back to 'lbs' rather
+  // than deadlocking the tracker.
+  const { data: userSettingsData, isPending: settingsPending } = useQuery<{ weightUnit?: string }>({ queryKey: ['/api/user-settings'] });
   const weightUnit = (userSettingsData?.weightUnit ?? 'lbs') as 'lbs' | 'kg';
 
   // Conversion helpers — DB always stores lbs; display in user's chosen unit.
@@ -216,44 +220,50 @@ export default function TrackPage() {
     }
   };
 
-  // Load saved progress from context on mount
+  // The unit the in-memory weights are currently expressed in. Single source of
+  // truth for conversions: the restore effect seeds it, the live effect below
+  // reads/updates it. Seeded lazily (not from the possibly-default weightUnit)
+  // because only the restore effect, gated on settings, may set it first.
+  const weightsUnitRef = useRef<'lbs' | 'kg'>(weightUnit);
+
+  // Restore saved progress once, AFTER the unit preference has settled.
+  // Gating on `settingsPending` closes a race: if restore ran at the default
+  // 'lbs' before settings resolved, a late 'kg' resolve would double-convert
+  // (restore treats the numbers as lbs, then the live effect flips lbs->kg)
+  // and drift the values. Waiting for the real unit means we convert exactly
+  // once, from the saved unit to the current unit.
   useEffect(() => {
-    if (activeWorkout && !hasLoadedSavedProgress) {
-      if (trackingProgress && trackingProgress.workoutDisplayId === activeWorkout.displayId) {
-        console.log("Restoring tracking progress from server");
-        // If the user switched units in Settings between sessions, the saved
-        // weights are in the previous display unit. Convert each weight to
-        // the current unit so the inputs match the labels they sit under.
-        // Pre-2026-06 saves don't carry a unit; we assume current unit (no
-        // conversion) — same behavior as before this fix for that case.
-        const savedUnit = (trackingProgress.weightUnit ?? weightUnit) as 'lbs' | 'kg';
-        const restoredMap = new Map<string, SetData[]>();
-        for (const [instanceId, sets] of trackingProgress.exerciseSets) {
-          const converted = savedUnit === weightUnit
-            ? sets
-            : sets.map(s => ({ ...s, weight: convertWeight(s.weight, savedUnit, weightUnit) }));
-          restoredMap.set(instanceId, converted);
-        }
-        setExerciseSets(restoredMap);
-        setCurrentExerciseIndex(trackingProgress.currentExerciseIndex);
-        setCurrentSetIndex(trackingProgress.currentSetIndex);
-        setRestTimerDuration(trackingProgress.restTimerDuration);
+    if (!activeWorkout || hasLoadedSavedProgress || settingsPending) return;
+    if (trackingProgress && trackingProgress.workoutDisplayId === activeWorkout.displayId) {
+      // Saved weights are in trackingProgress.weightUnit; convert to the current
+      // unit so inputs match their labels. Pre-2026-06 saves lack a unit and are
+      // treated as the current unit (no conversion).
+      const savedUnit = (trackingProgress.weightUnit ?? weightUnit) as 'lbs' | 'kg';
+      const restoredMap = new Map<string, SetData[]>();
+      for (const [instanceId, sets] of trackingProgress.exerciseSets) {
+        const converted = savedUnit === weightUnit
+          ? sets
+          : sets.map(s => ({ ...s, weight: convertWeight(s.weight, savedUnit, weightUnit) }));
+        restoredMap.set(instanceId, converted);
       }
-      setHasLoadedSavedProgress(true);
+      setExerciseSets(restoredMap);
+      setCurrentExerciseIndex(trackingProgress.currentExerciseIndex);
+      setCurrentSetIndex(trackingProgress.currentSetIndex);
+      setRestTimerDuration(trackingProgress.restTimerDuration);
     }
-  }, [activeWorkout, trackingProgress, hasLoadedSavedProgress, weightUnit]);
+    // The in-memory weights are now expressed in the current display unit.
+    weightsUnitRef.current = weightUnit;
+    setHasLoadedSavedProgress(true);
+  }, [activeWorkout, trackingProgress, hasLoadedSavedProgress, weightUnit, settingsPending]);
 
   // Live re-conversion: if the user switches units in Settings WHILE a workout
-  // is in progress, every in-memory weight needs to flip to the new unit so
-  // the displayed number and the unit label stay consistent. Without this,
-  // a "60" entered while in lbs would still read "60" after switching to kg
-  // (now mislabelled) and could be saved as 60 lbs from a value meant to be 27.
-  const weightsUnitRef = useRef<'lbs' | 'kg'>(weightUnit);
+  // is in progress, every in-memory weight flips to the new unit so the
+  // displayed number and its label stay consistent. Without this, a "60"
+  // entered in lbs would still read "60" after switching to kg (now mislabelled)
+  // and could be saved as 60 lbs from a value meant to be 27. Only reacts to a
+  // user-initiated change after load (weightsUnitRef is seeded by restore).
   useEffect(() => {
-    if (!hasLoadedSavedProgress) {
-      weightsUnitRef.current = weightUnit;
-      return;
-    }
+    if (!hasLoadedSavedProgress) return;
     const from = weightsUnitRef.current;
     if (from === weightUnit) return;
     weightsUnitRef.current = weightUnit;
@@ -665,32 +675,38 @@ export default function TrackPage() {
   };
 
   const handleEditSave = (data: WorkoutData) => {
-    // Since exerciseSets is now keyed by exercise ID, no remapping needed!
-    // Set data stays aligned automatically when exercises are reordered/added/removed
-    const oldExercises = activeWorkout.exercises;
+    // Relocate the current exercise by instanceId, not id. The whole tracking
+    // subsystem (exerciseSets, PR markers) is keyed on instanceId; a findIndex
+    // by id lands on the FIRST occurrence, so with a duplicated exercise the
+    // edit jumps to the wrong instance. instanceIds are preserved through the
+    // editor via updateActiveWorkout's pool.
+    const currentInstanceId = (
+      activeWorkout.exercises[currentExerciseIndex] as { instanceId?: string } | undefined
+    )?.instanceId;
     const newExercises = data.exercises;
-    
+
     updateActiveWorkout(data.name, data.exercises);
     setIsEditDialogOpen(false);
-    
-    // Reset to first exercise if current exercise was removed
+
+    // Reset to the last exercise if the current one fell off the end.
     if (currentExerciseIndex >= newExercises.length) {
       setCurrentExerciseIndex(Math.max(0, newExercises.length - 1));
       setCurrentSetIndex(0);
       setTrackingState("not_started");
-    } else {
-      // Check if current exercise still exists (might be at a different index now)
-      const currentExId = oldExercises[currentExerciseIndex]?.id;
-      const newIndex = newExercises.findIndex(ex => ex.id === currentExId);
-      if (newIndex >= 0 && newIndex !== currentExerciseIndex) {
-        // Move to the new index of the same exercise
-        setCurrentExerciseIndex(newIndex);
-      } else if (newIndex < 0) {
-        // Current exercise was removed, go to first exercise
-        setCurrentExerciseIndex(0);
-        setCurrentSetIndex(0);
-        setTrackingState("not_started");
-      }
+      return;
+    }
+
+    // Find where this exact instance landed in the edited list.
+    const newIndex = newExercises.findIndex(
+      (ex) => (ex as { instanceId?: string }).instanceId === currentInstanceId,
+    );
+    if (newIndex >= 0 && newIndex !== currentExerciseIndex) {
+      setCurrentExerciseIndex(newIndex);
+    } else if (newIndex < 0) {
+      // Current instance was removed — go to the first exercise.
+      setCurrentExerciseIndex(0);
+      setCurrentSetIndex(0);
+      setTrackingState("not_started");
     }
   };
 
