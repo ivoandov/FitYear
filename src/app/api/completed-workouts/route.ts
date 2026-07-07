@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
+import { writeNormalizedWorkout } from "@/lib/db/normalized-workout";
 import {
   completedWorkouts,
   scheduledWorkouts,
@@ -112,6 +114,17 @@ export const POST = handle(async (request: NextRequest) => {
       routineInstanceId: scheduledRoutineInstanceId,
     })
     .returning();
+
+  // Phase 4 dual-write (best-effort): mirror into the normalized tables. Never
+  // fails the request — the jsonb above stays the source of truth until reads
+  // are switched over. A failure is reported to Sentry and reconciled by the
+  // backfill script.
+  try {
+    await writeNormalizedWorkout(created.id, body.exercises);
+  } catch (e) {
+    console.error("[dual-write] normalized insert failed", e);
+    Sentry.captureException(e);
+  }
 
   // Stage 2: parallel side effects after the insert succeeds.
   //   - Routine progress increment

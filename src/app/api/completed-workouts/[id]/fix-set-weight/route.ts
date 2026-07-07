@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
+import * as Sentry from "@sentry/nextjs";
 import { db } from "@/lib/db";
-import { completedWorkouts } from "@/lib/db/schema";
+import { completedWorkouts, workoutExercises, workoutSets } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
@@ -74,6 +75,38 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
     SET exercises = jsonb_set(exercises, ${sql.raw(pathLiteral)}, ${sql.raw(newWeightLiteral)}, false)
     WHERE id = ${workoutId} AND user_id = ${user.id}::uuid
   `);
+
+  // Phase 4 mirror (best-effort): keep the normalized workout_sets row in sync
+  // with the jsonb fix. Reads still come from jsonb until 4c, so a miss here is
+  // reconciled by the backfill; never fail the request.
+  try {
+    const targetSetNumber =
+      (sets[setIdxNum] as { setNumber?: number }).setNumber ?? setIdxNum + 1;
+    const [we] = await db
+      .select({ id: workoutExercises.id })
+      .from(workoutExercises)
+      .where(
+        and(
+          eq(workoutExercises.completedWorkoutId, workoutId),
+          eq(workoutExercises.position, exIdx),
+        ),
+      )
+      .limit(1);
+    if (we) {
+      await db
+        .update(workoutSets)
+        .set({ weightLbs: newWeight })
+        .where(
+          and(
+            eq(workoutSets.workoutExerciseId, we.id),
+            eq(workoutSets.setNumber, targetSetNumber),
+          ),
+        );
+    }
+  } catch (e) {
+    console.error("[dual-write] fix-set-weight mirror failed", e);
+    Sentry.captureException(e);
+  }
 
   return { ok: true, exerciseId, setIdx: setIdxNum, oldWeight, newWeight };
 });

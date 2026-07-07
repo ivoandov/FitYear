@@ -292,6 +292,49 @@ export const aiUsage = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.day, t.kind] })],
 );
 
+// --- Phase 4: sets-as-rows (normalized storage) ---
+// These sit ALONGSIDE completed_workouts.exercises (jsonb) during the
+// migration. The jsonb stays the source of truth until reads are switched over
+// (Phase 4c) and the column is dropped (Phase 4d, gated). Snapshots
+// (name/muscleGroups/type/isAssisted) are copied inline so a workout still
+// renders correctly if its library exercise is later renamed or deleted.
+export const workoutExercises = pgTable(
+  "workout_exercises",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    completedWorkoutId: varchar("completed_workout_id")
+      .notNull()
+      .references(() => completedWorkouts.id, { onDelete: "cascade" }),
+    exerciseId: varchar("exercise_id").notNull(),
+    position: integer("position").notNull(),
+    nameSnapshot: text("name_snapshot"),
+    muscleGroupsSnapshot: jsonb("muscle_groups_snapshot"),
+    exerciseType: text("exercise_type"),
+    isAssisted: boolean("is_assisted"),
+  },
+  (t) => [index("workout_exercises_completed_workout_id_idx").on(t.completedWorkoutId)],
+);
+
+export const workoutSets = pgTable(
+  "workout_sets",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    workoutExerciseId: varchar("workout_exercise_id")
+      .notNull()
+      .references(() => workoutExercises.id, { onDelete: "cascade" }),
+    setNumber: integer("set_number").notNull(),
+    weightLbs: real("weight_lbs"),
+    reps: integer("reps"),
+    distance: real("distance"),
+    time: integer("time"),
+    completed: boolean("completed").notNull().default(false),
+  },
+  (t) => [index("workout_sets_workout_exercise_id_idx").on(t.workoutExerciseId)],
+);
+
+export type WorkoutExercise = typeof workoutExercises.$inferSelect;
+export type WorkoutSet = typeof workoutSets.$inferSelect;
+
 // Zod schemas
 export const insertExerciseSchema = createInsertSchema(exercises).omit({
   id: true,
