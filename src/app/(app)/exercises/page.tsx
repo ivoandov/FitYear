@@ -48,6 +48,10 @@ export default function ExercisesPage() {
     () =>
       dbExercises.map((ex) => ({
         id: ex.id,
+        // userId must flow through: the card's isOwner check below is
+        // `exercise.userId === user.id`. Dropping it here made isOwner always
+        // false, so owners lost Edit/Delete/Regenerate on their own exercises.
+        userId: ex.userId,
         name: ex.name,
         muscleGroups: ex.muscleGroups,
         description: ex.description,

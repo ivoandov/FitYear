@@ -36,3 +36,28 @@ test("sees another user's custom exercise but cannot edit or delete it", async (
     await deleteTempUser(owner.id);
   }
 });
+
+// Owner-positive: the creator DOES get Edit/Delete/Regenerate on their own
+// custom exercise. Guards the regression where the exercises page dropped
+// `userId` from its exercise objects, making isOwner always false so nobody
+// could edit their own exercises from the library.
+test("owner sees edit/delete/regenerate controls on their own exercise", async ({
+  page,
+  account,
+}) => {
+  const exName = `ZZOwned ${Date.now()}`;
+  const exId = await seedExercise(account.id, exName, ["Forearms"]);
+
+  await page.goto("/exercises");
+
+  await expect(page.getByTestId(`text-exercise-name-${exId}`)).toBeVisible();
+  await expect(page.getByTestId(`button-edit-exercise-${exId}`)).toBeVisible();
+  await expect(page.getByTestId(`button-delete-exercise-${exId}`)).toBeVisible();
+  // Regenerate lives on the image overlay; this seeded exercise has no image,
+  // so the delete X (no-image branch) is the reliable owner-control signal.
+  // The owner's PUT succeeds where a non-owner got 403.
+  const put = await page.request.put(`/api/exercises/${exId}`, {
+    data: { name: exName, muscleGroups: ["Forearms"], description: "owned edit", exerciseType: "weight_reps" },
+  });
+  expect(put.ok()).toBeTruthy();
+});
