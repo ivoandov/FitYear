@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -14,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, describeApiError } from "@/lib/queryClient";
+import { ProgramSchema, type Program } from "@/lib/program-schema";
 
 type Step =
   | "focus"
@@ -73,7 +74,7 @@ export default function FitBotPage() {
     name: string;
     weeksGenerated: number;
     daysGenerated: number;
-    program: { weeks: Array<{ weekNum: number; days: Array<{ dayOfWeek: string; workoutName: string; isRest: boolean; exercises: Array<{ name: string; sets: number; reps: string }> }> }> };
+    program: Program;
   } | null>(null);
 
   const daysPerWeek = userSettings?.onboardingDaysPerWeek ?? 4;
@@ -100,6 +101,39 @@ export default function FitBotPage() {
   }
 
   const [streamedChars, setStreamedChars] = useState(0);
+  // Keep the last successfully-generated program so a SAVE failure can retry
+  // the save without re-running (and re-billing) the LLM generation.
+  const [generatedProgram, setGeneratedProgram] = useState<Program | null>(null);
+  const [errorStage, setErrorStage] = useState<"generate" | "save">("generate");
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledByUserRef = useRef(false);
+
+  // Persist a validated program to the user's routines. Separated from
+  // generation so a save failure retries only this step.
+  async function saveProgram(program: Program) {
+    setStep("generating");
+    try {
+      const saveRes = await apiRequest("POST", "/api/ai/save-program", {
+        program,
+        focus,
+        experience,
+        programLength,
+      });
+      const saved = await saveRes.json();
+      setResult({ ...saved, program });
+      setStep("preview");
+    } catch (e) {
+      setErrorStage("save");
+      setError(describeApiError(e));
+      setStep("error");
+    }
+  }
+
+  function handleCancel() {
+    cancelledByUserRef.current = true;
+    abortRef.current?.abort();
+    setStep("summary");
+  }
 
   async function handleGenerate() {
     if (!experience) {
@@ -110,6 +144,15 @@ export default function FitBotPage() {
     setStep("generating");
     setError(null);
     setStreamedChars(0);
+    setErrorStage("generate");
+    cancelledByUserRef.current = false;
+
+    // Abort generation after 90s (or on user Cancel) so a hung stream can't
+    // pin the "building" screen forever.
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
     try {
       // Stream the JSON from Anthropic. The function returns immediately with
       // a streaming Response, which dodges the 60s blank-wall timeout we used
@@ -118,6 +161,7 @@ export default function FitBotPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: controller.signal,
         body: JSON.stringify({
           focus,
           equipment,
@@ -142,34 +186,50 @@ export default function FitBotPage() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        raw += chunk;
+        raw += decoder.decode(value, { stream: true });
         setStreamedChars(raw.length);
       }
-      raw = raw.trim();
-      if (raw.startsWith("```")) {
-        raw = raw.replace(/^```(?:json)?\s*/, "").replace(/```\s*$/, "");
-      }
 
-      let program;
+      // Robust extraction: slice from the first `{` to the last `}` so leading
+      // or trailing prose / code fences don't break the parse (the old code
+      // only stripped a fence if it was the very first character).
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first < 0 || last <= first) {
+        throw new Error("Fit Bot didn't return a program. Please try again.");
+      }
+      let parsed: unknown;
       try {
-        program = JSON.parse(raw);
+        parsed = JSON.parse(raw.slice(first, last + 1));
       } catch {
-        throw new Error("Fit Bot returned invalid JSON. Try again.");
+        throw new Error("Fit Bot returned invalid JSON. Please try again.");
+      }
+      const validated = ProgramSchema.safeParse(parsed);
+      if (!validated.success) {
+        throw new Error("Fit Bot's program was incomplete. Please try again.");
       }
 
-      const saveRes = await apiRequest("POST", "/api/ai/save-program", {
-        program,
-        focus,
-        experience,
-        programLength,
-      });
-      const saved = await saveRes.json();
-      setResult({ ...saved, program });
-      setStep("preview");
+      // Generation succeeded: stash the program, then save it. A save failure
+      // from here re-tries the save only (see the error screen).
+      setGeneratedProgram(validated.data);
+      await saveProgram(validated.data);
     } catch (e) {
-      setError((e as Error).message);
+      if ((e as Error)?.name === "AbortError") {
+        // A user Cancel already routed to the summary screen; don't flip to
+        // the error screen. A timeout abort DOES surface as an error.
+        if (cancelledByUserRef.current) {
+          cancelledByUserRef.current = false;
+          return;
+        }
+        setError("Generation timed out. Please try again.");
+      } else {
+        setError((e as Error).message);
+      }
+      setErrorStage("generate");
       setStep("error");
+    } finally {
+      clearTimeout(timeoutId);
+      abortRef.current = null;
     }
   }
 
@@ -384,6 +444,9 @@ export default function FitBotPage() {
                 {streamedChars.toLocaleString()} characters drafted
               </p>
             ) : null}
+            <Button variant="outline" onClick={handleCancel} className="mt-2">
+              Cancel
+            </Button>
           </div>
         )}
 
@@ -404,7 +467,7 @@ export default function FitBotPage() {
             </div>
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">Week 1 preview</h3>
-              {result.program?.weeks?.[0]?.days.map((d, i) => (
+              {result.program.weeks[0]?.days.map((d, i) => (
                 <div
                   key={i}
                   className="flex items-start justify-between rounded-lg border border-border bg-card p-3 text-sm"
@@ -417,7 +480,7 @@ export default function FitBotPage() {
                   </div>
                   {!d.isRest ? (
                     <div className="text-xs text-muted-foreground">
-                      {d.exercises?.length ?? 0} exercises
+                      {d.exercises.length} exercises
                     </div>
                   ) : null}
                 </div>
@@ -434,11 +497,29 @@ export default function FitBotPage() {
         )}
 
         {step === "error" && (
-          <Step title="Something went wrong" hint="Fit Bot couldn't finish the program">
+          <Step
+            title="Something went wrong"
+            hint={
+              errorStage === "save"
+                ? "Your program was generated but couldn't be saved"
+                : "Fit Bot couldn't finish the program"
+            }
+          >
             <p className="text-sm text-destructive">{error}</p>
-            <Button onClick={() => setStep("summary")} className="h-12 w-full">
-              Try again
-            </Button>
+            {errorStage === "save" && generatedProgram ? (
+              // Generation already succeeded (and was paid for) — retry only the
+              // save so we don't regenerate.
+              <Button
+                onClick={() => saveProgram(generatedProgram)}
+                className="h-12 w-full"
+              >
+                Retry save
+              </Button>
+            ) : (
+              <Button onClick={handleGenerate} className="h-12 w-full">
+                Try again
+              </Button>
+            )}
           </Step>
         )}
       </div>

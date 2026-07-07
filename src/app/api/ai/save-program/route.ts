@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { routines, routineEntries } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { ProgramSchema } from "@/lib/program-schema";
 
 const DAY_INDEX_BY_NAME: Record<string, number> = {
   Monday: 1,
@@ -14,31 +15,6 @@ const DAY_INDEX_BY_NAME: Record<string, number> = {
   Saturday: 6,
   Sunday: 7,
 };
-
-const ExerciseSchema = z.object({
-  name: z.string(),
-  sets: z.number(),
-  reps: z.string(),
-  rest: z.number(),
-  notes: z.string().optional(),
-});
-
-const ProgramSchema = z.object({
-  name: z.string(),
-  weeks: z.array(
-    z.object({
-      weekNum: z.number(),
-      days: z.array(
-        z.object({
-          dayOfWeek: z.string(),
-          workoutName: z.string(),
-          isRest: z.boolean(),
-          exercises: z.array(ExerciseSchema).default([]),
-        }),
-      ),
-    }),
-  ),
-});
 
 const InputSchema = z.object({
   program: ProgramSchema,
