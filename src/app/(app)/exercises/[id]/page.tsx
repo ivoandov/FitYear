@@ -11,6 +11,7 @@ import {
   type ProgressPoint,
 } from "@/components/ExerciseProgressChart";
 import { rewriteImageUrl } from "@/lib/image-url";
+import { lbsToDisplay } from "@/lib/units";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -22,13 +23,6 @@ function epley1RM(weight: number, reps: number): number {
   if (weight <= 0 || reps <= 0) return 0;
   if (reps === 1) return weight;
   return weight * (1 + reps / 30);
-}
-
-function toDisplay(lbs: number, unit: "lbs" | "kg"): number {
-  return unit === "kg" ? lbs / 2.20462 : lbs;
-}
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }
 
 type ExerciseInWorkoutJson = {
@@ -205,15 +199,15 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
               <Stat label="Workouts" value={String(points.length)} />
               <Stat
                 label="Total volume"
-                value={`${Math.round(toDisplay(totalVolumeLbs, weightUnit)).toLocaleString()} ${weightUnit}`}
+                value={`${Math.round(lbsToDisplay(totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
               />
               <Stat
                 label="Heaviest"
-                value={`${round1(toDisplay(heaviestLbs, weightUnit))} ${weightUnit}`}
+                value={`${lbsToDisplay(heaviestLbs, weightUnit) ?? 0} ${weightUnit}`}
               />
               <Stat
                 label="Est. 1RM"
-                value={`${round1(toDisplay(max1RMLbs, weightUnit))} ${weightUnit}`}
+                value={`${lbsToDisplay(max1RMLbs, weightUnit) ?? 0} ${weightUnit}`}
               />
             </div>
 

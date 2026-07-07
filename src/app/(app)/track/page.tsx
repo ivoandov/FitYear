@@ -27,6 +27,7 @@ import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
 import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
+import { convertWeight, lbsToDisplay, displayToLbs, LB_PER_KG } from "@/lib/units";
 import { toast } from "sonner";
 
 interface SetData {
@@ -41,14 +42,6 @@ interface SetData {
 type TrackingState = "not_started" | "in_set" | "resting";
 
 const TRACKING_STORAGE_KEY = "workout_tracking_progress";
-
-// Pure unit conversion: lbs<->kg. Rounded to 1 decimal place so display values
-// stay clean. Pass-through on equal units or null.
-function convertWeight(val: number | null, from: 'lbs' | 'kg', to: 'lbs' | 'kg'): number | null {
-  if (val == null || from === to) return val;
-  if (from === 'lbs' && to === 'kg') return Math.round((val / 2.20462) * 10) / 10;
-  return Math.round(val * 2.20462 * 10) / 10;
-}
 
 interface SavedTrackingProgress {
   workoutDisplayId: string;
@@ -80,15 +73,10 @@ export default function TrackPage() {
   const { data: userSettingsData } = useQuery<{ weightUnit?: string }>({ queryKey: ['/api/user-settings'] });
   const weightUnit = (userSettingsData?.weightUnit ?? 'lbs') as 'lbs' | 'kg';
 
-  // Conversion helpers — DB always stores lbs; display in user's chosen unit
-  const fromLbs = (lbs: number | null): number | null => {
-    if (lbs == null) return null;
-    return weightUnit === 'kg' ? Math.round((lbs / 2.20462) * 10) / 10 : lbs;
-  };
-  const toLbs = (val: number | null): number | null => {
-    if (val == null) return null;
-    return weightUnit === 'kg' ? Math.round(val * 2.20462 * 10) / 10 : val;
-  };
+  // Conversion helpers — DB always stores lbs; display in user's chosen unit.
+  // Both route through the shared lib/units convention (round to 1 decimal).
+  const fromLbs = (lbs: number | null): number | null => lbsToDisplay(lbs, weightUnit);
+  const toLbs = (val: number | null): number | null => displayToLbs(val, weightUnit);
   // Increment for +/- buttons: 5 lbs or 2.5 kg
   const weightIncrement = weightUnit === 'kg' ? 2.5 : 5;
 
@@ -1008,12 +996,12 @@ export default function TrackPage() {
                           </div>
                           {showKgConversion && set.weight != null && weightUnit === 'lbs' && (
                             <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-kg-conversion-${set.setNumber}`}>
-                              {(set.weight / 2.20462).toFixed(1)} kg
+                              {(set.weight / LB_PER_KG).toFixed(1)} kg
                             </p>
                           )}
                           {showKgConversion && set.weight != null && weightUnit === 'kg' && (
                             <p className="text-xs text-muted-foreground text-center tabular-nums" data-testid={`text-lbs-conversion-${set.setNumber}`}>
-                              {(set.weight * 2.20462).toFixed(0)} lbs
+                              {(set.weight * LB_PER_KG).toFixed(0)} lbs
                             </p>
                           )}
                         </div>

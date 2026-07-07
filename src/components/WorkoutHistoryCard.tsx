@@ -13,18 +13,21 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
+import {
+  lbsToDisplay as lbsToDisplayShared,
+  displayToLbs as displayToLbsShared,
+} from "@/lib/units";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
-// convert back to lbs before saving. Rounded to 1 decimal place. Returns
-// `undefined` to slot into SetDetail (whose `weight?: number` is undefined,
-// not null, to match the API/DB JSON shape).
+// convert back to lbs before saving. These thin wrappers route through the
+// shared lib/units convention (round to 1 decimal) but coerce the shared
+// `number | null` result to `undefined`, since SetDetail's `weight?: number`
+// is undefined (not null) to match the API/DB JSON shape.
 function lbsToDisplay(lbs: number | null | undefined, unit: 'lbs' | 'kg'): number | undefined {
-  if (lbs == null) return undefined;
-  return unit === 'kg' ? Math.round((lbs / 2.20462) * 10) / 10 : lbs;
+  return lbsToDisplayShared(lbs, unit) ?? undefined;
 }
 function displayToLbs(val: number | null | undefined, unit: 'lbs' | 'kg'): number | undefined {
-  if (val == null) return undefined;
-  return unit === 'kg' ? Math.round(val * 2.20462 * 10) / 10 : val;
+  return displayToLbsShared(val, unit) ?? undefined;
 }
 
 interface SetDetail {

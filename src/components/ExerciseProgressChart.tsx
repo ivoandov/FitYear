@@ -20,6 +20,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { TriangleAlert } from "lucide-react";
+import { lbsToDisplay, convertWeight, round1 } from "@/lib/units";
 
 export type ProgressPoint = {
   workoutId: string;
@@ -33,13 +34,6 @@ export type ProgressPoint = {
 };
 
 type Metric = "1rm" | "heaviest" | "volume";
-
-function toDisplay(lbs: number, unit: "lbs" | "kg"): number {
-  return unit === "kg" ? lbs / 2.20462 : lbs;
-}
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
-}
 
 export function ExerciseProgressChart({
   points,
@@ -64,10 +58,10 @@ export function ExerciseProgressChart({
         ...p,
         value:
           metric === "1rm"
-            ? toDisplay(p.best1RMLbs, weightUnit)
+            ? lbsToDisplay(p.best1RMLbs, weightUnit) ?? 0
             : metric === "heaviest"
-              ? toDisplay(p.bestWeightLbs, weightUnit)
-              : toDisplay(p.bestVolumeLbs, weightUnit),
+              ? lbsToDisplay(p.bestWeightLbs, weightUnit) ?? 0
+              : lbsToDisplay(p.bestVolumeLbs, weightUnit) ?? 0,
       })),
     [points, metric, weightUnit],
   );
@@ -87,7 +81,9 @@ export function ExerciseProgressChart({
         : "Best set volume (weight × reps) per workout.";
 
   async function applyKgToLbsFix(point: ProgressPoint, setIdx: number, currentLbs: number) {
-    const newLbs = round1(currentLbs * 2.20462);
+    // The stored value is actually kg saved as lbs; treating it as kg and
+    // converting to lbs is the correction.
+    const newLbs = convertWeight(currentLbs, "kg", "lbs") ?? currentLbs;
     setFixing(String(setIdx));
     try {
       const res = await fetch(
@@ -196,10 +192,10 @@ export function ExerciseProgressChart({
                 </h3>
                 <div className="space-y-2">
                   {selected.sets.map((s) => {
-                    const display = round1(toDisplay(s.weightLbs, weightUnit));
-                    const fixedDisplay = round1(
-                      toDisplay(s.weightLbs * 2.20462, weightUnit),
-                    );
+                    const display = lbsToDisplay(s.weightLbs, weightUnit) ?? 0;
+                    // Preview of the kg->lbs correction in the user's unit.
+                    const fixedLbs = convertWeight(s.weightLbs, "kg", "lbs") ?? 0;
+                    const fixedDisplay = lbsToDisplay(fixedLbs, weightUnit) ?? 0;
                     return (
                       <div
                         key={s.setIdx}
