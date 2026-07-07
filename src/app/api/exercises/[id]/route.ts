@@ -1,11 +1,7 @@
 import { NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  exercises,
-  hasCustomMuscleGroup,
-  insertExerciseSchema,
-} from "@/lib/db/schema";
+import { exercises, insertExerciseSchema } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
@@ -29,16 +25,9 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     throw new ApiError(403, "Not authorized to edit this exercise");
   }
 
-  const update: typeof body & { isPublic?: boolean } = { ...body };
-  if (body.muscleGroups !== undefined) {
-    update.isPublic = !hasCustomMuscleGroup(
-      (body.muscleGroups as string[] | undefined) ?? [],
-    );
-  }
-
   const [updated] = await db
     .update(exercises)
-    .set(update)
+    .set(body)
     .where(eq(exercises.id, id))
     .returning();
   return updated;

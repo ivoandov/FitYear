@@ -1,12 +1,7 @@
 import { NextRequest } from "next/server";
-import { eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import {
-  exercises,
-  hasCustomMuscleGroup,
-  insertExerciseSchema,
-} from "@/lib/db/schema";
+import { exercises, insertExerciseSchema } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { rewriteImageUrl } from "@/lib/image-url";
@@ -15,11 +10,12 @@ import { rewriteImageUrl } from "@/lib/image-url";
 export const dynamic = "force-dynamic";
 
 /**
- * Returns:
- *   - all rows where user_id IS NULL (the seeded global library)
- *   - plus rows owned by the current user
- *   - plus any row flagged is_public = true (matches the Replit picker behavior;
- *     34 migrated rows have non-null user_id but is_public=true)
+ * Returns the full shared exercise catalog to every authenticated user: the
+ * seeded default library (user_id IS NULL) plus every user-created exercise, so
+ * friends can see each other's custom exercises. Editing/deleting/regenerating
+ * stays owner-only (enforced in [id]/route.ts + regenerate routes); the default
+ * library is read-only for everyone. `isPublic` is no longer used for
+ * visibility — it's kept as a legacy column.
  *
  * Legacy image_url paths are rewritten via rewriteImageUrl (shared with the
  * exercise progress page) to point at the GCS proxy at `/api/objects/...`.
@@ -27,35 +23,23 @@ export const dynamic = "force-dynamic";
  */
 
 export const GET = handle(async () => {
-  const { user } = await requireUser();
-  const rows = await db
-    .select()
-    .from(exercises)
-    .where(
-      or(
-        isNull(exercises.userId),
-        eq(exercises.userId, user.id),
-        eq(exercises.isPublic, true),
-      ),
-    );
-  console.log(
-    `[GET /api/exercises] user=${user.id} count=${rows.length} hasPushups=${rows.some((r) => r.name === "Pushups")}`,
-  );
+  await requireUser();
+  const rows = await db.select().from(exercises);
   return rows.map((r) => ({ ...r, imageUrl: rewriteImageUrl(r.imageUrl) }));
 });
 
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const parsed = insertExerciseSchema.parse(await request.json());
-  const muscleGroups = (parsed.muscleGroups as string[] | undefined) ?? [];
-  const isPublic = !hasCustomMuscleGroup(muscleGroups);
 
   const [created] = await db
     .insert(exercises)
     .values({
       ...parsed,
       userId: user.id,
-      isPublic,
+      // User-created exercises are shared (visible to all), editable only by
+      // the creator. isPublic is legacy; kept true for consistency.
+      isPublic: true,
     })
     .returning();
 

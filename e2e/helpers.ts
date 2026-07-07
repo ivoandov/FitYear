@@ -70,6 +70,21 @@ export async function seedCompletedWorkout(
     values (${userId}::uuid, ${`e2e-${Date.now()}-${counter++}`}, ${name}, ${exercises}::jsonb, now())`;
 }
 
+// Seed an exercise owned by a specific user. `is_public=false` on purpose so
+// the test proves the catalog is fully shared regardless of the legacy flag
+// (before Item 9, is_public=false hid it from other users).
+export async function seedExercise(
+  userId: string,
+  name: string,
+  muscleGroups: string[] = ["Forearms"],
+): Promise<string> {
+  const [row] = await sql`
+    insert into exercises (user_id, is_public, name, muscle_groups, description, exercise_type)
+    values (${userId}::uuid, false, ${name}, ${JSON.stringify(muscleGroups)}::jsonb, 'seeded by e2e', 'weight_reps')
+    returning id`;
+  return row.id as string;
+}
+
 export async function completedWorkoutCount(userId: string): Promise<number> {
   const r = await sql`select count(*)::int as n from completed_workouts where user_id = ${userId}::uuid`;
   return r[0].n as number;

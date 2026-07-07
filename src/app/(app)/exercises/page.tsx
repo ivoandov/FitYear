@@ -13,6 +13,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { type Exercise } from "@/data/exercises";
 import { useSettings } from "@/components/SettingsProvider";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 
 interface DBExercise {
@@ -35,6 +36,7 @@ export default function ExercisesPage() {
   const [exerciseToAddToWorkout, setExerciseToAddToWorkout] = useState<Exercise | null>(null);
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
+  const { user } = useAuth();
   const { muscleGroups: userMuscleGroups } = useSettings();
   const muscleGroups = ["All", ...userMuscleGroups];
 
@@ -278,7 +280,7 @@ export default function ExercisesPage() {
             <ExerciseCard
               key={exercise.id}
               {...exercise}
-              isEditable={true}
+              isOwner={!!user?.id && exercise.userId === user.id}
               isRegenerating={regeneratingIds.has(exercise.id)}
               onAdd={handleAddExercise}
               onEdit={handleEditExercise}

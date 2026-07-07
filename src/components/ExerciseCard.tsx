@@ -27,7 +27,10 @@ interface ExerciseCardProps {
   description: string;
   imageUrl?: string | null;
   exerciseType?: string | null;
-  isEditable?: boolean;
+  // True only when the current user owns this exercise. Gates all mutating
+  // controls (Edit / Delete / Regenerate). Non-owned + default-library
+  // exercises are view-only (Add to Workout + Progress still available).
+  isOwner?: boolean;
   isRegenerating?: boolean;
   onAdd?: (id: string) => void;
   onEdit?: (id: string) => void;
@@ -41,7 +44,7 @@ function ExerciseCardImpl({
   muscleGroups,
   description,
   imageUrl,
-  isEditable = false,
+  isOwner = false,
   isRegenerating = false,
   onEdit,
   onAdd,
@@ -78,14 +81,16 @@ function ExerciseCardImpl({
               className="object-cover hover:scale-105 transition-transform duration-200"
             />
             <div className="absolute top-0 right-0 w-14 h-14 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.4)_0%,transparent_70%)] pointer-events-none" />
-            <button
-              className="absolute top-2 right-2 text-white drop-shadow-lg hover:text-red-400 transition-colors z-10"
-              onClick={handleDeleteClick}
-              data-testid={`button-delete-exercise-${id}`}
-            >
-              <X className="h-6 w-6" strokeWidth={3} />
-            </button>
-            {onRegenerateImage && (
+            {isOwner && (
+              <button
+                className="absolute top-2 right-2 text-white drop-shadow-lg hover:text-red-400 transition-colors z-10"
+                onClick={handleDeleteClick}
+                data-testid={`button-delete-exercise-${id}`}
+              >
+                <X className="h-6 w-6" strokeWidth={3} />
+              </button>
+            )}
+            {isOwner && onRegenerateImage && (
               <button
                 className="absolute bottom-2 left-2 text-white drop-shadow-lg hover:text-primary transition-colors z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm"
                 onClick={(e) => {
@@ -99,7 +104,7 @@ function ExerciseCardImpl({
               </button>
             )}
           </div>
-        ) : (
+        ) : isOwner ? (
           <button
             className="absolute top-2 right-2 text-muted-foreground hover:text-red-500 transition-colors z-10"
             onClick={handleDeleteClick}
@@ -107,7 +112,7 @@ function ExerciseCardImpl({
           >
             <X className="h-5 w-5" strokeWidth={2.5} />
           </button>
-        )}
+        ) : null}
         <CardHeader className="space-y-2 p-4 sm:p-6">
           <div className="flex gap-1.5 sm:gap-2 flex-wrap">
             {muscleGroups.map((group) => (
@@ -132,7 +137,7 @@ function ExerciseCardImpl({
           </p>
         </CardContent>
         <CardFooter className="p-4 sm:p-6 pt-0 sm:pt-0 gap-2">
-          {isEditable && (
+          {isOwner && (
             <Button
               onClick={() => onEdit?.(id)}
               variant="outline"
