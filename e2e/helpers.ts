@@ -85,6 +85,38 @@ export async function seedExercise(
   return row.id as string;
 }
 
+// Seed a scheduled workout (row shows on the home page's Today/Upcoming list).
+// Returns the new row id (used as the card's testId suffix).
+export async function seedScheduledWorkout(
+  userId: string,
+  name: string,
+  dateISO: string,
+): Promise<string> {
+  const exercises = JSON.stringify([
+    { id: "seed-ex", name: "Bench Press", muscleGroups: ["Chest"], exerciseType: "weight_reps" },
+  ]);
+  const [row] = await sql`
+    insert into scheduled_workouts (user_id, name, date, exercises)
+    values (${userId}::uuid, ${name}, ${dateISO}::timestamp, ${exercises}::jsonb)
+    returning id`;
+  return row.id as string;
+}
+
+// Seed a workout template (row shows in the home page's "All Workouts" library).
+export async function seedTemplate(
+  userId: string,
+  name: string,
+): Promise<string> {
+  const exercises = JSON.stringify([
+    { id: "seed-ex", name: "Bench Press", muscleGroups: ["Chest"], exerciseType: "weight_reps" },
+  ]);
+  const [row] = await sql`
+    insert into workout_templates (user_id, name, exercises)
+    values (${userId}::uuid, ${name}, ${exercises}::jsonb)
+    returning id`;
+  return row.id as string;
+}
+
 // Seed the server-side active workout (+ tracking progress) for a user, so a
 // fresh browser context restores it on /track. Used to construct states the UI
 // won't build directly (e.g. the same exercise added twice).

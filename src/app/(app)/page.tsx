@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkoutMutations } from "@/hooks/use-workout-mutations";
 import { WorkoutEditorDialog, type WorkoutData } from "@/components/WorkoutEditorDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Clock, Dumbbell, SkipForward, FileEdit, Link2 } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Dumbbell, Link2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, addDays, isBefore, startOfDay } from "date-fns";
@@ -44,6 +44,7 @@ import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { localDateKey } from "@/lib/date";
 import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
+import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
 
 interface ScheduledWorkout {
   id: string;
@@ -748,53 +749,18 @@ export default function WorkoutsPage() {
                           {routineInstanceMap.get(heroWorkout.routineInstanceId) || "Routine"}
                         </Badge>
                       )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-white"
-                            data-testid={`button-workout-menu-${heroWorkout.displayId}`}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleEditWorkout(heroWorkout.displayId)}
-                            data-testid={`button-edit-workout-${heroWorkout.displayId}`}
-                          >
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit This Instance
-                          </DropdownMenuItem>
-                          {heroWorkout.templateId && (
-                            <DropdownMenuItem
-                              onClick={() => handleEditTemplate(heroWorkout.templateId!)}
-                              data-testid={`button-edit-source-${heroWorkout.displayId}`}
-                            >
-                              <FileEdit className="h-4 w-4 mr-2" />
-                              Edit Source Workout
-                            </DropdownMenuItem>
-                          )}
-                          {heroWorkout.routineInstanceId && (
-                            <DropdownMenuItem
-                              onClick={() => handleSkipWorkout(heroWorkout.id)}
-                              data-testid={`button-skip-workout-${heroWorkout.displayId}`}
-                            >
-                              <SkipForward className="h-4 w-4 mr-2" />
-                              Skip
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteWorkout(heroWorkout.displayId, heroWorkout.name)}
-                            className="text-destructive"
-                            data-testid={`button-delete-workout-${heroWorkout.displayId}`}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <WorkoutCardMenu
+                        displayId={heroWorkout.displayId}
+                        workoutId={heroWorkout.id}
+                        name={heroWorkout.name}
+                        templateId={heroWorkout.templateId}
+                        routineInstanceId={heroWorkout.routineInstanceId}
+                        triggerClassName="text-white"
+                        onEdit={handleEditWorkout}
+                        onEditTemplate={handleEditTemplate}
+                        onSkip={handleSkipWorkout}
+                        onDelete={handleDeleteWorkout}
+                      />
                     </div>
                     <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 py-8" style={{ minHeight: '320px' }}>
                       {(() => {
@@ -854,53 +820,18 @@ export default function WorkoutsPage() {
                                 <CardTitle className={`text-lg sm:text-xl font-semibold flex-1 break-words line-clamp-2 ${workoutImage ? 'text-white' : ''}`}>
                                   {workout.name}
                                 </CardTitle>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className={workoutImage ? 'text-white' : ''}
-                                      data-testid={`button-workout-menu-${workout.displayId}`}
-                                    >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={() => handleEditWorkout(workout.displayId)}
-                                      data-testid={`button-edit-workout-${workout.displayId}`}
-                                    >
-                                      <Pencil className="h-4 w-4 mr-2" />
-                                      Edit This Instance
-                                    </DropdownMenuItem>
-                                    {workout.templateId && (
-                                      <DropdownMenuItem
-                                        onClick={() => handleEditTemplate(workout.templateId!)}
-                                        data-testid={`button-edit-source-${workout.displayId}`}
-                                      >
-                                        <FileEdit className="h-4 w-4 mr-2" />
-                                        Edit Source Workout
-                                      </DropdownMenuItem>
-                                    )}
-                                    {workout.routineInstanceId && (
-                                      <DropdownMenuItem
-                                        onClick={() => handleSkipWorkout(workout.id)}
-                                        data-testid={`button-skip-workout-${workout.displayId}`}
-                                      >
-                                        <SkipForward className="h-4 w-4 mr-2" />
-                                        Skip
-                                      </DropdownMenuItem>
-                                    )}
-                                    <DropdownMenuItem
-                                      onClick={() => handleDeleteWorkout(workout.displayId, workout.name)}
-                                      className="text-destructive"
-                                      data-testid={`button-delete-workout-${workout.displayId}`}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-2" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                <WorkoutCardMenu
+                                  displayId={workout.displayId}
+                                  workoutId={workout.id}
+                                  name={workout.name}
+                                  templateId={workout.templateId}
+                                  routineInstanceId={workout.routineInstanceId}
+                                  triggerClassName={workoutImage ? 'text-white' : undefined}
+                                  onEdit={handleEditWorkout}
+                                  onEditTemplate={handleEditTemplate}
+                                  onSkip={handleSkipWorkout}
+                                  onDelete={handleDeleteWorkout}
+                                />
                               </div>
                               {!workoutImage && (
                                 <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
@@ -962,53 +893,18 @@ export default function WorkoutsPage() {
                         <CardTitle className={`text-lg sm:text-xl md:text-[1.75rem] font-semibold flex-1 break-words line-clamp-2 ${workoutImage ? 'text-white' : ''}`}>
                           {workout.name}
                         </CardTitle>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={workoutImage ? 'text-white' : ''}
-                              data-testid={`button-workout-menu-${workout.displayId}`}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleEditWorkout(workout.displayId)}
-                              data-testid={`button-edit-workout-${workout.displayId}`}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit This Instance
-                            </DropdownMenuItem>
-                            {workout.templateId && (
-                              <DropdownMenuItem
-                                onClick={() => handleEditTemplate(workout.templateId!)}
-                                data-testid={`button-edit-source-${workout.displayId}`}
-                              >
-                                <FileEdit className="h-4 w-4 mr-2" />
-                                Edit Source Workout
-                              </DropdownMenuItem>
-                            )}
-                            {workout.routineInstanceId && (
-                              <DropdownMenuItem
-                                onClick={() => handleSkipWorkout(workout.id)}
-                                data-testid={`button-skip-workout-${workout.displayId}`}
-                              >
-                                <SkipForward className="h-4 w-4 mr-2" />
-                                Skip
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => handleDeleteWorkout(workout.displayId, workout.name)}
-                              className="text-destructive"
-                              data-testid={`button-delete-workout-${workout.displayId}`}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <WorkoutCardMenu
+                          displayId={workout.displayId}
+                          workoutId={workout.id}
+                          name={workout.name}
+                          templateId={workout.templateId}
+                          routineInstanceId={workout.routineInstanceId}
+                          triggerClassName={workoutImage ? 'text-white' : undefined}
+                          onEdit={handleEditWorkout}
+                          onEditTemplate={handleEditTemplate}
+                          onSkip={handleSkipWorkout}
+                          onDelete={handleDeleteWorkout}
+                        />
                       </div>
                       {!workoutImage && (
                         <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
