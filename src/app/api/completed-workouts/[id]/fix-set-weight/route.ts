@@ -1,17 +1,22 @@
 import { NextRequest } from "next/server";
-import { and, eq, sql } from "drizzle-orm";
-import * as Sentry from "@sentry/nextjs";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { completedWorkouts, workoutExercises, workoutSets } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
 /**
- * Single-row weight correction inside completed_workouts.exercises JSON.
+ * Single-set weight correction, applied authoritatively to the normalized
+ * workout_sets row (Phase 4d — no jsonb).
  *
- * Used by the exercise progress chart to let users one-click-fix anomalies
- * (typically kg-saved-as-lbs rows). The body's `newWeight` is the final
- * lbs value to store — the client does the kg→lbs multiplication.
+ * Used by the exercise progress chart to one-click-fix anomalies (typically
+ * kg-saved-as-lbs rows). `newWeight` is the final lbs value to store — the
+ * client does the kg->lbs multiplication.
+ *
+ * `setIdx` is the enumeration index over the exercise's sets in set_number
+ * order (the same order the assembled read path returns, which the chart
+ * indexes). The exercise is resolved by its first occurrence in position order,
+ * matching how the progress page (`exs.find(e => e.id === id)`) picks it.
  *
  * POST /api/completed-workouts/[id]/fix-set-weight
  *   Body: { exerciseId: string, setIdx: number, newWeight: number }
@@ -47,66 +52,39 @@ export const POST = handle(async (req: NextRequest, ctx: Ctx) => {
   }
   const setIdxNum = setIdx as number;
 
-  // Verify ownership + resolve the array index of the exercise
-  const [row] = await db
-    .select({ exercises: completedWorkouts.exercises })
+  // Ownership: workout must belong to the caller.
+  const [owned] = await db
+    .select({ id: completedWorkouts.id })
     .from(completedWorkouts)
     .where(and(eq(completedWorkouts.id, workoutId), eq(completedWorkouts.userId, user.id)))
     .limit(1);
-  if (!row) throw new ApiError(404, "Workout not found or not owned by you");
+  if (!owned) throw new ApiError(404, "Workout not found or not owned by you");
 
-  const exs = (row.exercises as Array<{ id: string; setsData?: Array<{ weight?: number }> }>) ?? [];
-  const exIdx = exs.findIndex((e) => e.id === exerciseId);
-  if (exIdx < 0) throw new ApiError(404, "Exercise not present in this workout");
-  const sets = exs[exIdx].setsData;
-  if (!sets || setIdxNum >= sets.length) {
-    throw new ApiError(404, `Set ${setIdxNum} not present (exercise has ${sets?.length ?? 0} sets)`);
+  // Resolve the exercise: first occurrence in position order (matches the chart).
+  const wes = await db
+    .select({ id: workoutExercises.id, exerciseId: workoutExercises.exerciseId })
+    .from(workoutExercises)
+    .where(eq(workoutExercises.completedWorkoutId, workoutId))
+    .orderBy(asc(workoutExercises.position));
+  const we = wes.find((w) => w.exerciseId === exerciseId);
+  if (!we) throw new ApiError(404, "Exercise not present in this workout");
+
+  // The setIdx-th set in set_number order.
+  const sets = await db
+    .select({ id: workoutSets.id, weightLbs: workoutSets.weightLbs })
+    .from(workoutSets)
+    .where(eq(workoutSets.workoutExerciseId, we.id))
+    .orderBy(asc(workoutSets.setNumber));
+  if (setIdxNum >= sets.length) {
+    throw new ApiError(404, `Set ${setIdxNum} not present (exercise has ${sets.length} sets)`);
   }
+  const target = sets[setIdxNum];
+  const oldWeight = target.weightLbs ?? 0;
 
-  const oldWeight = sets[setIdxNum].weight ?? 0;
-
-  // jsonb_set at path {exIdx,setsData,setIdx,weight}. exIdx + setIdxNum are
-  // server-validated integers, safe to interpolate via sql.raw into the
-  // structural path. Workout id + user id flow through parameter binding.
-  const pathLiteral = `'{${exIdx},setsData,${setIdxNum},weight}'::text[]`;
-  const newWeightLiteral = `${newWeight}::jsonb`;
-  await db.execute(sql`
-    UPDATE completed_workouts
-    SET exercises = jsonb_set(exercises, ${sql.raw(pathLiteral)}, ${sql.raw(newWeightLiteral)}, false)
-    WHERE id = ${workoutId} AND user_id = ${user.id}::uuid
-  `);
-
-  // Phase 4 mirror (best-effort): keep the normalized workout_sets row in sync
-  // with the jsonb fix. Reads still come from jsonb until 4c, so a miss here is
-  // reconciled by the backfill; never fail the request.
-  try {
-    const targetSetNumber =
-      (sets[setIdxNum] as { setNumber?: number }).setNumber ?? setIdxNum + 1;
-    const [we] = await db
-      .select({ id: workoutExercises.id })
-      .from(workoutExercises)
-      .where(
-        and(
-          eq(workoutExercises.completedWorkoutId, workoutId),
-          eq(workoutExercises.position, exIdx),
-        ),
-      )
-      .limit(1);
-    if (we) {
-      await db
-        .update(workoutSets)
-        .set({ weightLbs: newWeight })
-        .where(
-          and(
-            eq(workoutSets.workoutExerciseId, we.id),
-            eq(workoutSets.setNumber, targetSetNumber),
-          ),
-        );
-    }
-  } catch (e) {
-    console.error("[dual-write] fix-set-weight mirror failed", e);
-    Sentry.captureException(e);
-  }
+  await db
+    .update(workoutSets)
+    .set({ weightLbs: newWeight })
+    .where(eq(workoutSets.id, target.id));
 
   return { ok: true, exerciseId, setIdx: setIdxNum, oldWeight, newWeight };
 });
