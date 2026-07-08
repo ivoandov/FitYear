@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Share2, Loader2, Copy, Check } from "lucide-react";
+import { Share2, Loader2, Copy, Check, Download } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ interface Props {
     previousValue: number | null;
   }>;
   streakDays: number;
+  exercises?: Array<{ name: string; sets: number; reps: number | null }>;
 }
 
 // 9:16 portrait share card. Rendered at this base size, captured at scale 3
@@ -36,20 +37,26 @@ const CARD_W = 360;
 const CARD_H = 640;
 const WEEKLY_TARGET_PER_MUSCLE = 20;
 
-// B+ palette as literals — html2canvas mis-renders Tailwind's oklch/CSS-var
+// A+ palette as literals - html2canvas mis-renders Tailwind's oklch/CSS-var
 // tokens, so the capture card styles everything inline with explicit colors.
 const C = {
   bg: "#0B0B0A",
   surface: "#161614",
-  border: "rgba(255,255,255,0.10)",
+  border: "rgba(255,255,255,0.08)",
   primary: "#E5FF00",
   onPrimary: "#0A0A0A",
   primaryDim: "rgba(229,255,0,0.12)",
-  primaryBorder: "rgba(229,255,0,0.32)",
+  primaryBorder: "rgba(229,255,0,0.4)",
   fg: "#F5F5F5",
-  muted: "rgba(255,255,255,0.55)",
+  muted: "#A3A3A3",
+  tertiary: "#6B6B6B",
+  exText: "#D8D8D6",
   track: "rgba(255,255,255,0.08)",
+  success: "#57C98A",
 };
+// Reference the loaded mono via the CSS var (font-family strings are read from
+// computed style by html2canvas - unlike oklch colors, they capture fine).
+const MONO = "var(--font-mono), ui-monospace, monospace";
 
 export function ShareWorkoutButton(props: Props) {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -129,93 +136,129 @@ export function ShareWorkoutButton(props: Props) {
     }
   }
 
+  async function handleSaveImage() {
+    setBusy(true);
+    try {
+      const blob = await captureAsBlob();
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fityear-workout.png";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* no-op */
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleCopy() {
     await navigator.clipboard.writeText(summary);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
 
+  const exercises = props.exercises ?? [];
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80"
+          aria-label="Share workout"
+          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-strong bg-white/[0.04] text-foreground hover:bg-white/[0.08]"
         >
-          <Share2 className="h-4 w-4" />
-          Share Workout
+          <Share2 className="h-5 w-5" />
         </button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogTitle>Share workout</DialogTitle>
-        <DialogDescription className="sr-only">
-          Preview and share your workout summary
-        </DialogDescription>
+      <DialogContent className="sm:max-w-sm">
+        {/* Sheet grabber */}
+        <div className="mx-auto -mt-1 h-1 w-9 rounded-full bg-white/[0.18]" />
+        <div className="space-y-1 text-center">
+          <DialogTitle className="text-center text-[17px]">
+            Share your workout
+          </DialogTitle>
+          <DialogDescription className="text-center">
+            A 1080 × 1920 story image, ready to post
+          </DialogDescription>
+        </div>
 
-        {/* Capture target — 9:16 portrait card in the app's B+ theme, mirroring
-            the on-screen summary. Centered + scrollable so the tall card fits
-            the dialog without an ancestor transform (which would scale the
-            html2canvas output). */}
-        <div className="flex justify-center max-h-[64vh] overflow-y-auto">
+        {/* Capture target - the true 9:16 export card (rendered at full base size
+            so html2canvas outputs 1080×1920). Centered + scrollable so it fits
+            the sheet without an ancestor transform (which would scale the
+            capture output). All styling is literal hex, never token classes. */}
+        <div className="flex max-h-[52vh] justify-center overflow-y-auto">
           <div
             ref={cardRef}
             style={{
               width: CARD_W,
               height: CARD_H,
               flex: "0 0 auto",
+              position: "relative",
+              overflow: "hidden",
               boxSizing: "border-box",
-              padding: "28px 24px 22px",
+              padding: "22px 22px 16px",
               display: "flex",
               flexDirection: "column",
-              gap: 16,
+              gap: 10,
               color: C.fg,
               fontFamily:
                 "var(--font-sans), ui-sans-serif, system-ui, sans-serif",
-              background: `radial-gradient(120% 55% at 50% 0%, rgba(229,255,0,0.10) 0%, rgba(229,255,0,0) 46%), ${C.bg}`,
-              borderRadius: 24,
+              background: `radial-gradient(115% 40% at 50% 0%, rgba(229,255,0,0.16) 0%, rgba(229,255,0,0) 50%), ${C.bg}`,
+              borderRadius: 20,
             }}
           >
-            {/* Wordmark */}
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: 3,
-                color: C.primary,
-                textAlign: "center",
-              }}
-            >
-              FITYEAR
-            </div>
+            {/* confetti */}
+            <div style={{ position: "absolute", top: 40, left: 40, width: 8, height: 8, borderRadius: 2, background: C.primary, transform: "rotate(20deg)" }} />
+            <div style={{ position: "absolute", top: 66, right: 44, width: 8, height: 8, borderRadius: 999, background: "#fff", opacity: 0.6 }} />
+            <div style={{ position: "absolute", top: 100, left: 52, width: 6, height: 6, borderRadius: 999, background: C.primary }} />
+            <div style={{ position: "absolute", top: 50, right: 72, width: 7, height: 7, borderRadius: 2, background: C.success, transform: "rotate(35deg)" }} />
 
-            {/* Trophy + name + date + streak */}
+            {/* Header - wordmark + date */}
             <div
               style={{
                 display: "flex",
-                flexDirection: "column",
                 alignItems: "center",
-                gap: 8,
-                textAlign: "center",
+                justifyContent: "space-between",
               }}
             >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 999, background: C.primary }} />
+                <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, letterSpacing: 3, color: C.primary }}>
+                  FITYEAR
+                </span>
+              </div>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1, color: C.tertiary, whiteSpace: "nowrap" }}>
+                {props.date.toUpperCase()}
+              </span>
+            </div>
+
+            {/* Hero - trophy + name + streak */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 7 }}>
               <div
                 style={{
-                  width: 56,
-                  height: 56,
+                  width: 48,
+                  height: 48,
                   borderRadius: 999,
                   background: C.primaryDim,
+                  border: `1.5px solid ${C.primaryBorder}`,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 26,
+                  color: C.primary,
+                  boxShadow: "0 0 40px -6px rgba(229,255,0,0.4)",
                 }}
               >
-                🏆
+                <TrophySvg size={24} />
               </div>
-              <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.15 }}>
+              <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 2.4, textTransform: "uppercase", color: C.primary }}>
+                Workout complete
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
                 {props.workoutName}
               </div>
-              <div style={{ fontSize: 12, color: C.muted }}>{props.date}</div>
               {props.streakDays > 0 ? (
                 <div
                   style={{
@@ -223,84 +266,85 @@ export function ShareWorkoutButton(props: Props) {
                     alignItems: "center",
                     gap: 5,
                     background: C.primaryDim,
+                    border: `1px solid rgba(229,255,0,0.3)`,
                     color: C.primary,
                     borderRadius: 999,
-                    padding: "3px 10px",
+                    padding: "4px 12px",
                     fontSize: 12,
                     fontWeight: 600,
                   }}
                 >
-                  🔥 {props.streakDays} day streak
+                  <FlameSvg size={13} />
+                  <span style={{ fontFamily: MONO }}>{props.streakDays}</span> DAY STREAK
                 </div>
               ) : null}
             </div>
 
             {/* 2x2 stats */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <StatBox label="Duration" value={props.durationLabel} />
-              <StatBox label="Sets" value={String(props.totalSets)} />
               <StatBox
                 label="Volume"
-                value={`${props.totalVolumeLbs.toLocaleString()} lbs`}
+                value={`${props.totalVolumeLbs.toLocaleString()} lb`}
+                accent
               />
+              <StatBox label="Sets" value={String(props.totalSets)} />
               <StatBox label="Exercises" value={String(props.exerciseCount)} />
             </div>
 
-            {/* Muscles trained (bars, like the summary) */}
-            {props.muscleGroups.length > 0 ? (
+            {/* PR band - the one bold neon moment: solid neon, black text */}
+            {props.prs.length > 0 ? (
               <div
                 style={{
-                  border: `1px solid ${C.border}`,
-                  background: C.surface,
-                  borderRadius: 14,
-                  padding: 14,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 9,
+                  background: "linear-gradient(180deg,#f0ff5c,#E5FF00)",
+                  borderRadius: 15,
+                  padding: "13px 16px",
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: C.onPrimary, opacity: 0.7, marginBottom: 9 }}>
+                  {props.prs.length} New personal best{props.prs.length !== 1 ? "s" : ""}
+                </div>
+                {props.prs.slice(0, 2).map((pr, i) => (
+                  <div key={`${pr.exerciseName}-${pr.type}-${i}`}>
+                    {i > 0 ? (
+                      <div style={{ height: 1, background: "rgba(10,10,10,0.15)", margin: "8px 0" }} />
+                    ) : null}
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: C.onPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {pr.exerciseName}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap" }}>
+                        {pr.type === "weight"
+                          ? `${pr.newValue} lb`
+                          : `${pr.newValue.toLocaleString()} vol`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Muscles trained */}
+            {props.muscleGroups.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: "uppercase", color: C.tertiary }}>
                   Muscles trained
                 </div>
-                {props.muscleGroups.slice(0, 5).map(([muscle, sets]) => {
+                {props.muscleGroups.slice(0, 3).map(([muscle, sets]) => {
                   const pct = Math.min(
                     100,
                     Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
                   );
                   return (
                     <div key={muscle} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          fontSize: 12,
-                        }}
-                      >
-                        <span>{muscle}</span>
-                        <span style={{ color: C.muted }}>{sets} sets</span>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 13, color: C.fg }}>{muscle}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 11, color: C.tertiary }}>
+                          {sets} sets
+                        </span>
                       </div>
-                      <div
-                        style={{
-                          height: 7,
-                          borderRadius: 999,
-                          background: C.track,
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            height: "100%",
-                            width: `${pct}%`,
-                            background: C.primary,
-                            borderRadius: 999,
-                          }}
-                        />
+                      <div style={{ height: 6, borderRadius: 999, background: C.track, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: C.primary, borderRadius: 999 }} />
                       </div>
                     </div>
                   );
@@ -308,77 +352,60 @@ export function ShareWorkoutButton(props: Props) {
               </div>
             ) : null}
 
-            {/* Personal bests */}
-            {props.prs.length > 0 ? (
-              <div
-                style={{
-                  border: `1px solid ${C.primaryBorder}`,
-                  background: "rgba(229,255,0,0.05)",
-                  borderRadius: 14,
-                  padding: 14,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 7,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.primary }}>
-                  🏆 {props.prs.length} new personal best
-                  {props.prs.length !== 1 ? "s" : ""}
+            {/* Exercise list */}
+            {exercises.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: "uppercase", color: C.tertiary }}>
+                  Exercises
                 </div>
-                {props.prs.slice(0, 3).map((pr, i) => (
-                  <div
-                    key={`${pr.exerciseName}-${pr.type}-${i}`}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 12,
-                      gap: 8,
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {pr.exerciseName}
-                    </span>
-                    <span style={{ color: C.muted, whiteSpace: "nowrap" }}>
-                      {pr.type === "weight"
-                        ? `${pr.newValue} lbs`
-                        : `${pr.newValue.toLocaleString()} vol`}
-                    </span>
-                  </div>
-                ))}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
+                  {exercises.slice(0, 6).map((ex, i) => (
+                    <div key={`${ex.name}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: C.exText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {ex.name}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 11, color: C.tertiary, flexShrink: 0 }}>
+                        {ex.sets}×{ex.reps ?? "-"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
 
             {/* Footer */}
-            <div
-              style={{
-                marginTop: "auto",
-                textAlign: "center",
-                fontSize: 11,
-                color: C.muted,
-                letterSpacing: 0.4,
-              }}
-            >
+            <div style={{ marginTop: "auto", textAlign: "center", fontFamily: MONO, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: C.tertiary }}>
               Tracked with FitYear
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mt-2">
+        {/* Primary Share CTA */}
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          disabled={busy}
+          className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-base font-bold text-primary-foreground shadow-cta-strong disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Share2 className="h-[19px] w-[19px]" />}
+          Share
+        </button>
+        <div className="grid grid-cols-2 gap-2.5">
           <Button
             type="button"
             variant="outline"
-            onClick={handleNativeShare}
+            onClick={handleSaveImage}
             disabled={busy}
-            className="h-11"
+            className="h-12"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
-            <span className="ml-2">Share</span>
+            <Download className="h-4 w-4" />
+            <span className="ml-2">Save image</span>
           </Button>
           <Button
             type="button"
             variant="outline"
             onClick={handleCopy}
-            className="h-11"
+            className="h-12"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             <span className="ml-2">{copied ? "Copied" : "Copy text"}</span>
@@ -389,27 +416,62 @@ export function ShareWorkoutButton(props: Props) {
   );
 }
 
-function StatBox({ label, value }: { label: string; value: string }) {
+function StatBox({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
     <div
       style={{
         border: `1px solid ${C.border}`,
         background: C.surface,
-        borderRadius: 12,
+        borderRadius: 13,
         padding: "10px 12px",
       }}
     >
       <div
         style={{
-          fontSize: 10,
+          fontFamily: MONO,
+          fontSize: 9,
           textTransform: "uppercase",
-          letterSpacing: 0.6,
-          color: C.muted,
+          letterSpacing: 1,
+          color: C.tertiary,
+          marginBottom: 4,
         }}
       >
         {label}
       </div>
-      <div style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>{value}</div>
+      <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: accent ? C.primary : C.fg }}>
+        {value}
+      </div>
     </div>
+  );
+}
+
+// Literal-hex SVGs (lucide paths) so the capture card never depends on token
+// colors - currentColor is set inline on the wrapper.
+function TrophySvg({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+      <path d="M4 22h16" />
+      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+    </svg>
+  );
+}
+
+function FlameSvg({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+    </svg>
   );
 }
