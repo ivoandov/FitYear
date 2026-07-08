@@ -1,7 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Dumbbell, TrendingUp, Pencil, Check, X, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Pencil, Check, X, Plus, Trash2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
@@ -211,41 +210,57 @@ export function WorkoutHistoryCard({
   const displayExercises = isEditing ? editedExercises : enrichedExercises;
 
   return (
-    <Card data-testid={`card-history-${id}`}>
+    <div className="card-elevated" data-testid={`card-history-${id}`}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CardHeader className="p-5 sm:p-7">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-base sm:text-lg font-semibold mb-2 truncate" data-testid={`text-history-name-${id}`}>
-                {workoutName}
-              </CardTitle>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs sm:text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span data-testid={`text-history-date-${id}`}>{format(date, "PP")}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Dumbbell className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                  <span data-testid={`text-history-sets-${id}`}>{completedSets} sets</span>
-                </div>
-                {totalVolume > 0 && (
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
-                    <span data-testid={`text-history-volume-${id}`}>{Math.round(lbsToDisplay(totalVolume, weightUnit) ?? 0).toLocaleString()} {weightUnit}</span>
-                  </div>
-                )}
+        <div className="p-4">
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 truncate text-base font-bold" data-testid={`text-history-name-${id}`}>
+              {workoutName}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span
+                className="font-mono text-[11px] uppercase tracking-[0.06em] text-tertiary-foreground"
+                data-testid={`text-history-date-${id}`}
+              >
+                {format(date, "MMM d")}
+              </span>
+              <CollapsibleTrigger
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground"
+                data-testid={`button-expand-${id}`}
+              >
+                <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+              </CollapsibleTrigger>
+            </div>
+          </div>
+          <div className="flex gap-6">
+            <div>
+              <div className="font-mono text-[17px] font-bold text-primary">{exerciseCount}</div>
+              <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                Exercises
               </div>
             </div>
-            <CollapsibleTrigger
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
-              data-testid={`button-expand-${id}`}
-            >
-              <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </CollapsibleTrigger>
+            <div>
+              <div className="font-mono text-[17px] font-bold" data-testid={`text-history-sets-${id}`}>
+                {completedSets}
+              </div>
+              <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                Sets
+              </div>
+            </div>
+            {totalVolume > 0 && (
+              <div>
+                <div className="font-mono text-[17px] font-bold" data-testid={`text-history-volume-${id}`}>
+                  {Math.round(lbsToDisplay(totalVolume, weightUnit) ?? 0).toLocaleString()}
+                </div>
+                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                  {weightUnit} vol
+                </div>
+              </div>
+            )}
           </div>
-        </CardHeader>
+        </div>
         <CollapsibleContent>
-          <CardContent className="p-5 sm:p-7 pt-0">
+          <div className="border-t border-divider px-4 py-4">
             <div className="flex justify-end mb-3 gap-2">
               {isEditing ? (
                 <>
@@ -388,9 +403,9 @@ export function WorkoutHistoryCard({
                 );
               })}
             </div>
-          </CardContent>
+          </div>
         </CollapsibleContent>
       </Collapsible>
-    </Card>
+    </div>
   );
 }

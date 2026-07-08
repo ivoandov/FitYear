@@ -3,9 +3,8 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Calendar, Flame, Activity, Plus, Target, Trophy } from "lucide-react";
+import { Plus, Target, Trophy } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -14,6 +13,13 @@ import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
 import { localDateKey } from "@/lib/date";
 import type { ExerciseGoal } from "@/lib/db/schema";
+
+// Muscle / goal progress bars: 6-7px neon indicator over a faint white track,
+// styled via arbitrary descendant selectors on the base-ui <Progress> so the
+// component (and its data-testid + value logic) is untouched.
+const BAR_HEIGHT = "[&_[data-slot=progress-track]]:h-[7px]";
+const BAR_TRACK = "[&_[data-slot=progress-track]]:bg-white/[0.08]";
+const BAR_TRACK_FULL = "[&_[data-slot=progress-track]]:bg-primary";
 
 // Pure range check (module scope so it isn't reallocated per render, and so it's
 // safe to use inside the memos below without being a dependency).
@@ -48,7 +54,7 @@ export default function HistoryPage() {
   const historyData = useMemo(() => completedWorkouts.map((workout, index) => {
     let workoutVolume = 0;
     let totalSets = 0;
-    
+
     const exercises = workout.exercises.map((ex: any) => {
       const enrichedEx = enrichExercise({ ...ex, id: ex.id || "" });
       const sets = ex.setsData || [];
@@ -182,69 +188,67 @@ export default function HistoryPage() {
   }, [completedWorkouts, goals]);
 
   const stats = [
-    { label: "Total Workouts", value: totalWorkouts.toString(), icon: Calendar, testId: "total-workouts" },
-    { label: "This Week", value: workoutsThisWeek.toString(), icon: Flame, testId: "this-week" },
-    { label: "This Month", value: workoutsThisMonth.toString(), icon: Activity, testId: "this-month" },
-    { label: "Total Sets", value: totalSetsCompleted.toString(), icon: TrendingUp, testId: "total-sets" },
+    { label: "Total workouts", value: totalWorkouts.toString(), testId: "total-workouts", accent: false },
+    { label: "This week", value: workoutsThisWeek.toString(), testId: "this-week", accent: true },
+    { label: "This month", value: workoutsThisMonth.toString(), testId: "this-month", accent: false },
+    { label: "Total sets", value: totalSetsCompleted.toString(), testId: "total-sets", accent: false },
   ];
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
+      <div className="mx-auto w-full max-w-2xl px-5 py-6 pb-12 space-y-5">
+        {/* Title */}
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
-            Workout History
+          <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]" data-testid="text-page-title">
+            History
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Track your progress and review past sessions
+          <p className="mt-1 text-sm text-muted-foreground">
+            Your progress at a glance
           </p>
         </div>
 
-        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        {/* 2×2 stat tiles */}
+        <div className="grid grid-cols-2 gap-3">
           {stats.map((stat) => (
-            <Card key={stat.label} data-testid={`card-stat-${stat.testId}`}>
-              <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 p-3 sm:p-4 pb-1 sm:pb-2">
-                <CardTitle className="text-xs sm:text-sm font-medium">
-                  {stat.label}
-                </CardTitle>
-                <stat.icon className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4 pt-0">
-                <div className="text-xl sm:text-2xl font-bold" data-testid={`text-stat-value-${stat.testId}`}>
-                  {stat.value}
-                </div>
-              </CardContent>
-            </Card>
+            <div key={stat.label} className="card-elevated p-4" data-testid={`card-stat-${stat.testId}`}>
+              <div
+                className={`font-mono text-[28px] font-bold leading-none ${stat.accent ? "text-primary" : "text-foreground"}`}
+                data-testid={`text-stat-value-${stat.testId}`}
+              >
+                {stat.value}
+              </div>
+              <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                {stat.label}
+              </div>
+            </div>
           ))}
         </div>
 
         {/* Weekly Goals */}
-        <Card>
-          <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
-                  Weekly Goals (last 7 days)
-                </CardTitle>
-                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                  Track rep targets across multiple sessions
-                </p>
+        <div className="card-elevated p-5">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                <Target className="h-3.5 w-3.5 text-primary" />
+                Weekly goals · last 7 days
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setEditingGoal(null); setGoalDialogOpen(true); }}
-                data-testid="button-add-goal"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Goal
-              </Button>
+              <p className="mt-1 text-xs text-tertiary-foreground">
+                Track rep targets across multiple sessions
+              </p>
             </div>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setEditingGoal(null); setGoalDialogOpen(true); }}
+              data-testid="button-add-goal"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Goal
+            </Button>
+          </div>
+          <div className="mt-4">
             {goals.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
+              <p className="py-4 text-center text-sm text-muted-foreground">
                 No goals yet. Add one to start tracking multi-session progress.
               </p>
             ) : (
@@ -263,18 +267,18 @@ export default function HistoryPage() {
                       onClick={() => { setEditingGoal(goal); setGoalDialogOpen(true); }}
                       data-testid={`row-goal-${goal.id}`}
                     >
-                      <div className="flex items-center justify-between text-xs sm:text-sm gap-2">
-                        <span className="font-medium truncate">{goal.exerciseName}</span>
-                        <span className={`shrink-0 tabular-nums ${isComplete ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                          {done} / {goal.targetReps} this week
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[13px] font-medium text-foreground">{goal.exerciseName}</span>
+                        <span className={`shrink-0 font-mono text-xs ${isComplete ? "text-primary" : "text-tertiary-foreground"}`}>
+                          {done}/{goal.targetReps}
                         </span>
                       </div>
                       <Progress
                         value={pct}
-                        className={isComplete ? "[&>div]:bg-primary" : ""}
+                        className={`${BAR_HEIGHT} ${isComplete ? BAR_TRACK_FULL : BAR_TRACK}`}
                         data-testid={`progress-goal-${goal.id}`}
                       />
-                      <p className="text-xs text-muted-foreground" data-testid={`text-goal-alltime-${goal.id}`}>
+                      <p className="font-mono text-[10px] tracking-[0.04em] text-tertiary-foreground" data-testid={`text-goal-alltime-${goal.id}`}>
                         {allTime.toLocaleString()} total since {startLabel}
                       </p>
                     </button>
@@ -282,45 +286,42 @@ export default function HistoryPage() {
                 })}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-base sm:text-lg">Weekly Sets by Muscle Group (last 7 days)</CardTitle>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Track your training volume across different muscle groups
-            </p>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0">
-            <div className="space-y-3 sm:space-y-4">
-              {weeklySetsByMuscleGroup.map((group) => (
-                <div key={group.muscleGroup} className="space-y-1.5 sm:space-y-2">
-                  <div className="flex items-center justify-between text-xs sm:text-sm">
-                    <span className="font-medium" data-testid={`text-muscle-${group.muscleGroup.toLowerCase()}`}>
-                      {group.muscleGroup}
-                    </span>
-                    <span className="text-muted-foreground" data-testid={`text-sets-${group.muscleGroup.toLowerCase()}`}>
-                      {group.sets}/{group.maxSets}
-                    </span>
-                  </div>
-                  <Progress
-                    value={(group.sets / group.maxSets) * 100}
-                    data-testid={`progress-${group.muscleGroup.toLowerCase()}`}
-                  />
+        {/* Sets this week · by muscle */}
+        <div className="card-elevated p-5">
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            Sets this week · by muscle
+          </div>
+          <div className="space-y-3.5">
+            {weeklySetsByMuscleGroup.map((group) => (
+              <div key={group.muscleGroup}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[13px] text-foreground" data-testid={`text-muscle-${group.muscleGroup.toLowerCase()}`}>
+                    {group.muscleGroup}
+                  </span>
+                  <span className="font-mono text-xs text-tertiary-foreground" data-testid={`text-sets-${group.muscleGroup.toLowerCase()}`}>
+                    {group.sets}/{group.maxSets}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <Progress
+                  value={(group.sets / group.maxSets) * 100}
+                  className={`${BAR_HEIGHT} ${BAR_TRACK}`}
+                  data-testid={`progress-${group.muscleGroup.toLowerCase()}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* Segmented tab control: Workouts | Personal Bests */}
-        <div className="space-y-3 sm:space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg sm:text-xl font-semibold">
-              {historyTab === "workouts" ? "Recent Workouts" : "Personal Bests"}
+        {/* Segmented tab control: Workouts | PRs */}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-bold">
+              {historyTab === "workouts" ? "Recent" : "Personal Bests"}
             </h2>
-            <div className="inline-flex rounded-[10px] border bg-input p-1 gap-1" role="tablist">
+            <div className="inline-flex gap-1 rounded-[11px] border bg-input p-[3px]" role="tablist">
               {([
                 { key: "workouts", label: "Workouts" },
                 { key: "prs", label: "PRs" },
@@ -331,10 +332,10 @@ export default function HistoryPage() {
                   role="tab"
                   aria-selected={historyTab === t.key}
                   onClick={() => setHistoryTab(t.key)}
-                  className={`px-3 h-7 rounded-[8px] text-xs font-semibold transition-colors ${
+                  className={`rounded-[8px] px-3.5 py-1.5 text-xs transition-colors ${
                     historyTab === t.key
-                      ? "bg-white/[0.06] border border-strong text-foreground"
-                      : "text-muted-foreground hover:text-foreground border border-transparent"
+                      ? "border border-strong bg-white/[0.08] font-bold text-foreground"
+                      : "border border-transparent font-semibold text-tertiary-foreground hover:text-foreground"
                   }`}
                   data-testid={`tab-history-${t.key}`}
                 >
@@ -346,72 +347,70 @@ export default function HistoryPage() {
 
           {historyTab === "workouts" ? (
             historyData.length > 0 ? (
-              <div className="space-y-3 sm:space-y-4">
+              <div className="space-y-3">
                 {historyData.map((session) => (
                   <WorkoutHistoryCard key={session.id} {...session} />
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
+              <div className="py-12 text-center">
                 <p className="text-muted-foreground">No workout history yet</p>
-                <p className="text-sm text-muted-foreground mt-2">
+                <p className="mt-2 text-sm text-tertiary-foreground">
                   Complete your first workout to see your progress here
                 </p>
               </div>
             )
           ) : prHistoryRows.length > 0 ? (
-            <Card>
-              <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-4">
-                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-primary" />
-                  Recent personal bests
-                </CardTitle>
-                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                  Last {prHistoryRows.length} {prHistoryRows.length === 1 ? "PR" : "PRs"} across all your lifts
-                </p>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-6 pt-0 space-y-3">
+            <div className="card-elevated p-5">
+              <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                <Trophy className="h-3.5 w-3.5 text-primary" />
+                Recent personal bests
+              </div>
+              <p className="mt-1 text-xs text-tertiary-foreground">
+                Last {prHistoryRows.length} {prHistoryRows.length === 1 ? "PR" : "PRs"} across all your lifts
+              </p>
+              <div className="mt-4 space-y-3">
                 {prHistoryRows.map((pr) => {
                   const date = new Date(pr.achievedAt);
                   const dateLabel = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
                   return (
-                    <div key={pr.id} className="flex items-start justify-between gap-2 text-sm">
-                      <div className="flex items-start gap-2 min-w-0">
-                        <span className="text-base shrink-0">
+                    <div key={pr.id} className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <span className="shrink-0 text-base">
                           {pr.prType === "weight" ? "🏆" : "⭐"}
                         </span>
                         <div className="min-w-0">
-                          <div className="font-medium truncate">{pr.exerciseName ?? "Unknown exercise"}</div>
-                          <div className="text-xs text-muted-foreground">
-                            <span className={`uppercase tracking-wide font-semibold ${pr.prType === "weight" ? "text-primary" : "text-emerald-500"}`}>
+                          <div className="truncate text-sm font-semibold text-foreground">{pr.exerciseName ?? "Unknown exercise"}</div>
+                          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em]">
+                            <span className={pr.prType === "weight" ? "text-primary" : "text-success"}>
                               {pr.prType}
                             </span>
-                            {" · "}{dateLabel}
+                            <span className="text-tertiary-foreground">{" · "}{dateLabel}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-right shrink-0 tabular-nums">
-                        <div className="font-semibold">
-                          {pr.prType === "weight" ? `${pr.newValue} lbs` : `${pr.newValue.toLocaleString()} vol`}
+                      <div className="shrink-0 text-right">
+                        <div className="font-mono text-sm font-bold text-foreground">
+                          {pr.prType === "weight" ? `${pr.newValue} lb` : `${pr.newValue.toLocaleString()} vol`}
                         </div>
                         {pr.previousValue != null ? (
-                          <div className="text-xs text-muted-foreground">
-                            was {pr.prType === "weight" ? `${pr.previousValue} lbs` : pr.previousValue.toLocaleString()}
+                          <div className="font-mono text-[10px] text-tertiary-foreground">
+                            was {pr.prType === "weight" ? `${pr.previousValue} lb` : pr.previousValue.toLocaleString()}
                           </div>
                         ) : (
-                          <div className="text-xs text-muted-foreground">first time</div>
+                          <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">first time</div>
                         )}
                       </div>
                     </div>
                   );
                 })}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ) : (
-            <div className="text-center py-12">
+            <div className="py-12 text-center">
               <p className="text-muted-foreground">No personal bests yet</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                Hit a new weight or volume PR during a workout and it'll show up here
+              <p className="mt-2 text-sm text-tertiary-foreground">
+                Hit a new weight or volume PR during a workout and it&apos;ll show up here
               </p>
             </div>
           )}
