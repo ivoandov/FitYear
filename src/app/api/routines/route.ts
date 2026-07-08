@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { routines, routineEntries } from "@/lib/db/schema";
@@ -12,7 +12,30 @@ export const GET = handle(async () => {
     .select()
     .from(routines)
     .where(eq(routines.userId, user.id));
-  return rows;
+  if (rows.length === 0) return rows;
+
+  // Attach a COMPACT per-routine entries projection (no exercises jsonb) so the
+  // Routines list can render each card's M–S week-schedule strip + day names
+  // without shipping every program's full exercise payload. One extra query.
+  const ids = rows.map((r) => r.id);
+  const entries = await db
+    .select({
+      id: routineEntries.id,
+      routineId: routineEntries.routineId,
+      dayIndex: routineEntries.dayIndex,
+      workoutName: routineEntries.workoutName,
+      workoutTemplateId: routineEntries.workoutTemplateId,
+    })
+    .from(routineEntries)
+    .where(inArray(routineEntries.routineId, ids));
+
+  const byRoutine = new Map<string, typeof entries>();
+  for (const e of entries) {
+    const arr = byRoutine.get(e.routineId);
+    if (arr) arr.push(e);
+    else byRoutine.set(e.routineId, [e]);
+  }
+  return rows.map((r) => ({ ...r, entries: byRoutine.get(r.id) ?? [] }));
 });
 
 const EntrySchema = z.object({
