@@ -66,6 +66,11 @@ export function getLastRecordedValues(
 export interface SetPlan {
   sets?: number; // planned number of set rows
   reps?: number | null; // planned target reps for weight_reps exercises
+  // Planned target load in lbs (DB units) for weight_reps exercises — the
+  // deterministic per-week anchor load a FitBot program prescribes. Prefills
+  // the first row's weight (converted to the display unit) when there's no
+  // recorded history. History still wins on row 0.
+  targetLoadLbs?: number | null;
 }
 
 /**
@@ -101,9 +106,18 @@ export function getDefaultSets(
         completed: false,
       };
     }
-    // No history: pre-fill the first row's reps from the plan's target (weight/reps only).
-    if (i === 0 && !isDistanceTime && plan?.reps != null) {
-      return { setNumber: 1, weight: null, reps: plan.reps, distance: null, time: null, completed: false };
+    // No history: pre-fill the first row from the plan's target (weight/reps
+    // only) — reps from plan.reps (FitBot single-workout) and/or weight from
+    // plan.targetLoadLbs (FitBot program day), converted to the display unit.
+    if (i === 0 && !isDistanceTime && (plan?.reps != null || plan?.targetLoadLbs != null)) {
+      return {
+        setNumber: 1,
+        weight: plan?.targetLoadLbs != null ? lbsToDisplay(plan.targetLoadLbs, weightUnit) : null,
+        reps: plan?.reps ?? null,
+        distance: null,
+        time: null,
+        completed: false,
+      };
     }
     return { setNumber: i + 1, weight: null, reps: null, distance: null, time: null, completed: false };
   });

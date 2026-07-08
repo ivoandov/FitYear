@@ -93,3 +93,31 @@ describe("getDefaultSets — with a FitBot plan", () => {
     expect(getDefaultSets([], "lbs", "x", "weight_reps", { sets: 0 })).toHaveLength(1);
   });
 });
+
+describe("getDefaultSets — with a FitBot program target load", () => {
+  const hist = mk("2026-07-05", [
+    { id: "sq", setsData: [{ weight: 155, reps: 6, completed: true }] },
+  ]);
+
+  it("prefills the first row's weight from targetLoadLbs when there is no history", () => {
+    const rows = getDefaultSets([], "lbs", "bench", "weight_reps", { sets: 4, reps: 5, targetLoadLbs: 135 });
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toMatchObject({ weight: 135, reps: 5 });
+    expect(rows.slice(1).every((r) => r.weight === null)).toBe(true);
+  });
+
+  it("converts the lb target to the display unit (kg)", () => {
+    const rows = getDefaultSets([], "kg", "bench", "weight_reps", { targetLoadLbs: 135 });
+    expect(rows[0].weight).not.toBeNull();
+    expect(rows[0].weight! < 135 && rows[0].weight! > 0).toBe(true);
+  });
+
+  it("does not change row count when only a target load is given (no plan.sets)", () => {
+    expect(getDefaultSets([], "lbs", "bench", "weight_reps", { targetLoadLbs: 135 })).toHaveLength(3);
+  });
+
+  it("lets recorded history win on row 0 over the target load", () => {
+    const rows = getDefaultSets([hist], "lbs", "sq", "weight_reps", { targetLoadLbs: 135, reps: 5 });
+    expect(rows[0]).toMatchObject({ weight: 155, reps: 6 });
+  });
+});

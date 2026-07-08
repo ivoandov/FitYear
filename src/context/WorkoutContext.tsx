@@ -20,6 +20,11 @@ interface WorkoutExercise extends Exercise {
   plannedSets?: number;
   plannedReps?: number | null;
   plannedRest?: number;
+  // A saved FitBot program day carries a per-week target load on its anchor
+  // lifts (routine_entries.exercises.targetLoadLbs, copied verbatim onto the
+  // scheduled workout). Threaded through startWorkout so the Track screen can
+  // prefill the weight column. Does NOT change row count (see planOf on Track).
+  plannedLoadLbs?: number | null;
 }
 
 interface ActiveWorkout {
@@ -474,6 +479,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         sets: 3,
         defaultWeight: 135,
         defaultReps: 10,
+        // Surface a FitBot program day's per-anchor target load to Track (weight
+        // prefill only; row count stays the historic default). Absent -> null.
+        plannedLoadLbs: (ex as { targetLoadLbs?: number | null }).targetLoadLbs ?? null,
       })),
     };
     setActiveWorkout(workoutWithSets);

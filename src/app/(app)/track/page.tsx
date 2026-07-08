@@ -220,12 +220,18 @@ export default function TrackPage() {
   const getLastRecordedValues = (exerciseId: string) =>
     getLastRecordedValuesHelper(completedWorkouts, exerciseId);
 
-  // A FitBot exercise carries plannedSets/plannedReps; normal ones don't, so
-  // they keep the historic 1-or-3 default (no plan passed).
+  // A FitBot single-workout exercise carries plannedSets/plannedReps; a routine
+  // day carries plannedLoadLbs (the deterministic per-week target). Normal
+  // exercises carry neither, so they keep the historic 1-or-3 default (no plan
+  // passed). Row count still follows plannedSets only — a routine's target load
+  // prefills weight without changing set-count behavior for scheduled/template
+  // workouts (recorded history always wins on row 0 either way).
   const planOf = (ex: any) =>
-    ex?.plannedSets != null ? { sets: ex.plannedSets, reps: ex.plannedReps } : undefined;
+    ex?.plannedSets != null || ex?.plannedLoadLbs != null
+      ? { sets: ex.plannedSets, reps: ex.plannedReps, targetLoadLbs: ex.plannedLoadLbs }
+      : undefined;
 
-  const getDefaultSets = (exerciseId?: string, exerciseType?: string, plan?: { sets?: number; reps?: number | null }): SetData[] =>
+  const getDefaultSets = (exerciseId?: string, exerciseType?: string, plan?: { sets?: number; reps?: number | null; targetLoadLbs?: number | null }): SetData[] =>
     getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType, plan);
 
   const getCurrentSets = (): SetData[] => {
