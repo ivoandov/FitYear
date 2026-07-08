@@ -197,6 +197,25 @@
   box-shadow: 0 4px 14px hsla(65, 100%, 50%, 0.18);
 }
 
+/* Signature "elevated" card of the A+ refresh: a subtle vertical gradient, a
+   hairline border, and an inner top highlight. One source of truth for stat
+   tiles, list containers, the weekly tracker, program/routine cards, the FitBot
+   exercise list, etc. See design_handoff_fityear_polish. */
+@utility card-elevated {
+  background-image: linear-gradient(180deg, #171715, #131311);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Neon primary-CTA glow of the refresh (stronger than shadow-cta): pairs with
+   the neon gradient fill on the tall primary buttons. */
+@utility shadow-cta-strong {
+  box-shadow:
+    0 8px 24px -4px rgba(229, 255, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
 @layer base {
   * {
     border-color: var(--color-border);

@@ -35,3 +35,25 @@ export const GeneratedWorkoutSchema = z.object({
 
 export type GeneratedExercise = z.infer<typeof GeneratedExerciseSchema>;
 export type GeneratedWorkout = z.infer<typeof GeneratedWorkoutSchema>;
+
+/**
+ * Refinement response. The refine endpoint returns the full revised workout PLUS
+ * a structured diff so the preview can render the "1 change applied / SWAPPED /
+ * was X / N unchanged" UI reliably (the model authors the change, so it reports
+ * it). See FITBOT_TECH_SPEC.md section 1.3 (3d).
+ */
+export const WorkoutChangeSchema = z.object({
+  type: z.enum(["swap", "add", "remove", "modify"]),
+  name: z.string(), // the resulting exercise (or the removed one)
+  previousName: z.string().optional(), // for swaps / modifies
+  reason: z.string().optional(), // short "why" (injury-aware, etc.)
+});
+
+export const RefinedWorkoutSchema = z.object({
+  workout: GeneratedWorkoutSchema,
+  changes: z.array(WorkoutChangeSchema).default([]),
+  summary: z.string().default(""),
+});
+
+export type WorkoutChange = z.infer<typeof WorkoutChangeSchema>;
+export type RefinedWorkout = z.infer<typeof RefinedWorkoutSchema>;
