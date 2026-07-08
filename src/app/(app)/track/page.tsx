@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Dumbbell } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Plus, Pencil, Play, Dumbbell, Sparkles } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useWorkout, type TrackingProgress } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
@@ -317,11 +317,22 @@ export default function TrackPage() {
           <div className="text-center py-12">
             <h1 className="text-2xl font-bold mb-4" data-testid="text-no-workout">No Active Workout</h1>
             <p className="text-muted-foreground mb-6">
-              Start a workout from the Workouts page to begin tracking.
+              Start a workout from the Workouts page, or let FitBot build one for you.
             </p>
             <Button onClick={() => router.push("/")} data-testid="button-go-to-workouts">
               Go to Workouts
             </Button>
+            {/* FitBot single-workout entry from the empty Track state. */}
+            <button
+              type="button"
+              onClick={() => router.push("/fit-bot/workout")}
+              className="mx-auto mt-4 flex w-full max-w-sm items-center gap-3 h-[52px] rounded-2xl border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
+              data-testid="button-fitbot-entry-track"
+            >
+              <Sparkles className="h-[18px] w-[18px] shrink-0 text-primary" />
+              <span className="flex-1 text-sm text-muted-foreground">Describe your workout…</span>
+              <ChevronRight className="h-[18px] w-[18px] shrink-0 text-tertiary-foreground" />
+            </button>
           </div>
         </div>
       </div>

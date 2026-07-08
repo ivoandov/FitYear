@@ -21,8 +21,8 @@ export function AppHeader() {
   const pathname = usePathname();
   const { user, logout, isLoggingOut } = useAuth();
 
-  // Hide header on fullscreen pages
-  if (pathname === "/workout-preview") return null;
+  // Hide header on fullscreen pages (workout preview + FitBot single-workout)
+  if (pathname === "/workout-preview" || pathname === "/fit-bot/workout") return null;
 
   const isHome = pathname === "/" || pathname === "/workouts";
   const userName =

@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkoutMutations } from "@/hooks/use-workout-mutations";
 import { WorkoutEditorDialog, type WorkoutData } from "@/components/WorkoutEditorDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Dumbbell, Link2 } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Dumbbell, Link2, Sparkles, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, addDays, isBefore, startOfDay } from "date-fns";
@@ -673,6 +673,19 @@ export default function WorkoutsPage() {
           <Play className="h-5 w-5 mr-2" />
           Start Workout
         </Button>
+
+        {/* FitBot single-workout entry: describe a workout in plain language and
+            let FitBot build it. Routes into the /fit-bot/workout takeover flow. */}
+        <button
+          type="button"
+          onClick={() => router.push("/fit-bot/workout")}
+          className="w-full flex items-center gap-3 h-[52px] rounded-2xl border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
+          data-testid="button-fitbot-entry"
+        >
+          <Sparkles className="h-[18px] w-[18px] shrink-0 text-primary" />
+          <span className="flex-1 text-sm text-muted-foreground">Describe your workout…</span>
+          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-tertiary-foreground" />
+        </button>
 
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
