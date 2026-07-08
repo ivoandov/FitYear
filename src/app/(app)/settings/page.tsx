@@ -1,15 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/ThemeProvider";
 import { useSettings, type WeekStart, DEFAULT_MUSCLE_GROUPS } from "@/components/SettingsProvider";
 import { isCustomMuscleGroup } from "@/lib/db/schema";
-import { Sun, Moon, Monitor, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Timer, Link2, Unlink } from "lucide-react";
+import { ArrowLeft, Sun, Moon, Monitor, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Link2, Unlink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -36,6 +32,54 @@ interface UserSettings {
   selectedCalendarId: string | null;
   selectedCalendarName: string | null;
   weightUnit: string | null;
+}
+
+// A+ refresh primitives: the signature elevated card, mono section eyebrow,
+// and the shared row title / helper text scale used across every settings block.
+const CARD = "card-elevated p-[18px]";
+const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.14em] text-tertiary-foreground";
+const ROW_TITLE = "text-sm font-semibold text-foreground";
+const ROW_HELP = "mt-0.5 text-xs text-muted-foreground";
+
+// Segmented pill control (weight unit, week start). Active pill = neon fill
+// (black text) or the subtle rgba-white treatment, per the refresh spec.
+function Segmented({
+  options,
+  value,
+  onChange,
+  variant = "neon",
+  mono = false,
+  getTestId,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  variant?: "neon" | "subtle";
+  mono?: boolean;
+  getTestId?: (v: string) => string;
+}) {
+  return (
+    <div className="flex shrink-0 gap-1 rounded-[10px] border bg-input p-[3px]">
+      {options.map((opt) => {
+        const active = value === opt.value;
+        const activeCls =
+          variant === "neon"
+            ? "bg-primary font-bold text-primary-foreground"
+            : "border border-strong bg-white/[0.08] font-bold text-foreground";
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            data-testid={getTestId?.(opt.value)}
+            className={`rounded-[7px] px-3.5 py-1.5 text-[13px] transition-colors ${mono ? "font-mono " : ""}${active ? activeCls : "font-semibold text-muted-foreground"}`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -290,104 +334,140 @@ export default function SettingsPage() {
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
+      <div className="mx-auto max-w-2xl space-y-5 p-4 pb-8 sm:p-6 sm:pb-12">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Back"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-white/[0.03] text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-[18px] w-[18px]" />
+          </button>
+          <h1 className="text-2xl font-bold tracking-[-0.02em]" data-testid="text-page-title">
             Settings
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Customize your app experience
-          </p>
         </div>
 
         <FitYearGoalsCard />
 
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-base sm:text-lg">Week Start</CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              Choose when your week begins for weekly statistics
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-            <RadioGroup
-              value={weekStart}
-              onValueChange={(value) => setWeekStart(value as WeekStart)}
-              className="space-y-3"
-            >
-              {weekStartOptions.map((option) => (
-                <div
-                  key={option.value}
-                  className={`flex items-center space-x-3 p-3 rounded-md border cursor-pointer hover-elevate ${
-                    weekStart === option.value ? 'border-primary bg-primary/5' : ''
-                  }`}
-                  onClick={() => setWeekStart(option.value as WeekStart)}
-                  data-testid={`option-weekstart-${option.value}`}
-                >
-                  <RadioGroupItem value={option.value} id={`weekstart-${option.value}`} />
-                  <Calendar className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1">
-                    <Label htmlFor={`weekstart-${option.value}`} className="font-medium cursor-pointer">
-                      {option.label}
-                    </Label>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      {option.description}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </RadioGroup>
-          </CardContent>
-        </Card>
+        <div className={CARD}>
+          <div className={`${EYEBROW} mb-4`}>Workout tracking</div>
 
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-base sm:text-lg">Google Calendar Sync</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  {calendarStatus?.connected 
-                    ? "Choose which calendar receives your completed workout events" 
-                    : "Connect your Google Calendar to sync workout events"}
-                </CardDescription>
-              </div>
-              {calendarStatus?.connected && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => refetchCalendars()}
-                  disabled={calendarsLoading}
-                  data-testid="button-refresh-calendars"
-                >
-                  <RefreshCw className={`h-4 w-4 ${calendarsLoading ? 'animate-spin' : ''}`} />
-                </Button>
-              )}
+          <div className="flex items-center justify-between gap-3" data-testid="option-weight-unit">
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Weight unit</div>
+              <div className={ROW_HELP}>Used when entering set weights</div>
             </div>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-            {statusLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-14 w-full" />
+            <Segmented
+              mono
+              value={userSettings?.weightUnit ?? "lbs"}
+              onChange={(v) => updateWeightUnitMutation.mutate(v as "lbs" | "kg")}
+              options={[
+                { value: "lbs", label: "lbs" },
+                { value: "kg", label: "kg" },
+              ]}
+              getTestId={(v) => `button-weight-unit-${v}`}
+            />
+          </div>
+
+          <div
+            className="mt-4 flex cursor-pointer items-center justify-between gap-3 border-t border-divider pt-4"
+            onClick={() => setRestTimerOnManualComplete(!restTimerOnManualComplete)}
+            data-testid="option-rest-timer-manual"
+          >
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Rest timer on completion</div>
+              <div className={ROW_HELP}>Start rest when checking off a set</div>
+            </div>
+            <Switch
+              checked={restTimerOnManualComplete}
+              onCheckedChange={setRestTimerOnManualComplete}
+              data-testid="switch-rest-timer-manual"
+            />
+          </div>
+
+          <div
+            className="mt-4 flex cursor-pointer items-center justify-between gap-3 border-t border-divider pt-4"
+            onClick={() => setShowKgConversion(!showKgConversion)}
+            data-testid="option-show-kg-conversion"
+          >
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Show unit conversion</div>
+              <div className={ROW_HELP}>Show lb equivalent below each input</div>
+            </div>
+            <Switch
+              checked={showKgConversion}
+              onCheckedChange={setShowKgConversion}
+              data-testid="switch-show-kg-conversion"
+            />
+          </div>
+        </div>
+
+        <div className={CARD}>
+          <div className={`${EYEBROW} mb-4`}>General</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Week starts on</div>
+              <div className={ROW_HELP}>For weekly statistics</div>
+            </div>
+            <Segmented
+              variant="subtle"
+              value={weekStart}
+              onChange={(v) => setWeekStart(v as WeekStart)}
+              options={[
+                { value: "sunday", label: "Sun" },
+                { value: "monday", label: "Mon" },
+              ]}
+              getTestId={(v) => `option-weekstart-${v}`}
+            />
+          </div>
+        </div>
+
+        <div className={CARD}>
+          <div className="mb-4 flex items-center justify-between">
+            <div className={EYEBROW}>Integrations</div>
+            {calendarStatus?.connected && (
+              <button
+                type="button"
+                onClick={() => refetchCalendars()}
+                disabled={calendarsLoading}
+                aria-label="Refresh calendars"
+                data-testid="button-refresh-calendars"
+                className="flex h-9 w-9 items-center justify-center rounded-[10px] border bg-white/[0.03] text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${calendarsLoading ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+          </div>
+
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-white/[0.05] text-muted-foreground">
+              <Calendar className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className={ROW_TITLE}>Google Calendar</div>
+              <div className={ROW_HELP}>
+                {calendarStatus?.connected
+                  ? "Choose which calendar receives your workouts"
+                  : "Sync completed workouts as events"}
               </div>
-            ) : !calendarStatus?.connected ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 p-4 rounded-md border bg-muted/50">
-                  <Calendar className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-sm">Calendar not connected</p>
-                    <p className="text-xs text-muted-foreground">Connect your Google Calendar to automatically sync your completed workouts as calendar events.</p>
-                  </div>
-                </div>
-                <Button
-                  onClick={handleConnectCalendar}
-                  disabled={isConnecting || connectCalendarMutation.isPending}
-                  className="w-full"
-                  data-testid="button-connect-calendar"
-                >
-                  <Link2 className="h-4 w-4 mr-2" />
-                  {isConnecting || connectCalendarMutation.isPending ? "Connecting..." : "Connect Google Calendar"}
-                </Button>
-              </div>
+            </div>
+          </div>
+
+          {statusLoading ? (
+            <Skeleton className="h-12 w-full rounded-xl" />
+          ) : !calendarStatus?.connected ? (
+            <button
+              type="button"
+              onClick={handleConnectCalendar}
+              disabled={isConnecting || connectCalendarMutation.isPending}
+              data-testid="button-connect-calendar"
+              className="flex h-[46px] w-full items-center justify-center gap-2 rounded-[13px] border border-yellow bg-primary-dim text-sm font-bold text-primary disabled:opacity-60"
+            >
+              <Link2 className="h-4 w-4" />
+              {isConnecting || connectCalendarMutation.isPending ? "Connecting..." : "Connect Google Calendar"}
+            </button>
             ) : calendarsLoading || settingsLoading ? (
               <div className="space-y-3">
                 <Skeleton className="h-14 w-full" />
@@ -531,218 +611,127 @@ export default function SettingsPage() {
                 </Button>
               </div>
             )}
-          </CardContent>
-        </Card>
+        </div>
 
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-base sm:text-lg">Workout Tracking</CardTitle>
-            <CardDescription className="text-xs sm:text-sm">
-              Customize how workout tracking behaves
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-3">
-            <div
-              className={`flex items-center justify-between gap-3 p-3 rounded-md border cursor-pointer hover-elevate ${
-                restTimerOnManualComplete ? 'border-primary bg-primary/5' : ''
-              }`}
-              onClick={() => setRestTimerOnManualComplete(!restTimerOnManualComplete)}
-              data-testid="option-rest-timer-manual"
+        <div className={CARD}>
+          <div className="mb-4 flex items-center justify-between">
+            <div className={EYEBROW}>Muscle groups</div>
+            <button
+              type="button"
+              onClick={handleResetMuscleGroups}
+              data-testid="button-reset-muscle-groups"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             >
-              <div className="flex items-center gap-3 flex-1">
-                <Timer className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                <div>
-                  <p className="font-medium text-sm">Rest timer on manual completion</p>
-                  <p className="text-xs text-muted-foreground">
-                    Start rest timer when manually checking off a set
-                  </p>
-                </div>
-              </div>
-              <Switch
-                checked={restTimerOnManualComplete}
-                onCheckedChange={setRestTimerOnManualComplete}
-                data-testid="switch-rest-timer-manual"
-              />
-            </div>
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset
+            </button>
+          </div>
 
-            <div className="flex items-center justify-between gap-3 p-3 rounded-md border" data-testid="option-weight-unit">
-              <div>
-                <p className="font-medium text-sm">Weight unit</p>
-                <p className="text-xs text-muted-foreground">Used when entering set weights during tracking</p>
-              </div>
-              <div className="flex gap-1 shrink-0">
-                {(['lbs', 'kg'] as const).map(unit => {
-                  const active = (userSettings?.weightUnit ?? 'lbs') === unit;
-                  return (
-                    <Button
-                      key={unit}
-                      size="sm"
-                      variant={active ? "default" : "outline"}
-                      onClick={() => updateWeightUnitMutation.mutate(unit)}
-                      data-testid={`button-weight-unit-${unit}`}
-                    >
-                      {unit}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              className={`flex items-center justify-between gap-3 p-3 rounded-md border cursor-pointer hover-elevate ${
-                showKgConversion ? 'border-primary bg-primary/5' : ''
-              }`}
-              onClick={() => setShowKgConversion(!showKgConversion)}
-              data-testid="option-show-kg-conversion"
-            >
-              <div className="flex-1">
-                <p className="font-medium text-sm">Show unit conversion</p>
-                <p className="text-xs text-muted-foreground">
-                  Show the equivalent weight in the other unit below each input (lbs ↔ kg)
-                </p>
-              </div>
-              <Switch
-                checked={showKgConversion}
-                onCheckedChange={setShowKgConversion}
-                data-testid="switch-show-kg-conversion"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-base sm:text-lg">Muscle Groups</CardTitle>
-                <CardDescription className="text-xs sm:text-sm">
-                  Customize which muscle groups appear in your exercise library
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetMuscleGroups}
-                data-testid="button-reset-muscle-groups"
-              >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                Reset
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Add new muscle group..."
-                value={newMuscleGroup}
-                onChange={(e) => setNewMuscleGroup(e.target.value)}
-                onKeyPress={handleKeyPress}
-                data-testid="input-new-muscle-group"
-              />
-              <Button
-                onClick={handleAddMuscleGroup}
-                disabled={!newMuscleGroup.trim() || muscleGroups.includes(newMuscleGroup.trim())}
-                data-testid="button-add-muscle-group"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-2">
+          {muscleGroups.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
               {muscleGroups.map((group, index) => {
                 const isCustom = isCustomMuscleGroup(group);
                 return (
                   <div
                     key={group}
-                    className="flex items-center gap-2 p-3 rounded-md border bg-background"
+                    className="flex items-center gap-0.5 rounded-full border bg-white/[0.05] py-1 pl-3 pr-1 text-[13px] text-foreground"
                     data-testid={`muscle-group-item-${group.toLowerCase()}`}
                   >
-                    <span className="flex-1 font-medium text-sm">
-                      {group}
-                      {!isCustom && <span className="text-xs text-muted-foreground ml-2">(default)</span>}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => reorderMuscleGroups(index, Math.max(0, index - 1))}
-                        disabled={index === 0}
-                        data-testid={`button-move-up-${group.toLowerCase()}`}
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => reorderMuscleGroups(index, Math.min(muscleGroups.length - 1, index + 1))}
-                        disabled={index === muscleGroups.length - 1}
-                        data-testid={`button-move-down-${group.toLowerCase()}`}
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeMuscleGroup(group)}
-                        disabled={!isCustom}
-                        className={!isCustom ? "opacity-30 cursor-not-allowed" : ""}
-                        data-testid={`button-remove-${group.toLowerCase()}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <span className="mr-1">{group}</span>
+                    <button
+                      type="button"
+                      onClick={() => reorderMuscleGroups(index, Math.max(0, index - 1))}
+                      disabled={index === 0}
+                      aria-label={`Move ${group} up`}
+                      data-testid={`button-move-up-${group.toLowerCase()}`}
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-tertiary-foreground hover:text-foreground disabled:opacity-30"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => reorderMuscleGroups(index, Math.min(muscleGroups.length - 1, index + 1))}
+                      disabled={index === muscleGroups.length - 1}
+                      aria-label={`Move ${group} down`}
+                      data-testid={`button-move-down-${group.toLowerCase()}`}
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-tertiary-foreground hover:text-foreground disabled:opacity-30"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeMuscleGroup(group)}
+                      disabled={!isCustom}
+                      aria-label={`Remove ${group}`}
+                      data-testid={`button-remove-${group.toLowerCase()}`}
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-tertiary-foreground hover:text-foreground ${
+                        !isCustom ? "cursor-not-allowed opacity-30" : ""
+                      }`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 );
               })}
             </div>
+          ) : (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No muscle groups defined. Add some or reset to defaults.
+            </p>
+          )}
 
-            {muscleGroups.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No muscle groups defined. Add some or reset to defaults.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          <div className="mt-4 flex items-center gap-2 rounded-xl border bg-input py-1.5 pl-3.5 pr-1.5">
+            <input
+              placeholder="Add muscle group…"
+              value={newMuscleGroup}
+              onChange={(e) => setNewMuscleGroup(e.target.value)}
+              onKeyPress={handleKeyPress}
+              data-testid="input-new-muscle-group"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary-foreground"
+            />
+            <button
+              type="button"
+              onClick={handleAddMuscleGroup}
+              disabled={!newMuscleGroup.trim() || muscleGroups.includes(newMuscleGroup.trim())}
+              aria-label="Add muscle group"
+              data-testid="button-add-muscle-group"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] bg-primary text-primary-foreground disabled:opacity-40"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
 
         {/* Data Migration */}
-        <Card data-testid="card-data-migration">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Link2 className="h-5 w-5" />
-              Workout Template History
-            </CardTitle>
-            <CardDescription>
-              Link your existing scheduled and completed workouts to their source templates to track completion history.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Sync Template Connections</p>
-                <p className="text-xs text-muted-foreground">
-                  Match workouts to templates by name to enable completion tracking
-                </p>
+        <div className={CARD} data-testid="card-data-migration">
+          <div className={`${EYEBROW} mb-4`}>Workout template history</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Sync template connections</div>
+              <div className={ROW_HELP}>
+                Match workouts to templates by name to enable completion tracking
               </div>
-              <Button
-                onClick={handleMigrateTemplateIds}
-                disabled={migrateTemplateIdsMutation.isPending}
-                data-testid="button-sync-template-history"
-              >
-                {migrateTemplateIdsMutation.isPending ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Sync Now
-                  </>
-                )}
-              </Button>
             </div>
-          </CardContent>
-        </Card>
+            <Button
+              onClick={handleMigrateTemplateIds}
+              disabled={migrateTemplateIdsMutation.isPending}
+              data-testid="button-sync-template-history"
+              className="shrink-0"
+            >
+              {migrateTemplateIdsMutation.isPending ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sync Now
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -779,77 +768,66 @@ function FitYearGoalsCard() {
   ];
 
   return (
-    <Card>
-      <CardHeader className="p-4 sm:p-6">
-        <CardTitle className="text-base sm:text-lg">Goals & Fit Bot</CardTitle>
-        <CardDescription className="text-xs sm:text-sm">
-          Monthly targets and Fit Bot defaults
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-4 sm:p-6 pt-0 space-y-5">
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Monthly workout target</Label>
-          <p className="text-xs text-muted-foreground">
-            Used by the home goals strip
-          </p>
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() =>
-                update.mutate({
-                  monthlyWorkoutGoal: Math.max(1, monthlyGoal - 1),
-                })
-              }
-              disabled={monthlyGoal <= 1}
-            >
-              −
-            </Button>
-            <span className="min-w-[3rem] text-center text-2xl font-bold tabular-nums">
-              {monthlyGoal}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() =>
-                update.mutate({
-                  monthlyWorkoutGoal: Math.min(31, monthlyGoal + 1),
-                })
-              }
-              disabled={monthlyGoal >= 31}
-            >
-              +
-            </Button>
-            <span className="text-sm text-muted-foreground">workouts / month</span>
-          </div>
-        </div>
+    <div className={CARD}>
+      <div className={`${EYEBROW} mb-4`}>Goals &amp; FitBot</div>
 
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Fit Bot default focus</Label>
-          <p className="text-xs text-muted-foreground">
-            Pre-selects this when you open Fit Bot
-          </p>
-          <Select
-            value={focus}
-            onValueChange={(value) => {
-              if (value) update.mutate({ fitbotDefaultFocus: value });
-            }}
+      <div className="mb-5">
+        <div className={ROW_TITLE}>Monthly target</div>
+        <div className={ROW_HELP}>Used by the home goals strip</div>
+        <div className="mt-3 flex items-center gap-3.5">
+          <button
+            type="button"
+            onClick={() =>
+              update.mutate({
+                monthlyWorkoutGoal: Math.max(1, monthlyGoal - 1),
+              })
+            }
+            disabled={monthlyGoal <= 1}
+            aria-label="Decrease monthly target"
+            className="flex h-10 w-10 items-center justify-center rounded-[11px] border border-strong bg-white/[0.03] text-xl leading-none text-muted-foreground disabled:opacity-40"
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {focusOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            −
+          </button>
+          <span className="min-w-[40px] text-center font-mono text-[26px] font-bold tabular-nums text-foreground">
+            {monthlyGoal}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              update.mutate({
+                monthlyWorkoutGoal: Math.min(31, monthlyGoal + 1),
+              })
+            }
+            disabled={monthlyGoal >= 31}
+            aria-label="Increase monthly target"
+            className="flex h-10 w-10 items-center justify-center rounded-[11px] border border-strong bg-white/[0.03] text-xl leading-none text-primary disabled:opacity-40"
+          >
+            +
+          </button>
+          <span className="text-[13px] text-muted-foreground">workouts / month</span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      <div>
+        <div className={`${ROW_TITLE} mb-2`}>FitBot default focus</div>
+        <Select
+          value={focus}
+          onValueChange={(value) => {
+            if (value) update.mutate({ fitbotDefaultFocus: value });
+          }}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {focusOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
   );
 }
