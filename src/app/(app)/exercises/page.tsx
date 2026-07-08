@@ -6,10 +6,7 @@ import { ExerciseCard } from "@/components/ExerciseCard";
 import { AddExerciseDialog, type ExerciseFormData } from "@/components/AddExerciseDialog";
 import { AddToWorkoutDialog } from "@/components/AddToWorkoutDialog";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Search, Plus } from "lucide-react";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { type Exercise } from "@/data/exercises";
 import { useSettings } from "@/components/SettingsProvider";
 import { useToast } from "@/hooks/use-toast";
@@ -235,48 +232,57 @@ export default function ExercisesPage() {
   return (
     <div className="flex-1 overflow-auto h-full">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
-              Exercise Library
+            <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]" data-testid="text-page-title">
+              Exercises
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Browse and add exercises to your workouts
+            <p className="mt-1 text-sm text-muted-foreground">
+              Browse and add to workouts
             </p>
           </div>
-          <Button onClick={() => setShowAddDialog(true)} data-testid="button-add-exercise">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Exercise
-          </Button>
+          <button
+            type="button"
+            onClick={() => setShowAddDialog(true)}
+            className="flex h-[42px] shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+            data-testid="button-add-exercise"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+            Add
+          </button>
         </div>
 
-        <div className="space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search exercises..."
+              placeholder="Search exercises…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="h-[46px] rounded-xl bg-input pl-11 text-[15px]"
               data-testid="input-search"
             />
           </div>
-          <ScrollArea className="w-full sm:w-auto whitespace-nowrap">
-            <div className="flex gap-2 pb-2 sm:pb-0">
-              {muscleGroups.map((group) => (
-                <Badge
+          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {muscleGroups.map((group) => {
+              const active = selectedMuscleGroup === group;
+              return (
+                <button
                   key={group}
-                  variant={selectedMuscleGroup === group ? "default" : "outline"}
-                  className="cursor-pointer whitespace-nowrap hover-elevate active-elevate-2 text-xs sm:text-sm"
+                  type="button"
                   onClick={() => setSelectedMuscleGroup(group)}
+                  className={`shrink-0 whitespace-nowrap rounded-full px-[15px] py-[7px] text-[13px] transition-colors ${
+                    active
+                      ? "bg-primary font-bold text-primary-foreground"
+                      : "border bg-white/[0.04] font-medium text-muted-foreground hover:text-foreground"
+                  }`}
                   data-testid={`badge-muscle-group-${group.toLowerCase()}`}
                 >
                   {group}
-                </Badge>
-              ))}
-            </div>
-            <ScrollBar orientation="horizontal" className="sm:hidden" />
-          </ScrollArea>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -295,20 +301,23 @@ export default function ExercisesPage() {
         </div>
 
         {isLoading && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">Loading exercises...</p>
+          <div className="py-12 text-center font-mono text-xs uppercase tracking-[0.14em] text-tertiary-foreground">
+            Loading exercises…
           </div>
         )}
 
         {isError && (
-          <div className="text-center py-12">
-            <p className="text-destructive">Error loading exercises: {error?.message}</p>
+          <div className="py-12 text-center text-sm text-destructive">
+            Error loading exercises: {error?.message}
           </div>
         )}
 
         {!isLoading && !isError && filteredExercises.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No exercises found ({dbExercises.length} total in database)</p>
+          <div className="py-12 text-center">
+            <p className="font-mono text-xs uppercase tracking-[0.14em] text-tertiary-foreground">
+              No exercises found
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{dbExercises.length} total in library</p>
           </div>
         )}
 

@@ -3,9 +3,7 @@
 import { memo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
@@ -18,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, X, RefreshCw, TrendingUp } from "lucide-react";
+import { Plus, Pencil, X, RefreshCw, TrendingUp, Dumbbell } from "lucide-react";
 
 interface ExerciseCardProps {
   id: string;
@@ -66,10 +64,10 @@ function ExerciseCardImpl({
 
   return (
     <>
-      <Card className="overflow-hidden hover-elevate relative" data-testid={`card-exercise-${id}`}>
+      <div className="card-elevated relative flex flex-col overflow-hidden" data-testid={`card-exercise-${id}`}>
         {imageUrl ? (
-          <div 
-            className="aspect-[16/10] sm:aspect-video overflow-hidden cursor-pointer relative"
+          <div
+            className="relative aspect-[16/10] cursor-pointer overflow-hidden"
             onClick={() => setShowImageDialog(true)}
             data-testid={`image-container-${id}`}
           >
@@ -78,22 +76,22 @@ function ExerciseCardImpl({
               alt={name}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-              className="object-cover hover:scale-105 transition-transform duration-200"
+              className="object-cover transition-transform duration-200 hover:scale-105"
             />
-            <div className="absolute top-0 right-0 w-14 h-14 bg-[radial-gradient(ellipse_at_top_right,rgba(0,0,0,0.4)_0%,transparent_70%)] pointer-events-none" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/25" />
             {isOwner && (
               <button
-                className="absolute top-2 right-2 text-white drop-shadow-lg hover:text-red-400 transition-colors z-10"
+                className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-destructive"
                 onClick={handleDeleteClick}
                 aria-label={`Delete ${name}`}
                 data-testid={`button-delete-exercise-${id}`}
               >
-                <X className="h-6 w-6" strokeWidth={3} />
+                <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             )}
             {isOwner && onRegenerateImage && (
               <button
-                className="absolute bottom-2 left-2 text-white drop-shadow-lg hover:text-primary transition-colors z-10 p-1 rounded-full bg-black/30 backdrop-blur-sm"
+                className="absolute bottom-2 left-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-60"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRegenerateImage(id);
@@ -102,74 +100,108 @@ function ExerciseCardImpl({
                 aria-label={`Regenerate image for ${name}`}
                 data-testid={`button-regenerate-image-${id}`}
               >
-                <RefreshCw className={`h-4 w-4 ${isRegenerating ? 'animate-spin' : ''}`} strokeWidth={2.5} />
+                <RefreshCw className={`h-4 w-4 ${isRegenerating ? "animate-spin" : ""}`} strokeWidth={2.25} />
               </button>
             )}
           </div>
-        ) : isOwner ? (
-          <button
-            className="absolute top-2 right-2 text-muted-foreground hover:text-red-500 transition-colors z-10"
-            onClick={handleDeleteClick}
-            aria-label={`Delete ${name}`}
-            data-testid={`button-delete-exercise-${id}`}
-          >
-            <X className="h-5 w-5" strokeWidth={2.5} />
-          </button>
-        ) : null}
-        <CardHeader className="space-y-2 p-4 sm:p-6">
-          <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+        ) : (
+          <div className="relative aspect-[16/10] overflow-hidden bg-primary-dim">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Dumbbell className="h-9 w-9 text-primary/70" strokeWidth={1.75} />
+            </div>
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+            {isOwner && (
+              <button
+                className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-destructive"
+                onClick={handleDeleteClick}
+                aria-label={`Delete ${name}`}
+                data-testid={`button-delete-exercise-${id}`}
+              >
+                <X className="h-4 w-4" strokeWidth={2.5} />
+              </button>
+            )}
+            {isOwner && onRegenerateImage && (
+              <button
+                className="absolute bottom-2 left-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-60"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegenerateImage(id);
+                }}
+                disabled={isRegenerating}
+                aria-label={`Regenerate image for ${name}`}
+                data-testid={`button-regenerate-image-${id}`}
+              >
+                <RefreshCw className={`h-4 w-4 ${isRegenerating ? "animate-spin" : ""}`} strokeWidth={2.25} />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-1 flex-col p-4">
+          <div className="mb-2.5 flex flex-wrap gap-1.5">
             {muscleGroups.map((group) => (
-              <Badge key={group} variant="secondary" className="text-xs" data-testid={`badge-muscle-${id}-${group.toLowerCase()}`}>
+              <span
+                key={group}
+                className="rounded-md bg-white/[0.06] px-2.5 py-[3px] text-[11px] text-muted-foreground"
+                data-testid={`badge-muscle-${id}-${group.toLowerCase()}`}
+              >
                 {group}
-              </Badge>
+              </span>
             ))}
           </div>
+
           <Link
             href={`/exercises/${id}`}
-            className="block hover:underline"
+            className="block"
             data-testid={`link-exercise-detail-${id}`}
           >
-            <CardTitle className="text-base sm:text-lg" data-testid={`text-exercise-name-${id}`}>
+            <h3
+              className="text-[17px] font-bold leading-snug text-foreground hover:underline"
+              data-testid={`text-exercise-name-${id}`}
+            >
               {name}
-            </CardTitle>
+            </h3>
           </Link>
-        </CardHeader>
-        <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2" data-testid={`text-description-${id}`}>
+
+          <p
+            className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground line-clamp-2"
+            data-testid={`text-description-${id}`}
+          >
             {description}
           </p>
-        </CardContent>
-        <CardFooter className="p-4 sm:p-6 pt-0 sm:pt-0 gap-2">
-          {isOwner && (
-            <Button
-              onClick={() => onEdit?.(id)}
-              variant="outline"
-              size="sm"
-              data-testid={`button-edit-exercise-${id}`}
+
+          <div className="mt-auto flex gap-2.5 pt-3.5">
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => onEdit?.(id)}
+                aria-label={`Edit ${name}`}
+                className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border-strong text-muted-foreground transition-colors hover:text-foreground"
+                data-testid={`button-edit-exercise-${id}`}
+              >
+                <Pencil className="h-[15px] w-[15px]" />
+              </button>
+            )}
+            <Link
+              href={`/exercises/${id}`}
+              className="flex h-[42px] shrink-0 items-center justify-center gap-1.5 rounded-xl border-strong px-4 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-foreground"
+              data-testid={`button-progress-exercise-${id}`}
             >
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-          )}
-          <Link
-            href={`/exercises/${id}`}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-            data-testid={`button-progress-exercise-${id}`}
-          >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Progress
-          </Link>
-          <Button
-            onClick={() => onAdd?.(id)}
-            className="flex-1"
-            size="sm"
-            data-testid={`button-add-exercise-${id}`}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add to Workout
-          </Button>
-        </CardFooter>
-      </Card>
+              <TrendingUp className="h-[15px] w-[15px]" />
+              Progress
+            </Link>
+            <button
+              type="button"
+              onClick={() => onAdd?.(id)}
+              className="flex h-[42px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary text-[13px] font-bold text-primary-foreground"
+              data-testid={`button-add-exercise-${id}`}
+            >
+              <Plus className="h-[15px] w-[15px]" strokeWidth={2.5} />
+              Add to Workout
+            </button>
+          </div>
+        </div>
+      </div>
 
       <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
         <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none">
