@@ -36,6 +36,7 @@ export const ProgramSchema = z.object({
 });
 
 export type Program = z.infer<typeof ProgramSchema>;
+export type Exercise = z.infer<typeof ExerciseSchema>;
 
 // --- Program skeleton (stage 1 of the segmented program builder) ---
 // The model returns this compact macrocycle spec in ONE fast call: the split,
