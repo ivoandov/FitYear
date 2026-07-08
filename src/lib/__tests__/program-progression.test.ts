@@ -60,6 +60,7 @@ describe("expandSkeleton", () => {
             muscleGroups: ["Legs"],
             exerciseType: "weight_reps",
             isAssisted: false,
+            restSeconds: 180,
             progression: {
               scheme: "linear",
               startLoadLbs: 100,
@@ -76,6 +77,7 @@ describe("expandSkeleton", () => {
   it("attaches per-week prescriptions to each anchor and preserves its metadata", () => {
     const anchor = expandSkeleton(skeleton).split[0].anchors[0];
     expect(anchor.name).toBe("Back Squat");
+    expect(anchor.restSeconds).toBe(180); // rest carries through onto the expanded anchor
     expect(anchor.weekly.map((p) => p.loadLbs)).toEqual([100, 105, 110, 99]);
     // progression config is consumed, not carried onto the expanded anchor
     expect((anchor as unknown as Record<string, unknown>).progression).toBeUndefined();

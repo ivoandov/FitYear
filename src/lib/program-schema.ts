@@ -9,6 +9,13 @@ export const ExerciseSchema = z.object({
   reps: z.string(),
   rest: z.number(),
   notes: z.string().optional(),
+  // Optional per-week target load (lbs, DB units) for anchor lifts, produced by
+  // the deterministic progression expander (lib/program-progression.ts) and
+  // stitched in by the assembler. Additive + optional so existing Routines/preview
+  // readers that ignore it keep working (the "unchanged wire shape" constraint).
+  // Absent on accessory/variety exercises, which fall back to Track's
+  // last-recorded prefill. Bodyweight anchors omit it (load 0).
+  targetLoadLbs: z.number().optional(),
 });
 
 export const ProgramSchema = z.object({
@@ -54,6 +61,11 @@ export const AnchorLiftSchema = z.object({
   muscleGroups: z.array(z.string()).default([]),
   exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
   isAssisted: z.boolean().default(false),
+  // Rest between sets for this anchor (seconds). Heavy compounds want more rest
+  // than accessories; the model sets it. Defaulted so pre-existing skeletons
+  // (and the committed tests) that omit it still validate, and expandSkeleton
+  // carries it through onto the expanded anchor via `...meta`.
+  restSeconds: z.number().int().min(0).default(150),
   progression: AnchorProgressionSchema,
 });
 
@@ -86,3 +98,38 @@ export type AnchorLift = z.infer<typeof AnchorLiftSchema>;
 export type SplitDay = z.infer<typeof SplitDaySchema>;
 export type Phase = z.infer<typeof PhaseSchema>;
 export type Skeleton = z.infer<typeof SkeletonSchema>;
+
+// --- Per-phase variety (stage 2 of the segmented program builder) ---
+// One LLM call per skeleton phase authors that phase's exercise variety on top
+// of the deterministic anchor-lift progression: a phase-flavored workout name +
+// accessory exercises per split day. The assembler interleaves these accessories
+// with the expanded anchor prescriptions to build the final program. Accessories
+// carry no target load (they fall back to Track's last-recorded prefill); the
+// progression backbone lives entirely on the anchors. See FITBOT_TECH_SPEC.md
+// section 2.4 (progression ~65% deterministic, variety ~35% model-authored).
+
+export const PhaseAccessorySchema = z.object({
+  name: z.string(),
+  muscleGroups: z.array(z.string()).default([]),
+  exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
+  sets: z.number().int().min(1).max(10),
+  reps: z.string(),
+  rest: z.number().int().min(0),
+  notes: z.string().optional(),
+});
+
+export const PhaseVarietyDaySchema = z.object({
+  // Matches a SplitDaySchema.dayLabel so the assembler can map accessories back
+  // onto the right training day.
+  dayLabel: z.string(),
+  workoutName: z.string(),
+  accessories: z.array(PhaseAccessorySchema).default([]),
+});
+
+export const PhaseVarietySchema = z.object({
+  days: z.array(PhaseVarietyDaySchema).default([]),
+});
+
+export type PhaseAccessory = z.infer<typeof PhaseAccessorySchema>;
+export type PhaseVarietyDay = z.infer<typeof PhaseVarietyDaySchema>;
+export type PhaseVariety = z.infer<typeof PhaseVarietySchema>;
