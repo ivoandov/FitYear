@@ -78,6 +78,6 @@ describe("expandSkeleton", () => {
     expect(anchor.name).toBe("Back Squat");
     expect(anchor.weekly.map((p) => p.loadLbs)).toEqual([100, 105, 110, 99]);
     // progression config is consumed, not carried onto the expanded anchor
-    expect((anchor as Record<string, unknown>).progression).toBeUndefined();
+    expect((anchor as unknown as Record<string, unknown>).progression).toBeUndefined();
   });
 });
