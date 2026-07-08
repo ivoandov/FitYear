@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
+import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { useWorkout } from "@/context/WorkoutContext";
 import {
   planReconciliation,
@@ -376,7 +377,7 @@ function PromptScreen({
               <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
                 Type or speak
               </span>
-              {/* Mic lands with the voice-input change. */}
+              <VoiceInputButton value={prompt} onChange={setPrompt} className="h-[38px] w-[38px]" />
             </div>
           </div>
 
@@ -705,7 +706,13 @@ function ReviewScreen({
             className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary-foreground disabled:opacity-60"
             data-testid="input-fitbot-refine"
           />
-          {/* Mic lands with the voice-input change. */}
+          <VoiceInputButton
+            value={message}
+            onChange={setMessage}
+            disabled={refining}
+            tone="ghost"
+            className="h-9 w-9"
+          />
           <button
             type="button"
             onClick={() => onRefine(message)}
