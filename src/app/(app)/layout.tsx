@@ -20,7 +20,13 @@ export default function AppLayout({
   return (
     <Providers>
       <div className="flex min-h-screen w-full flex-col">
-        <AppHeader />
+        {/* Mobile: every screen now owns its in-page header (the A+ refresh) and
+            account access lives on the Home avatar menu, so the global header is
+            hidden to avoid a double header. Desktop (md+, out of refresh scope)
+            keeps it as the top bar. AppHeader's own route guards still apply. */}
+        <div className="hidden md:block">
+          <AppHeader />
+        </div>
         <AppSidebar />
         <main className="flex flex-1 flex-col overflow-auto pb-20 md:pb-0 md:pl-20 lg:pl-24">
           {children}

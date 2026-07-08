@@ -6,12 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkoutMutations } from "@/hooks/use-workout-mutations";
 import { WorkoutEditorDialog, type WorkoutData } from "@/components/WorkoutEditorDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Dumbbell, Link2, Sparkles, ChevronRight } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Pencil, Trash2, Play, Check, Dumbbell, Link2, Sparkles, ChevronRight, ClipboardList } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, addDays, isBefore, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/use-auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Settings, LogOut } from "lucide-react";
 import { type Exercise } from "@/data/exercises";
 import { useWorkout } from "@/context/WorkoutContext";
 import { Badge } from "@/components/ui/badge";
@@ -102,6 +102,16 @@ interface DBRoutineInstance {
 
 export default function WorkoutsPage() {
   const router = useRouter();
+  const { user, logout, isLoggingOut } = useAuth();
+  const firstName = user?.firstName ?? "";
+  const initials =
+    [user?.firstName, user?.lastName]
+      .filter(Boolean)
+      .map((n) => n?.[0])
+      .join("") ||
+    user?.email?.[0]?.toUpperCase() ||
+    "?";
+  const avatarUrl = user?.profileImageUrl ?? undefined;
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showEditorDialog, setShowEditorDialog] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<ScheduledWorkout | null>(null);
@@ -662,47 +672,72 @@ export default function WorkoutsPage() {
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
-        {/* Instant start: open the app and just work out. No name, no
-            pre-planned exercises — add them as you go on the Track screen. */}
-        <Button
-          onClick={() => { startEmptyWorkout(); router.push("/track"); }}
-          className="w-full h-14 text-base font-bold shadow-cta"
-          data-testid="button-start-workout"
-        >
-          <Play className="h-5 w-5 mr-2" />
-          Start Workout
-        </Button>
-
-        {/* FitBot single-workout entry: describe a workout in plain language and
-            let FitBot build it. Routes into the /fit-bot/workout takeover flow. */}
-        <button
-          type="button"
-          onClick={() => router.push("/fit-bot/workout")}
-          className="w-full flex items-center gap-3 h-[52px] rounded-2xl border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
-          data-testid="button-fitbot-entry"
-        >
-          <Sparkles className="h-[18px] w-[18px] shrink-0 text-primary" />
-          <span className="flex-1 text-sm text-muted-foreground">Describe your workout…</span>
-          <ChevronRight className="h-[18px] w-[18px] shrink-0 text-tertiary-foreground" />
-        </button>
-
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div className="mx-auto w-full max-w-xl space-y-6 px-5 pt-3 pb-8">
+        {/* Header: mono neon eyebrow + greeting + avatar account menu. On mobile
+            the global AppHeader is hidden (each screen owns its header), so the
+            avatar is the account access point (Settings / Log out). */}
+        <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
-              Scheduled Workouts
+            <div className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-primary">
+              Ready to train
+            </div>
+            <h1
+              className="text-[26px] font-bold leading-none tracking-[-0.02em]"
+              data-testid="text-page-title"
+            >
+              Let&apos;s go{firstName ? `, ${firstName}` : ""}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Plan and manage your training schedule
-            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Account menu"
+                className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-strong bg-card text-[15px] font-bold text-primary"
+                data-testid="button-account-menu"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  initials
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => router.push("/settings")} data-testid="menu-settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => logout()}
+                disabled={isLoggingOut}
+                data-testid="menu-logout"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                {isLoggingOut ? "Logging out…" : "Log out"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+
+        <GoalsStrip />
+
+        {/* TODAY eyebrow row: calendar picker + new-workout affordance. */}
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground">
+            Today
+          </span>
+          <div className="flex gap-2">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="Open calendar"
-                  data-testid="button-calendar">
-                  <CalendarIcon className="h-4 w-4" />
-                </Button>
+                <button
+                  type="button"
+                  aria-label="Open calendar"
+                  data-testid="button-calendar"
+                  className="flex h-[38px] w-[38px] items-center justify-center rounded-xl border border-strong bg-white/[0.03] text-foreground"
+                >
+                  <CalendarIcon className="h-[17px] w-[17px]" />
+                </button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
                 <Calendar
@@ -713,146 +748,218 @@ export default function WorkoutsPage() {
                 />
               </PopoverContent>
             </Popover>
-            <Button onClick={handleNewWorkout} size="icon" className="sm:w-auto sm:px-4" data-testid="button-new-workout">
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">New Workout</span>
-            </Button>
+            <button
+              type="button"
+              onClick={handleNewWorkout}
+              aria-label="New workout"
+              data-testid="button-new-workout"
+              className="flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-primary-dim text-primary"
+            >
+              <Plus className="h-[18px] w-[18px]" />
+            </button>
           </div>
         </div>
 
-        <GoalsStrip />
+        {todayWorkouts.length > 0 ? (
+          (() => {
+            const firstUncompletedIndex = todayWorkouts.findIndex(w => !isWorkoutCompleted(w.displayId));
+            const heroIndex = firstUncompletedIndex >= 0 ? firstUncompletedIndex : 0;
+            const heroWorkout = todayWorkouts[heroIndex];
+            const remainingWorkouts = todayWorkouts.filter((_, i) => i !== heroIndex);
+            const heroImage = getWorkoutImageUrl(heroWorkout.exercises);
+            const heroCompleted = isWorkoutCompleted(heroWorkout.displayId);
+            const heroPastDue = !heroCompleted && isBefore(startOfDay(heroWorkout.date), startOfDay(new Date()));
+            const heroRoutine = activeRoutineForHero(heroWorkout, activeRoutineInstances);
 
-        {todayWorkouts.length > 0 && (
-          <div className="space-y-3 sm:space-y-4">
-            <h2 className="text-lg sm:text-xl font-semibold">Today</h2>
-            {(() => {
-              const firstUncompletedIndex = todayWorkouts.findIndex(w => !isWorkoutCompleted(w.displayId));
-              const heroIndex = firstUncompletedIndex >= 0 ? firstUncompletedIndex : 0;
-              const heroWorkout = todayWorkouts[heroIndex];
-              const remainingWorkouts = todayWorkouts.filter((_, i) => i !== heroIndex);
-              const heroImage = getWorkoutImageUrl(heroWorkout.exercises);
-              const heroCompleted = isWorkoutCompleted(heroWorkout.displayId);
-              const heroPastDue = !heroCompleted && isBefore(startOfDay(heroWorkout.date), startOfDay(new Date()));
-              const heroRoutine = activeRoutineForHero(heroWorkout, activeRoutineInstances);
+            return (
+              <div className="space-y-4">
+                <div
+                  className="relative overflow-hidden rounded-[20px] bg-card"
+                  style={{ minHeight: "340px" }}
+                  data-testid={`card-workout-${heroWorkout.displayId}`}
+                >
+                  {heroImage ? (
+                    <>
+                      <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/20" />
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/70 to-black/40" />
+                  )}
 
-              return (
-                <>
-                  <Card
-                    className="border-0 relative overflow-hidden"
-                    style={{ minHeight: '320px' }}
-                    data-testid={`card-workout-${heroWorkout.displayId}`}
-                  >
-                    {heroImage && (
-                      <>
-                        <img src={heroImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/30" />
-                      </>
-                    )}
-                    {!heroImage && (
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/70 to-black/50" />
-                    )}
-                    <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
-                      {heroPastDue && (
-                        <Badge variant="outline" className="text-red-500 border-red-500 bg-red-950/50">
-                          Past Due
-                        </Badge>
-                      )}
-                      {heroCompleted && (
-                        <Badge variant="outline" className="text-green-500 border-green-500 bg-green-950/50">
-                          <Check className="h-3 w-3 mr-1" />
-                          Done
-                        </Badge>
-                      )}
-                      {heroWorkout.routineInstanceId && (
-                        <Badge variant="outline" className="text-primary border-primary/50 bg-black/40">
-                          {routineInstanceMap.get(heroWorkout.routineInstanceId) || "Routine"}
-                        </Badge>
-                      )}
-                      <WorkoutCardMenu
-                        displayId={heroWorkout.displayId}
-                        workoutId={heroWorkout.id}
-                        name={heroWorkout.name}
-                        templateId={heroWorkout.templateId}
-                        routineInstanceId={heroWorkout.routineInstanceId}
-                        triggerClassName="text-white"
-                        onEdit={handleEditWorkout}
-                        onEditTemplate={handleEditTemplate}
-                        onSkip={handleSkipWorkout}
-                        onDelete={handleDeleteWorkout}
-                      />
-                    </div>
-                    <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 py-8" style={{ minHeight: '320px' }}>
-                      {heroRoutine ? (
-                        <p className="text-xs uppercase tracking-wide text-white/70 mb-2">
-                          Day {heroRoutine.dayNumber} of {heroRoutine.totalDays} · {heroRoutine.routineName}
-                        </p>
-                      ) : null}
-                      <h3 className="text-2xl sm:text-3xl font-bold text-white mb-1">
-                        {heroWorkout.name}
-                      </h3>
-                      <p className="text-sm text-white/60 mb-2">
-                        {heroWorkout.exercises.length} exercises
-                      </p>
-                      {(() => {
-                        const ai = heroRoutine;
-                        if (!ai) return null;
-                        const pct = Math.min(100, Math.round((ai.completedSoFar / ai.totalDays) * 100));
-                        return (
-                          <div className="w-full max-w-xs mb-4">
-                            <div className="h-1.5 overflow-hidden rounded-full bg-white/20">
-                              <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })()}
-                      <Button
-                        className="w-full max-w-xs"
-                        onClick={() => handleStartWorkout(heroWorkout.displayId)}
-                        data-testid={`button-start-workout-${heroWorkout.displayId}`}
-                      >
-                        Start
-                      </Button>
-                    </div>
-                  </Card>
-
-                  {remainingWorkouts.length > 0 && (
-                    <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
-                      {remainingWorkouts.map((workout) => {
-                        const isCompleted = isWorkoutCompleted(workout.displayId);
-                        const workoutImage = getWorkoutImageUrl(workout.exercises);
-                        return (
-                          <ScheduledWorkoutCard
-                            key={workout.displayId}
-                            workout={workout}
-                            imageUrl={workoutImage}
-                            onStart={handleStartWorkout}
-                            onEdit={handleEditWorkout}
-                            onEditTemplate={handleEditTemplate}
-                            onSkip={handleSkipWorkout}
-                            onDelete={handleDeleteWorkout}
-                            badges={
-                              isCompleted ? (
-                                <Badge variant="outline" className="text-green-500 border-green-500">
-                                  <Check className="h-3 w-3 mr-1" />
-                                  Done
-                                </Badge>
-                              ) : null
-                            }
-                          />
-                        );
-                      })}
+                  {heroRoutine && (
+                    <div className="absolute left-3.5 top-3.5 z-20 rounded-lg border border-yellow bg-black/45 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.1em] text-primary backdrop-blur-sm">
+                      DAY {heroRoutine.dayNumber} / {heroRoutine.totalDays}
                     </div>
                   )}
-                </>
-              );
-            })()}
+
+                  <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+                    {heroPastDue && (
+                      <Badge variant="outline" className="text-red-500 border-red-500 bg-red-950/50">
+                        Past Due
+                      </Badge>
+                    )}
+                    {heroCompleted && (
+                      <Badge variant="outline" className="text-green-500 border-green-500 bg-green-950/50">
+                        <Check className="h-3 w-3 mr-1" />
+                        Done
+                      </Badge>
+                    )}
+                    {heroWorkout.routineInstanceId && (
+                      <Badge variant="outline" className="text-primary border-primary/50 bg-black/40">
+                        {routineInstanceMap.get(heroWorkout.routineInstanceId) || "Routine"}
+                      </Badge>
+                    )}
+                    <WorkoutCardMenu
+                      displayId={heroWorkout.displayId}
+                      workoutId={heroWorkout.id}
+                      name={heroWorkout.name}
+                      templateId={heroWorkout.templateId}
+                      routineInstanceId={heroWorkout.routineInstanceId}
+                      triggerClassName="text-white"
+                      onEdit={handleEditWorkout}
+                      onEditTemplate={handleEditTemplate}
+                      onSkip={handleSkipWorkout}
+                      onDelete={handleDeleteWorkout}
+                    />
+                  </div>
+
+                  <div className="absolute inset-x-0 bottom-0 z-10 p-5">
+                    {heroRoutine && (
+                      <div className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
+                        {heroRoutine.routineName}
+                      </div>
+                    )}
+                    <h3 className="mb-2 text-[27px] font-bold leading-tight tracking-[-0.01em] text-white">
+                      {heroWorkout.name}
+                    </h3>
+                    <div className="mb-4 font-mono text-[12px] uppercase tracking-[0.04em] text-white/65">
+                      {heroWorkout.exercises.length} exercise{heroWorkout.exercises.length === 1 ? "" : "s"}
+                    </div>
+                    <div className="flex gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => handleStartWorkout(heroWorkout.displayId)}
+                        data-testid={`button-start-workout-${heroWorkout.displayId}`}
+                        className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-[15px] font-bold text-primary-foreground shadow-cta-strong"
+                      >
+                        <Play className="h-[17px] w-[17px] fill-current" />
+                        Start
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartWorkout(heroWorkout.displayId)}
+                        aria-label={`Preview ${heroWorkout.name}`}
+                        className="flex h-12 items-center justify-center rounded-2xl border border-strong bg-white/[0.06] px-5 text-[15px] font-semibold text-white backdrop-blur-sm"
+                      >
+                        Preview
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {remainingWorkouts.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                    {remainingWorkouts.map((workout) => {
+                      const isCompleted = isWorkoutCompleted(workout.displayId);
+                      const workoutImage = getWorkoutImageUrl(workout.exercises);
+                      return (
+                        <ScheduledWorkoutCard
+                          key={workout.displayId}
+                          workout={workout}
+                          imageUrl={workoutImage}
+                          onStart={handleStartWorkout}
+                          onEdit={handleEditWorkout}
+                          onEditTemplate={handleEditTemplate}
+                          onSkip={handleSkipWorkout}
+                          onDelete={handleDeleteWorkout}
+                          badges={
+                            isCompleted ? (
+                              <Badge variant="outline" className="text-green-500 border-green-500">
+                                <Check className="h-3 w-3 mr-1" />
+                                Done
+                              </Badge>
+                            ) : null
+                          }
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        ) : (
+          <div className="space-y-4">
+            {/* Empty hero: blank-start CTA + FitBot single-workout entry (→ /fit-bot/workout). */}
+            <div className="relative flex flex-col items-center overflow-hidden rounded-[20px] border border-dashed border-strong bg-card px-6 pb-7 pt-9 text-center">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(229,255,0,0.06),transparent_60%)]" />
+              <div className="relative z-10 flex w-full flex-col items-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-dim">
+                  <Dumbbell className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="mb-1.5 text-[20px] font-bold tracking-[-0.01em] text-foreground">
+                  No workout scheduled
+                </h3>
+                <p className="mb-5 max-w-[260px] text-sm leading-relaxed text-muted-foreground">
+                  Start a blank session, or let FitBot build one for you.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { startEmptyWorkout(); router.push("/track"); }}
+                  data-testid="button-start-workout"
+                  className="flex h-[54px] w-full items-center justify-center gap-2 rounded-[15px] bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-base font-bold text-primary-foreground shadow-cta-strong"
+                >
+                  <Play className="h-[19px] w-[19px] fill-current" />
+                  Start Workout
+                </button>
+                <div className="my-3.5 flex w-full items-center gap-2">
+                  <div className="h-px flex-1 bg-divider" />
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-tertiary-foreground">
+                    Or
+                  </span>
+                  <div className="h-px flex-1 bg-divider" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/fit-bot/workout")}
+                  data-testid="button-fitbot-entry"
+                  className="flex h-[52px] w-full items-center gap-2.5 rounded-[14px] border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
+                >
+                  <Sparkles className="h-[18px] w-[18px] shrink-0 text-primary" />
+                  <span className="flex-1 text-sm text-muted-foreground">Describe your workout…</span>
+                  <ChevronRight className="h-[18px] w-[18px] shrink-0 text-tertiary-foreground" />
+                </button>
+              </div>
+            </div>
+
+            {/* Start a program (→ /fit-bot program builder). */}
+            <button
+              type="button"
+              onClick={() => router.push("/fit-bot")}
+              data-testid="button-start-program"
+              className="card-elevated flex w-full items-center gap-3.5 p-4 text-left"
+            >
+              <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[13px] bg-primary-dim text-primary">
+                <ClipboardList className="h-[22px] w-[22px]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[15px] font-semibold text-foreground">Start a program</div>
+                <div className="mt-0.5 text-[13px] text-muted-foreground">
+                  Follow a structured plan to hit your goals
+                </div>
+              </div>
+              <ChevronRight className="h-5 w-5 shrink-0 text-tertiary-foreground" />
+            </button>
           </div>
         )}
 
         {upcomingWorkouts.length > 0 && (
-          <div className="space-y-3 sm:space-y-4">
-            <h2 className="text-lg sm:text-xl font-semibold">Upcoming</h2>
-            <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-3">
+            <span className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground">
+              Upcoming
+            </span>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               {upcomingWorkouts.map((workout) => {
                 const isCompleted = isWorkoutCompleted(workout.displayId);
                 const isPastDue = !isCompleted && isBefore(startOfDay(workout.date), startOfDay(new Date()));
@@ -900,157 +1007,74 @@ export default function WorkoutsPage() {
           </div>
         )}
 
-        {displayedWorkouts.length === 0 && (
-          <Card className="p-8 sm:p-12 text-center">
-            <div className="text-muted-foreground">
-              <CalendarIcon className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-4 opacity-50" />
-              <h3 className="text-base sm:text-lg font-semibold mb-4">No workouts scheduled</h3>
-              <Button onClick={handleNewWorkout} data-testid="button-create-first-workout">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Workout
-              </Button>
-            </div>
-          </Card>
-        )}
-
         {completedWorkouts.length > 0 && (
-          <div className="space-y-3 sm:space-y-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold" data-testid="text-recent-workouts-title">
-                Recent Workouts
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Your completed sessions
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 sm:gap-4">
-              {completedWorkouts.slice(0, 6).map((workout, index) => (
-                <Card 
+          <div className="space-y-3">
+            <span
+              className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground"
+              data-testid="text-recent-workouts-title"
+            >
+              Recent
+            </span>
+            <div className="card-elevated overflow-hidden">
+              {completedWorkouts.slice(0, 6).map((workout, index, arr) => (
+                <div
                   key={`${workout.displayId}-${index}`}
-                  className="hover-elevate border-0"
+                  className={`flex items-center justify-between gap-3 px-4 py-4 ${
+                    index < arr.length - 1 ? "border-b border-divider" : ""
+                  }`}
                   data-testid={`card-recent-workout-${index}`}
                 >
-                  <div className="flex items-center justify-between p-4 sm:p-5 gap-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                        <Dumbbell className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-base truncate">{workout.name}</p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-muted-foreground">{format(workout.completedAt, "PP")}</span>
-                          <Badge variant="outline" className="text-green-500 border-green-500 no-default-hover-elevate no-default-active-elevate">
-                            <Check className="h-3 w-3 mr-1" />
-                            Done
-                          </Badge>
-                        </div>
-                      </div>
+                  <div className="flex min-w-0 flex-1 items-center gap-3.5">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-primary-dim">
+                      <Dumbbell className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        size="icon"
-                        onClick={() => handleRestartWorkout(workout)}
-                        aria-label={`Repeat ${workout.name}`}
-                        data-testid={`button-restart-workout-${index}`}
-                      >
-                        <Play className="h-4 w-4" />
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Options for ${workout.name}`}
-                            data-testid={`button-recent-workout-menu-${index}`}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleScheduleAgain(workout)}
-                            data-testid={`button-schedule-again-${index}`}
-                          >
-                            <CalendarIcon className="h-4 w-4 mr-2" />
-                            Schedule Again
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleEditCompletedWorkout(workout)}
-                            data-testid={`button-edit-recent-workout-${index}`}
-                          >
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleDeleteCompletedWorkout(workout.id, workout.name)}
-                            className="text-destructive"
-                            data-testid={`button-delete-recent-workout-${index}`}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-semibold text-foreground">{workout.name}</p>
+                      <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-tertiary-foreground">
+                        {format(workout.completedAt, "MMM d")} · {workout.exercises.length} exercise{workout.exercises.length === 1 ? "" : "s"}
+                      </p>
                     </div>
                   </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-3 sm:space-y-4">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-bold" data-testid="text-all-workouts-title">
-              All Workouts
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your workout library
-            </p>
-          </div>
-          {workoutTemplates.length > 0 ? (
-            <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-3">
-              {workoutTemplates.map((template) => {
-                const templateImage = getWorkoutImageUrl(template.exercises);
-                return (
-                <div key={template.id} className="aspect-square" data-testid={`card-library-workout-${template.id}`}>
-                <Card 
-                  className="border-0 h-full flex flex-col relative overflow-hidden"
-                >
-                  {templateImage && (
-                    <>
-                      <img src={templateImage} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30" />
-                    </>
-                  )}
-                  <div className="relative flex items-start justify-between p-4 sm:p-5 z-10">
-                    <CardTitle className={`text-lg sm:text-xl md:text-[1.75rem] font-semibold flex-1 break-words line-clamp-2 ${templateImage ? 'text-white' : ''}`}>
-                      {template.name}
-                    </CardTitle>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleRestartWorkout(workout)}
+                      aria-label={`Repeat ${workout.name}`}
+                      data-testid={`button-restart-workout-${index}`}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-dim text-primary"
+                    >
+                      <Play className="h-4 w-4 fill-current" />
+                    </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={templateImage ? 'text-white' : ''}
-                          aria-label={`Options for ${template.name}`}
-                          data-testid={`button-library-workout-menu-${template.id}`}
+                          aria-label={`Options for ${workout.name}`}
+                          data-testid={`button-recent-workout-menu-${index}`}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => handleEditTemplate(template.id)}
-                          data-testid={`button-edit-library-workout-${template.id}`}
+                          onClick={() => handleScheduleAgain(workout)}
+                          data-testid={`button-schedule-again-${index}`}
+                        >
+                          <CalendarIcon className="h-4 w-4 mr-2" />
+                          Schedule Again
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleEditCompletedWorkout(workout)}
+                          data-testid={`button-edit-recent-workout-${index}`}
                         >
                           <Pencil className="h-4 w-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleDeleteTemplate(template.id, template.name)}
+                          onClick={() => handleDeleteCompletedWorkout(workout.id, workout.name)}
                           className="text-destructive"
-                          data-testid={`button-delete-library-workout-${template.id}`}
+                          data-testid={`button-delete-recent-workout-${index}`}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete
@@ -1058,51 +1082,114 @@ export default function WorkoutsPage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  {!templateImage && (
-                    <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
-                      <Dumbbell className="h-12 w-12 sm:h-14 sm:w-14 text-primary opacity-60" />
-                    </div>
-                  )}
-                  {templateImage && <div className="flex-1" />}
-                  <div className={`relative px-4 sm:px-5 pb-4 sm:pb-5 flex items-center justify-between gap-2 z-10`}>
-                    <div className="flex flex-col gap-0.5">
-                      <p className={`text-sm sm:text-base ${templateImage ? 'text-white/70' : 'text-muted-foreground'}`}>
-                        {template.exercises.length} exercises
-                      </p>
-                      {getTemplateCompletionCount(template.id) > 0 && (
-                        <p className={`text-xs ${templateImage ? 'text-white/50' : 'text-muted-foreground/70'}`}>
-                          Completed {getTemplateCompletionCount(template.id)} time{getTemplateCompletionCount(template.id) !== 1 ? 's' : ''}
-                        </p>
-                      )}
-                      {templateRoutineUsage[template.id] && (
-                        <div className="flex items-center gap-1 text-xs text-primary/80">
-                          <Link2 className="h-3 w-3" />
-                          <span className="truncate">{templateRoutineUsage[template.id].join(", ")}</span>
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      size="icon"
-                      className="shrink-0 aspect-square"
-                      onClick={() => handleStartFromTemplate(template.id)}
-                      aria-label={`Start ${template.name}`}
-                      data-testid={`button-start-library-workout-${template.id}`}
-                    >
-                      <Play className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </Card>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span
+              className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground"
+              data-testid="text-all-workouts-title"
+            >
+              Library
+            </span>
+          </div>
+          {workoutTemplates.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-3">
+              {workoutTemplates.map((template) => {
+                const templateImage = getWorkoutImageUrl(template.exercises);
+                return (
+                  <div key={template.id} className="aspect-square" data-testid={`card-library-workout-${template.id}`}>
+                    <div className={`relative flex h-full flex-col overflow-hidden rounded-[18px] ${templateImage ? "bg-card" : "card-elevated"}`}>
+                      {templateImage && (
+                        <>
+                          <img src={templateImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+                        </>
+                      )}
+                      <div className="relative z-10 flex items-start justify-between p-4">
+                        {templateImage ? (
+                          <div />
+                        ) : (
+                          <div className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-primary-dim">
+                            <Dumbbell className="h-[22px] w-[22px] text-primary" />
+                          </div>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={templateImage ? "text-white" : ""}
+                              aria-label={`Options for ${template.name}`}
+                              data-testid={`button-library-workout-menu-${template.id}`}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleEditTemplate(template.id)}
+                              data-testid={`button-edit-library-workout-${template.id}`}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteTemplate(template.id, template.name)}
+                              className="text-destructive"
+                              data-testid={`button-delete-library-workout-${template.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                      <div className="flex-1" />
+                      <div className="relative z-10 flex items-end justify-between gap-2 p-4 pt-0">
+                        <div className="min-w-0">
+                          <div className={`truncate text-[17px] font-semibold ${templateImage ? "text-white" : "text-foreground"}`}>
+                            {template.name}
+                          </div>
+                          <div className={`mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] ${templateImage ? "text-white/60" : "text-tertiary-foreground"}`}>
+                            {template.exercises.length} exercise{template.exercises.length === 1 ? "" : "s"}
+                          </div>
+                          {getTemplateCompletionCount(template.id) > 0 && (
+                            <div className={`mt-0.5 text-[11px] ${templateImage ? "text-white/50" : "text-muted-foreground"}`}>
+                              Completed {getTemplateCompletionCount(template.id)} time{getTemplateCompletionCount(template.id) !== 1 ? "s" : ""}
+                            </div>
+                          )}
+                          {templateRoutineUsage[template.id] && (
+                            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-primary/80">
+                              <Link2 className="h-3 w-3" />
+                              <span className="truncate">{templateRoutineUsage[template.id].join(", ")}</span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartFromTemplate(template.id)}
+                          aria-label={`Start ${template.name}`}
+                          data-testid={`button-start-library-workout-${template.id}`}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-dim text-primary"
+                        >
+                          <Play className="h-4 w-4 fill-current" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           ) : (
-            <Card className="p-6 sm:p-8 border-0">
-              <div className="text-center text-muted-foreground">
-                <p>No workouts created yet</p>
-                <p className="text-sm mt-1">Click "New Workout" to create your first workout</p>
-              </div>
-            </Card>
+            <div className="card-elevated p-6 text-center text-muted-foreground">
+              <p>No workouts created yet</p>
+              <p className="mt-1 text-sm">Tap + above to create your first workout</p>
+            </div>
           )}
         </div>
 

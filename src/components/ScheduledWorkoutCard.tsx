@@ -1,8 +1,6 @@
 "use client";
 
 import { format } from "date-fns";
-import { Card, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Dumbbell, Play } from "lucide-react";
 import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
 
@@ -45,17 +43,25 @@ export function ScheduledWorkoutCard({
 }: ScheduledWorkoutCardProps) {
   return (
     <div className="aspect-square" data-testid={`card-workout-${workout.displayId}`}>
-      <Card className="border-0 h-full flex flex-col relative overflow-hidden">
+      <div
+        className={`relative flex h-full flex-col overflow-hidden rounded-[18px] ${
+          imageUrl ? "bg-card" : "card-elevated"
+        }`}
+      >
         {imageUrl && (
           <>
-            <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30" />
+            <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
           </>
         )}
-        <div className="relative flex items-start justify-between p-4 sm:p-5 z-10">
-          <CardTitle className={`text-lg sm:text-xl ${titleExtraClass} font-semibold flex-1 break-words line-clamp-2 ${imageUrl ? "text-white" : ""}`}>
+        <div className="relative z-10 flex items-start justify-between p-4">
+          <h3
+            className={`flex-1 break-words line-clamp-2 text-lg sm:text-xl ${titleExtraClass} font-semibold ${
+              imageUrl ? "text-white" : "text-foreground"
+            }`}
+          >
             {workout.name}
-          </CardTitle>
+          </h3>
           <WorkoutCardMenu
             displayId={workout.displayId}
             workoutId={workout.id}
@@ -70,29 +76,35 @@ export function ScheduledWorkoutCard({
           />
         </div>
         {!imageUrl && (
-          <div className="px-4 sm:px-5 flex-1 flex items-center justify-center">
-            <Dumbbell className="h-12 w-12 sm:h-14 sm:w-14 text-primary opacity-60" />
+          <div className="flex flex-1 items-center justify-center px-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-primary-dim">
+              <Dumbbell className="h-7 w-7 text-primary" />
+            </div>
           </div>
         )}
         {imageUrl && <div className="flex-1" />}
-        <div className="relative px-4 sm:px-5 pb-4 sm:pb-5 flex items-center justify-between gap-2 z-10">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className={`text-sm sm:text-base ${imageUrl ? "text-white/70" : "text-muted-foreground"}`}>
+        <div className="relative z-10 flex items-center justify-between gap-2 p-4 pt-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span
+              className={`font-mono text-[11px] uppercase tracking-[0.04em] ${
+                imageUrl ? "text-white/70" : "text-tertiary-foreground"
+              }`}
+            >
               {format(workout.date, "MMM d, yyyy")}
-            </p>
+            </span>
             {badges}
           </div>
-          <Button
-            size="icon"
-            className="shrink-0 aspect-square"
+          <button
+            type="button"
             onClick={() => onStart(workout.displayId)}
             aria-label={`Start ${workout.name}`}
             data-testid={`button-start-workout-${workout.displayId}`}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-dim text-primary"
           >
-            <Play className="h-4 w-4" />
-          </Button>
+            <Play className="h-4 w-4 fill-current" />
+          </button>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
