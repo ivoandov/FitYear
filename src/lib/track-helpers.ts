@@ -57,44 +57,54 @@ export function getLastRecordedValues(
 }
 
 /**
+ * A per-exercise prescription to seed the starting rows with. FitBot-generated
+ * workouts pass this so a "4 × 12" exercise opens with 4 rows (not the default
+ * 3) and the target reps pre-filled. Omitted for normal workouts, which keep the
+ * historic 1-or-3 default. Recorded history always wins on the first row's
+ * values (your real last performance beats a generic target).
+ */
+export interface SetPlan {
+  sets?: number; // planned number of set rows
+  reps?: number | null; // planned target reps for weight_reps exercises
+}
+
+/**
  * The starting set rows for an exercise on the track screen. Prefills the first
  * set from the exercise's last recorded values (converted to the display unit);
- * distance/time exercises default to 1 set, weight/reps to 3.
+ * distance/time exercises default to 1 set, weight/reps to 3. When a `plan` is
+ * given (FitBot workouts), the row count follows the plan's set count and, when
+ * there's no recorded history, the first row's reps are pre-filled from the
+ * plan's target reps.
  */
 export function getDefaultSets(
   completedWorkouts: CompletedForTrack[],
   weightUnit: WeightUnit,
   exerciseId?: string,
   exerciseType?: string,
+  plan?: SetPlan,
 ): SetData[] {
   const lastValues = exerciseId
     ? getLastRecordedValues(completedWorkouts, exerciseId)
     : null;
 
   const isDistanceTime = exerciseType === "distance_time";
+  const rowCount = Math.max(1, plan?.sets ?? (isDistanceTime ? 1 : 3));
 
-  if (lastValues) {
-    const displayWeight = lbsToDisplay(lastValues.weight, weightUnit);
-    if (isDistanceTime) {
-      return [
-        { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
-      ];
+  return Array.from({ length: rowCount }, (_, i) => {
+    if (i === 0 && lastValues) {
+      return {
+        setNumber: 1,
+        weight: lbsToDisplay(lastValues.weight, weightUnit),
+        reps: lastValues.reps,
+        distance: lastValues.distance,
+        time: lastValues.time,
+        completed: false,
+      };
     }
-    return [
-      { setNumber: 1, weight: displayWeight, reps: lastValues.reps, distance: lastValues.distance, time: lastValues.time, completed: false },
-      { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
-      { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
-    ];
-  }
-
-  if (isDistanceTime) {
-    return [
-      { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
-    ];
-  }
-  return [
-    { setNumber: 1, weight: null, reps: null, distance: null, time: null, completed: false },
-    { setNumber: 2, weight: null, reps: null, distance: null, time: null, completed: false },
-    { setNumber: 3, weight: null, reps: null, distance: null, time: null, completed: false },
-  ];
+    // No history: pre-fill the first row's reps from the plan's target (weight/reps only).
+    if (i === 0 && !isDistanceTime && plan?.reps != null) {
+      return { setNumber: 1, weight: null, reps: plan.reps, distance: null, time: null, completed: false };
+    }
+    return { setNumber: i + 1, weight: null, reps: null, distance: null, time: null, completed: false };
+  });
 }

@@ -56,3 +56,40 @@ describe("getDefaultSets", () => {
     expect(kg[0].reps).toBe(5);
   });
 });
+
+describe("getDefaultSets — with a FitBot plan", () => {
+  const hist = mk("2026-07-05", [
+    { id: "sq", setsData: [{ weight: 135, reps: 5, completed: true }] },
+  ]);
+
+  it("uses the plan's set count for the number of rows", () => {
+    expect(getDefaultSets([], "lbs", "new", "weight_reps", { sets: 4, reps: 12 })).toHaveLength(4);
+  });
+
+  it("prefills the first row's reps from the plan when there is no history", () => {
+    const rows = getDefaultSets([], "lbs", "new", "weight_reps", { sets: 4, reps: 12 });
+    expect(rows[0]).toMatchObject({ reps: 12, weight: null });
+    expect(rows.slice(1).every((r) => r.reps === null)).toBe(true);
+  });
+
+  it("leaves reps blank for an AMRAP-style plan (null target)", () => {
+    const rows = getDefaultSets([], "lbs", "new", "weight_reps", { sets: 3, reps: null });
+    expect(rows.every((r) => r.reps === null)).toBe(true);
+  });
+
+  it("honours the plan set count for distance/time but never prefills reps", () => {
+    const rows = getDefaultSets([], "lbs", "core", "distance_time", { sets: 3, reps: 30 });
+    expect(rows).toHaveLength(3);
+    expect(rows[0].reps).toBeNull();
+  });
+
+  it("lets recorded history win on the first row while the plan still sets the count", () => {
+    const rows = getDefaultSets([hist], "lbs", "sq", "weight_reps", { sets: 5, reps: 8 });
+    expect(rows).toHaveLength(5);
+    expect(rows[0]).toMatchObject({ weight: 135, reps: 5 });
+  });
+
+  it("clamps a zero/negative plan count to at least one row", () => {
+    expect(getDefaultSets([], "lbs", "x", "weight_reps", { sets: 0 })).toHaveLength(1);
+  });
+});

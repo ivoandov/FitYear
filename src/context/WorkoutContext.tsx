@@ -13,6 +13,13 @@ interface WorkoutExercise extends Exercise {
   sets: number;
   defaultWeight: number;
   defaultReps: number;
+  // FitBot-generated workouts carry a per-exercise prescription so the Track
+  // screen opens with the right number of rows + target reps + initial rest.
+  // Absent on normal (scheduled / quick-start / restart) workouts, which keep
+  // the historic 1-or-3 default. See lib/track-helpers.getDefaultSets(plan).
+  plannedSets?: number;
+  plannedReps?: number | null;
+  plannedRest?: number;
 }
 
 interface ActiveWorkout {
@@ -22,6 +29,32 @@ interface ActiveWorkout {
   name: string;
   exercises: WorkoutExercise[];
   startedAt?: string; // ISO string — set on startWorkout, used for duration on complete
+}
+
+// A single exercise resolved from a FitBot generation, ready to track. `id` is
+// the reconciled library/custom exercise id (see lib/workout-reconcile); the
+// rest is the metadata + prescription FitBot authored. `reps` is the free-form
+// prescription string ("8-12", "AMRAP", "30s") — parsed to a target integer for
+// the first-row prefill.
+export interface GeneratedWorkoutExercise {
+  id: string;
+  name: string;
+  muscleGroups: string[];
+  description?: string;
+  imageUrl?: string | null;
+  exerciseType?: string;
+  isAssisted?: boolean;
+  sets: number;
+  reps?: string;
+  rest?: number;
+}
+
+// Pull the target rep count out of a free-form prescription ("8-12" -> 8,
+// "AMRAP" -> null, "15" -> 15). Used only to prefill the first row.
+function parseTargetReps(reps?: string): number | null {
+  if (!reps) return null;
+  const m = reps.match(/\d+/);
+  return m ? parseInt(m[0], 10) : null;
 }
 
 export interface CompletedWorkoutRecord {
@@ -59,6 +92,7 @@ interface WorkoutContextType {
   lastCompletedWorkoutId: string | null; // Set after completeWorkout() succeeds — used by /workout-complete page
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
   startEmptyWorkout: () => void;
+  startGeneratedWorkout: (workout: { name: string; exercises: GeneratedWorkoutExercise[] }) => void;
   discardActiveWorkout: () => void;
   completeWorkout: (exerciseSets?: Map<string, SetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
@@ -463,6 +497,41 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     setLastCompletedWorkoutId(null);
   }, []);
 
+  // Start a FitBot-generated workout: each exercise is already reconciled to a
+  // real library/custom id, so this behaves like startWorkout but seeds each
+  // exercise with its authored prescription (set count, target reps, rest) that
+  // the Track screen honours (see lib/track-helpers.getDefaultSets). Ephemeral
+  // one-off — like quick-start, it lands in History when completed, not saved as
+  // a routine.
+  const startGeneratedWorkout = useCallback((workout: { name: string; exercises: GeneratedWorkoutExercise[] }) => {
+    const displayId = `fitbot-${Date.now()}`;
+    const built: ActiveWorkout = {
+      id: displayId,
+      displayId,
+      scheduledWorkoutId: null,
+      name: workout.name?.trim() || "FitBot Workout",
+      startedAt: new Date().toISOString(),
+      exercises: workout.exercises.map((ex, index) => ({
+        id: ex.id,
+        name: ex.name,
+        muscleGroups: ex.muscleGroups ?? [],
+        description: ex.description ?? "",
+        imageUrl: ex.imageUrl ?? null,
+        exerciseType: ex.exerciseType ?? "weight_reps",
+        isAssisted: ex.isAssisted ?? false,
+        instanceId: `${displayId}-${index}-${Date.now()}`,
+        sets: ex.sets,
+        defaultWeight: 135,
+        defaultReps: parseTargetReps(ex.reps) ?? 10,
+        plannedSets: ex.sets,
+        plannedReps: parseTargetReps(ex.reps),
+        plannedRest: ex.rest,
+      })),
+    };
+    setActiveWorkout(built);
+    setLastCompletedWorkoutId(null);
+  }, []);
+
   // Throw away the active workout without saving a completed record. Used when
   // ending an empty quick-start (no exercises) so we don't persist junk. The
   // save effect picks up the null and clears localStorage + DELETEs the server
@@ -629,6 +698,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       lastCompletedWorkoutId,
       startWorkout,
       startEmptyWorkout,
+      startGeneratedWorkout,
       discardActiveWorkout,
       completeWorkout,
       isWorkoutCompleted,
@@ -648,6 +718,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       lastCompletedWorkoutId,
       startWorkout,
       startEmptyWorkout,
+      startGeneratedWorkout,
       discardActiveWorkout,
       completeWorkout,
       isWorkoutCompleted,

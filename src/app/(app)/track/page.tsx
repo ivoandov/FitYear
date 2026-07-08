@@ -151,6 +151,17 @@ export default function TrackPage() {
     setHasLoadedSavedProgress(true);
   }, [activeWorkout, trackingProgress, hasLoadedSavedProgress, weightUnit, settingsPending]);
 
+  // Seed the rest timer from the first FitBot exercise's authored rest when
+  // starting fresh (no saved progress to restore). Normal workouts and resumed
+  // sessions keep their existing rest duration.
+  useEffect(() => {
+    if (!hasLoadedSavedProgress || trackingProgress) return;
+    const firstRest = (activeWorkout?.exercises?.[0] as any)?.plannedRest;
+    if (typeof firstRest === "number" && firstRest > 0) setRestTimerDuration(firstRest);
+    // Seed once, right after the initial load settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoadedSavedProgress]);
+
   // Live re-conversion: if the user switches units in Settings WHILE a workout
   // is in progress, every in-memory weight flips to the new unit so the
   // displayed number and its label stay consistent. Without this, a "60"
@@ -209,14 +220,19 @@ export default function TrackPage() {
   const getLastRecordedValues = (exerciseId: string) =>
     getLastRecordedValuesHelper(completedWorkouts, exerciseId);
 
-  const getDefaultSets = (exerciseId?: string, exerciseType?: string): SetData[] =>
-    getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType);
+  // A FitBot exercise carries plannedSets/plannedReps; normal ones don't, so
+  // they keep the historic 1-or-3 default (no plan passed).
+  const planOf = (ex: any) =>
+    ex?.plannedSets != null ? { sets: ex.plannedSets, reps: ex.plannedReps } : undefined;
+
+  const getDefaultSets = (exerciseId?: string, exerciseType?: string, plan?: { sets?: number; reps?: number | null }): SetData[] =>
+    getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType, plan);
 
   const getCurrentSets = (): SetData[] => {
     const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
     if (!currentExercise) return getDefaultSets();
     const instanceId = currentExercise.instanceId;
-    return exerciseSets.get(instanceId) || getDefaultSets(currentExercise.id, currentExercise.exerciseType);
+    return exerciseSets.get(instanceId) || getDefaultSets(currentExercise.id, currentExercise.exerciseType, planOf(currentExercise));
   };
 
   const setCurrentSets = (sets: SetData[]) => {
@@ -235,7 +251,7 @@ export default function TrackPage() {
         setExerciseSets(prev => {
           if (prev.has(currentEx.instanceId)) return prev;
           const newMap = new Map(prev);
-          newMap.set(currentEx.instanceId, getDefaultSets(currentEx.id, currentEx.exerciseType));
+          newMap.set(currentEx.instanceId, getDefaultSets(currentEx.id, currentEx.exerciseType, planOf(currentEx)));
           return newMap;
         });
       }
