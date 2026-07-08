@@ -15,9 +15,9 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   // Hide on fullscreen pages (matches AppHeader + BottomNav) so the workout
-  // preview + FitBot single-workout flow render edge-to-edge as the immersive
-  // takeovers they were designed as.
-  if (pathname === "/workout-preview" || pathname === "/fit-bot/workout") return null;
+  // preview + both FitBot flows (single-workout + program-builder wizard) render
+  // edge-to-edge as the immersive takeovers they were designed as.
+  if (pathname === "/workout-preview" || pathname.startsWith("/fit-bot")) return null;
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 z-40 w-20 lg:w-24 flex-col items-center bg-card border-r shadow-inner-hi pt-[calc(env(safe-area-inset-top)+64px)]">

@@ -8,11 +8,11 @@ import { NAV_ITEMS } from "@/components/nav-items";
 export function BottomNav() {
   const pathname = usePathname();
 
-  // Hide on fullscreen pages (matches AppHeader). The workout preview + the
-  // FitBot single-workout flow are immersive takeovers with their own fixed
-  // bottom CTAs; this z-50 nav would otherwise render on top of and obscure
-  // those buttons on mobile, leaving users unable to start a workout.
-  if (pathname === "/workout-preview" || pathname === "/fit-bot/workout") return null;
+  // Hide on fullscreen pages (matches AppHeader). The workout preview + both
+  // FitBot flows (single-workout + program-builder wizard) are immersive
+  // takeovers with their own fixed bottom CTAs; this z-50 nav would otherwise
+  // render on top of and obscure those buttons on mobile.
+  if (pathname === "/workout-preview" || pathname.startsWith("/fit-bot")) return null;
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t shadow-inner-hi pb-[env(safe-area-inset-bottom)]">
