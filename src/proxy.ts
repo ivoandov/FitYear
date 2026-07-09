@@ -63,7 +63,20 @@ export async function proxy(request: NextRequest) {
   // Only redirect when we have a definitive "0"; missing cookie means we treat
   // the user as already onboarded so we don't strand mid-session users without
   // the cookie. Auth callback fills the cookie on next sign-in.
-  if (user && !isPublicPath(pathname) && pathname !== "/onboarding") {
+  //
+  // API routes are EXEMPT: they authenticate themselves and are the client's
+  // mutation channel, so never bounce a fetch/XHR to the HTML /onboarding page.
+  // In particular `PATCH /api/user-settings` (the call that CLEARS the flag)
+  // was getting 307'd here to /onboarding — a method-preserving redirect onto a
+  // page route -> 405 -> the write never ran, the cookie never flipped, and the
+  // user was trapped on onboarding forever. This gate only runs for already-
+  // authenticated users, so exempting /api changes no auth exposure.
+  if (
+    user &&
+    !isPublicPath(pathname) &&
+    pathname !== "/onboarding" &&
+    !pathname.startsWith("/api/")
+  ) {
     const onboarded = request.cookies.get(ONBOARDED_COOKIE)?.value;
     if (onboarded === "0") {
       const url = request.nextUrl.clone();
