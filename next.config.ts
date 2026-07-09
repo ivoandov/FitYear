@@ -21,7 +21,10 @@ const CSP = [
   // TIGHTEN LATER: move to nonce-based script-src and drop both 'unsafe-*'.
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co",
+  // googleusercontent.com = the Google account avatar in the header (Supabase
+  // stores it as user_metadata.avatar_url = https://lh3.googleusercontent.com/…);
+  // without it here the CSP blocks the <img> and the avatar renders broken.
+  "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co https://*.googleusercontent.com",
   "media-src 'self'",
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co https://*.ingest.us.sentry.io",

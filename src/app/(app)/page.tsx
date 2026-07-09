@@ -112,6 +112,9 @@ export default function WorkoutsPage() {
     user?.email?.[0]?.toUpperCase() ||
     "?";
   const avatarUrl = user?.profileImageUrl ?? undefined;
+  // If the avatar image fails to load (blocked, 403, or missing), fall back to
+  // the initials instead of a broken-image glyph.
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showEditorDialog, setShowEditorDialog] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<ScheduledWorkout | null>(null);
@@ -696,8 +699,14 @@ export default function WorkoutsPage() {
                 className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-strong bg-card text-[15px] font-bold text-primary"
                 data-testid="button-account-menu"
               >
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                {avatarUrl && !avatarFailed ? (
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   initials
                 )}
