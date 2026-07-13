@@ -73,9 +73,8 @@ export interface ExpandedAnchor extends Omit<AnchorLift, "progression"> {
   weekly: WeekPrescription[];
 }
 
-export interface ExpandedSplitDay {
-  dayLabel: string;
-  dayOfWeek: string;
+export interface ExpandedWorkoutDay {
+  label: string;
   muscleGroups: string[];
   anchors: ExpandedAnchor[];
 }
@@ -83,14 +82,14 @@ export interface ExpandedSplitDay {
 export interface ExpandedSkeleton {
   name: string;
   durationWeeks: number;
-  split: ExpandedSplitDay[];
+  workouts: ExpandedWorkoutDay[];
 }
 
 /**
- * Expand the whole skeleton: every anchor lift in every split day gets its
- * per-week prescription. The assembler (later, thin) walks weeks x split days
- * and interleaves the stage-2 variety exercises with these anchor prescriptions
- * to produce the final program.
+ * Expand the whole skeleton: every anchor lift in every distinct workout gets
+ * its per-week prescription. The assembler (later, thin) walks the program
+ * day-by-day over the rotation cycle and interleaves the stage-2 variety
+ * exercises with these anchor prescriptions to produce the final program.
  */
 export function expandSkeleton(skeleton: Skeleton): ExpandedSkeleton {
   const cfg: DeloadConfig = {
@@ -101,9 +100,8 @@ export function expandSkeleton(skeleton: Skeleton): ExpandedSkeleton {
   return {
     name: skeleton.name,
     durationWeeks: skeleton.durationWeeks,
-    split: skeleton.split.map((day) => ({
-      dayLabel: day.dayLabel,
-      dayOfWeek: day.dayOfWeek,
+    workouts: skeleton.workouts.map((day) => ({
+      label: day.label,
       muscleGroups: day.muscleGroups,
       anchors: day.anchorLifts.map((lift) => {
         const { progression, ...meta } = lift;

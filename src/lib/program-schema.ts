@@ -18,29 +18,33 @@ export const ExerciseSchema = z.object({
   targetLoadLbs: z.number().optional(),
 });
 
+// The assembled program is a FLAT sequence of days across the whole program
+// (length = the skeleton's durationDays), NOT a weekday grid. Each day carries
+// its absolute 1-indexed day-of-program (`dayIndex`), which save-program writes
+// straight onto routine_entries and the routine-start route turns into a
+// calendar date (startDate + dayIndex - 1). Rest days are included (isRest, no
+// exercises) so the preview can show the full rotation; save skips them.
+export const ProgramDaySchema = z.object({
+  dayIndex: z.number().int().min(1),
+  workoutName: z.string(),
+  isRest: z.boolean(),
+  exercises: z.array(ExerciseSchema).default([]),
+});
+
 export const ProgramSchema = z.object({
   name: z.string(),
-  weeks: z.array(
-    z.object({
-      weekNum: z.number(),
-      days: z.array(
-        z.object({
-          dayOfWeek: z.string(),
-          workoutName: z.string(),
-          isRest: z.boolean(),
-          exercises: z.array(ExerciseSchema).default([]),
-        }),
-      ),
-    }),
-  ),
+  cycleLength: z.number().int().min(1), // days in one rotation (training + rest)
+  days: z.array(ProgramDaySchema),
 });
 
 export type Program = z.infer<typeof ProgramSchema>;
+export type ProgramDay = z.infer<typeof ProgramDaySchema>;
 export type Exercise = z.infer<typeof ExerciseSchema>;
 
 // --- Program skeleton (stage 1 of the segmented program builder) ---
-// The model returns this compact macrocycle spec in ONE fast call: the split,
-// the phase layout, and the anchor lifts with STRUCTURED progression params.
+// The model returns this compact macrocycle spec in ONE fast call: the distinct
+// workouts + their rotation cycle, the phase layout, and the anchor lifts with
+// STRUCTURED progression params.
 // Progression is then expanded deterministically in code (lib/program-progression.ts),
 // not by the model, so week-to-week loads are consistent and correct. Per-phase
 // "variety" exercises are authored by separate LLM calls (stage 2) and layered on
@@ -70,9 +74,11 @@ export const AnchorLiftSchema = z.object({
   progression: AnchorProgressionSchema,
 });
 
-export const SplitDaySchema = z.object({
-  dayLabel: z.string(), // "Upper A", "Lower", "Push"
-  dayOfWeek: z.string(), // "Monday" — maps to the calendar day save uses
+// One distinct workout in the rotation (e.g. "Push", "Pull", "Legs"). The
+// workouts are NOT pinned to weekdays; they rotate on a cycle (see
+// SkeletonSchema.cycle), so there is no dayOfWeek here.
+export const WorkoutDaySchema = z.object({
+  label: z.string(), // "Push", "Upper A", "Legs" — matched by the variety day + assembler
   muscleGroups: z.array(z.string()).default([]),
   anchorLifts: z.array(AnchorLiftSchema).default([]),
 });
@@ -87,8 +93,16 @@ export const PhaseSchema = z.object({
 export const SkeletonSchema = z.object({
   name: z.string(),
   durationWeeks: z.number().int().min(1).max(52),
-  daysPerWeek: z.number().int().min(1).max(7),
-  split: z.array(SplitDaySchema).min(1),
+  // Exact program length in days. The model designs the structure; the route
+  // injects the authoritative value from the wizard's programLength after
+  // parsing, so the assembler builds exactly this many days.
+  durationDays: z.number().int().min(1).max(400).default(0),
+  // The distinct workouts (3-8) the user rotates through, and `cycle`: the
+  // repeating rotation pattern. Each `cycle` entry is either a workout index
+  // (0..workouts.length-1) or -1 for a rest slot. cycle.length is the cycle
+  // period in days (e.g. [0,1,2,-1] = Push, Pull, Legs, rest → a 4-day cycle).
+  workouts: z.array(WorkoutDaySchema).min(1),
+  cycle: z.array(z.number().int().min(-1)).min(1),
   phases: z.array(PhaseSchema).min(1),
   deloadWeeks: z.array(z.number().int().min(1)).default([]), // 1-indexed weeks
   deloadLoadFactor: z.number().min(0.5).max(1).default(0.9),
@@ -96,14 +110,14 @@ export const SkeletonSchema = z.object({
 
 export type AnchorProgression = z.infer<typeof AnchorProgressionSchema>;
 export type AnchorLift = z.infer<typeof AnchorLiftSchema>;
-export type SplitDay = z.infer<typeof SplitDaySchema>;
+export type WorkoutDay = z.infer<typeof WorkoutDaySchema>;
 export type Phase = z.infer<typeof PhaseSchema>;
 export type Skeleton = z.infer<typeof SkeletonSchema>;
 
 // --- Per-phase variety (stage 2 of the segmented program builder) ---
 // One LLM call per skeleton phase authors that phase's exercise variety on top
 // of the deterministic anchor-lift progression: a phase-flavored workout name +
-// accessory exercises per split day. The assembler interleaves these accessories
+// accessory exercises per workout. The assembler interleaves these accessories
 // with the expanded anchor prescriptions to build the final program. Accessories
 // carry no target load (they fall back to Track's last-recorded prefill); the
 // progression backbone lives entirely on the anchors. See FITBOT_TECH_SPEC.md
@@ -120,9 +134,9 @@ export const PhaseAccessorySchema = z.object({
 });
 
 export const PhaseVarietyDaySchema = z.object({
-  // Matches a SplitDaySchema.dayLabel so the assembler can map accessories back
-  // onto the right training day.
-  dayLabel: z.string(),
+  // Matches a WorkoutDaySchema.label so the assembler can map accessories back
+  // onto the right workout in the rotation.
+  label: z.string(),
   workoutName: z.string(),
   accessories: z.array(PhaseAccessorySchema).default([]),
 });

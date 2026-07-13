@@ -45,14 +45,13 @@ describe("expandSkeleton", () => {
   const skeleton: Skeleton = {
     name: "Test Program",
     durationWeeks: 4,
-    daysPerWeek: 1,
+    durationDays: 28,
     deloadWeeks: [4],
     deloadLoadFactor: 0.9,
     phases: [{ name: "Base", focus: "hypertrophy", startWeek: 1, endWeek: 4 }],
-    split: [
+    workouts: [
       {
-        dayLabel: "Full Body",
-        dayOfWeek: "Monday",
+        label: "Full Body",
         muscleGroups: ["Legs"],
         anchorLifts: [
           {
@@ -72,10 +71,11 @@ describe("expandSkeleton", () => {
         ],
       },
     ],
+    cycle: [0, -1],
   };
 
   it("attaches per-week prescriptions to each anchor and preserves its metadata", () => {
-    const anchor = expandSkeleton(skeleton).split[0].anchors[0];
+    const anchor = expandSkeleton(skeleton).workouts[0].anchors[0];
     expect(anchor.name).toBe("Back Squat");
     expect(anchor.restSeconds).toBe(180); // rest carries through onto the expanded anchor
     expect(anchor.weekly.map((p) => p.loadLbs)).toEqual([100, 105, 110, 99]);

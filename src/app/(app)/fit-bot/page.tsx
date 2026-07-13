@@ -103,22 +103,28 @@ export default function FitBotProgramPage() {
   const [result, setResult] = useState<{
     routineId: string;
     name: string;
+    cycleLength: number;
+    distinctWorkouts: number | null;
     weeksGenerated: number;
     daysGenerated: number;
     program: Program;
   } | null>(null);
 
-  // Days/week + program length are user-editable in the wizard (Schedule step),
-  // seeded once from the onboarding settings when they load. Any later user edit
-  // wins (the ref guards against re-seeding on subsequent settings refetches).
-  const [daysPerWeek, setDaysPerWeek] = useState(4);
+  // Distinct workouts + program length + free-form structure notes are all
+  // user-editable in the wizard (Schedule step). The count of distinct workouts
+  // and program length seed once from the onboarding settings when they load
+  // (onboardingDaysPerWeek is a reasonable proxy for how many distinct workouts
+  // to rotate, clamped to the 3-8 range). Any later user edit wins (the ref
+  // guards against re-seeding on subsequent settings refetches).
+  const [distinctWorkouts, setDistinctWorkouts] = useState(4);
   const [programLength, setProgramLength] = useState(60);
+  const [structureNotes, setStructureNotes] = useState("");
   const seededScheduleRef = useRef(false);
   useEffect(() => {
     if (seededScheduleRef.current || !userSettings) return;
     seededScheduleRef.current = true;
     if (userSettings.onboardingDaysPerWeek != null)
-      setDaysPerWeek(userSettings.onboardingDaysPerWeek);
+      setDistinctWorkouts(Math.min(8, Math.max(3, userSettings.onboardingDaysPerWeek)));
     if (userSettings.onboardingProgramLength != null)
       setProgramLength(userSettings.onboardingProgramLength);
   }, [userSettings]);
@@ -198,10 +204,13 @@ export default function FitBotProgramPage() {
         focus,
         experience,
         programLength,
+        distinctWorkouts,
       });
       const saved = (await res.json()) as {
         routineId: string;
         name: string;
+        cycleLength: number;
+        distinctWorkouts: number | null;
         weeksGenerated: number;
         daysGenerated: number;
       };
@@ -229,8 +238,9 @@ export default function FitBotProgramPage() {
     try {
       const res = await apiRequest("POST", "/api/ai/generate-program-skeleton", {
         focus,
-        daysPerWeek,
+        distinctWorkouts,
         programLength,
+        structureNotes,
         ...constraints(),
       });
       const sk = (await res.json()) as Skeleton;
@@ -346,15 +356,15 @@ export default function FitBotProgramPage() {
           <div className="space-y-7">
             <div>
               <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
-                Days per week
+                Distinct workouts
               </div>
               <div className="flex flex-wrap gap-2.5">
-                {[2, 3, 4, 5, 6].map((n) => (
+                {[3, 4, 5, 6, 7, 8].map((n) => (
                   <Chip
                     key={n}
                     label={String(n)}
-                    active={daysPerWeek === n}
-                    onClick={() => setDaysPerWeek(n)}
+                    active={distinctWorkouts === n}
+                    onClick={() => setDistinctWorkouts(n)}
                   />
                 ))}
               </div>
@@ -373,6 +383,22 @@ export default function FitBotProgramPage() {
                   />
                 ))}
               </div>
+            </div>
+            <div>
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+                Structure notes{" "}
+                <span className="tracking-normal text-tertiary-foreground/70 normal-case">
+                  (optional)
+                </span>
+              </div>
+              <textarea
+                value={structureNotes}
+                onChange={(e) => setStructureNotes(e.target.value)}
+                rows={3}
+                placeholder="e.g. Push / Pull / Legs, rest after every 3 days, extra arm work."
+                maxLength={500}
+                className="w-full resize-none rounded-xl border-strong bg-input px-4 py-3 text-sm outline-none placeholder:text-tertiary-foreground focus:border-yellow focus:bg-input-focus"
+              />
             </div>
           </div>
         );
@@ -454,8 +480,8 @@ export default function FitBotProgramPage() {
               <SummaryRow label="Equipment" value={equipment.join(", ")} onEdit={() => setScreen("equipment")} />
               <SummaryRow label="Experience" value={experience ?? "—"} onEdit={() => setScreen("experience")} />
               <SummaryRow
-                label="Days / week"
-                value={`${daysPerWeek} days`}
+                label="Distinct workouts"
+                value={`${distinctWorkouts} workouts`}
                 onEdit={() => setScreen("schedule")}
                 highlight
               />
@@ -465,6 +491,14 @@ export default function FitBotProgramPage() {
                 onEdit={() => setScreen("schedule")}
                 highlight
               />
+              {structureNotes.trim() ? (
+                <SummaryRow
+                  label="Structure notes"
+                  value={structureNotes.trim()}
+                  onEdit={() => setScreen("schedule")}
+                  highlight
+                />
+              ) : null}
               <SummaryRow label="Extras" value={extras.join(", ") || "none"} onEdit={() => setScreen("extras")} />
               {extras.includes("Fix muscle imbalances") && (
                 <SummaryRow
@@ -484,8 +518,8 @@ export default function FitBotProgramPage() {
             <div className="flex items-start gap-2.5 px-0.5">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tertiary-foreground" />
               <p className="text-xs leading-relaxed text-tertiary-foreground">
-                Days / week and program length are highlighted; they used to be read silently
-                from onboarding, and are now editable here.
+                Your workouts rotate on a cycle Fit Bot designs from these; they repeat back to
+                back rather than being pinned to weekdays.
               </p>
             </div>
           </div>
@@ -558,8 +592,8 @@ const WIZARD_COPY: Record<WizardStep, { title: string; hint?: string }> = {
   equipment: { title: "What equipment do you have?", hint: "Pick all that apply." },
   experience: { title: "What's your experience level?", hint: "Pick one." },
   schedule: {
-    title: "How often and how long?",
-    hint: "Set your weekly frequency and program length.",
+    title: "How should your program rotate?",
+    hint: "Pick how many distinct workouts to rotate through, how long it runs, and any structure notes.",
   },
   extras: { title: "Anything else?", hint: "Optional — pick any that apply." },
   imbalances: { title: "Which muscles need extra work?", hint: "Pick areas you want to bring up." },
@@ -948,6 +982,8 @@ function PreviewScreen({
 }: {
   result: {
     name: string;
+    cycleLength: number;
+    distinctWorkouts: number | null;
     weeksGenerated: number;
     daysGenerated: number;
     program: Program;
@@ -955,15 +991,13 @@ function PreviewScreen({
   onOpen: () => void;
   onClose: () => void;
 }) {
-  const days = result.program.weeks[0]?.days ?? [];
-  let lastTraining = -1;
-  days.forEach((d, i) => {
-    if (!d.isRest) lastTraining = i;
-  });
-  const shown = lastTraining >= 0 ? days.slice(0, lastTraining + 1) : days;
-  const perWeek = result.weeksGenerated
-    ? Math.round(result.daysGenerated / result.weeksGenerated)
-    : 0;
+  // Show one full rotation of the cycle (the pattern then repeats for the whole
+  // program). Rest days are included so the rotation reads clearly.
+  const cycleLength = result.program.cycleLength;
+  const shown = result.program.days.slice(0, cycleLength);
+  const distinctCount =
+    result.distinctWorkouts ??
+    new Set(shown.filter((d) => !d.isRest).map((d) => d.workoutName)).size;
 
   return (
     <>
@@ -973,20 +1007,21 @@ function PreviewScreen({
           <div>
             <h1 className="text-[25px] font-bold leading-tight tracking-[-0.02em]">{result.name}</h1>
             <div className="mt-1.5 font-mono text-xs tracking-[0.06em] text-muted-foreground">
-              {result.weeksGenerated} WEEKS · {result.daysGenerated} WORKOUTS · {perWeek} DAYS/WEEK
+              {distinctCount} WORKOUTS · {cycleLength}-DAY CYCLE · {result.daysGenerated} SESSIONS
             </div>
           </div>
 
           <div className="flex gap-3 rounded-2xl border-[1.5px] border-yellow bg-primary-dim p-4">
             <Sparkles className="mt-0.5 h-[18px] w-[18px] shrink-0 text-primary" />
             <p className="text-[13px] leading-relaxed text-foreground/85">
-              Saved to your Routines. Progressive overload is built in across all{" "}
-              {result.weeksGenerated} weeks — open it to edit any day or start now.
+              Saved to your Routines. Your workouts rotate on this {cycleLength}-day cycle with
+              progressive overload built in across all {result.weeksGenerated} weeks. Open it to
+              edit any day or start now.
             </p>
           </div>
 
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
-            Week 1 preview
+            Your rotation
           </div>
           <div className="card-elevated overflow-hidden">
             {shown.map((d, i) => (
@@ -996,8 +1031,8 @@ function PreviewScreen({
                   i < shown.length - 1 ? "border-b border-divider" : ""
                 }`}
               >
-                <div className="w-9 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-tertiary-foreground">
-                  {d.dayOfWeek.slice(0, 3)}
+                <div className="w-12 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-tertiary-foreground">
+                  Day {i + 1}
                 </div>
                 <div className={`flex-1 text-[15px] font-semibold ${d.isRest ? "text-tertiary-foreground" : ""}`}>
                   {d.isRest ? "Rest" : d.workoutName}

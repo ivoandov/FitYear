@@ -7,8 +7,9 @@ import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { SkeletonSchema } from "@/lib/program-schema";
 
 // Stage 1 of the segmented program builder: one fast Sonnet call that lays out
-// the whole macrocycle (split, phases, deloads, anchor lifts + STRUCTURED
-// linear-progression params). This is where program-wide coherence lives; the
+// the whole macrocycle (the distinct workouts + their rotation cycle, phases,
+// deloads, anchor lifts + STRUCTURED linear-progression params). This is where
+// program-wide coherence lives; the
 // per-week loads are then expanded deterministically in code, and per-phase
 // variety is authored by separate stage-2 calls. The skeleton is compact, so
 // this finishes well under the 60s Hobby budget as a plain non-streaming call.
@@ -20,8 +21,9 @@ const InputSchema = z.object({
   focus: z.array(z.string()).min(1),
   equipment: z.array(z.string()).min(1),
   experience: z.enum(["Beginner", "Intermediate", "Advanced", "Competitive"]),
-  daysPerWeek: z.number().int().min(2).max(7),
+  distinctWorkouts: z.number().int().min(3).max(8),
   programLength: z.number().int().min(7).max(180),
+  structureNotes: z.string().max(500).default(""),
   extras: z.array(z.string()).default([]),
   imbalanceMuscles: z.array(z.string()).default([]),
   imbalanceNotes: z.string().default(""),
@@ -59,20 +61,22 @@ export const POST = handle(async (request: NextRequest) => {
 
 USER PROFILE:
 - Experience: ${input.experience}
-- Training days/week: ${input.daysPerWeek}
+- Distinct workouts to rotate through: ${input.distinctWorkouts}
 - Equipment: ${input.equipment.join(", ")}
 - Additional goals: ${input.extras.length ? input.extras.join(", ") : "none"}
+${input.structureNotes.trim() ? `- Structure notes from the user (honor these when shaping the rotation and rest): ${input.structureNotes.trim()}` : ""}
 ${input.imbalanceMuscles.length ? `- Bring up these muscles: ${input.imbalanceMuscles.join(", ")}. Notes: ${input.imbalanceNotes}` : ""}
 ${input.injuryDetails.length ? `- Train around: ${input.injuryDetails.join(", ")}. Notes: ${input.injuryNotes}` : ""}
 
 Design:
-- A training split of exactly ${input.daysPerWeek} training days. Give each split day a distinct FULL weekday name ("Monday".."Sunday") — the app maps these to the calendar. Non-training weekdays become rest days automatically; do not include rest days.
-- For EACH split day, choose 1-3 ANCHOR lifts (the key compound movements that drive progression). Each anchor gets a linear progression: a realistic starting load in POUNDS for a ${input.experience} lifter with this equipment (use 0 for bodyweight or unloaded movements), a per-week load increment in pounds (typically 2.5-10 lb for upper body, 5-15 lb for lower body; 0 for bodyweight), the fixed sets, and a rep prescription string (e.g. "5", "8-12"). Only pick anchors the equipment allows; respect injuries.
+- Exactly ${input.distinctWorkouts} DISTINCT workouts the user rotates through (e.g. "Push", "Pull", "Legs", "Upper A"). These are NOT tied to weekdays; they repeat on a rotating cycle. Give each a short "label".
+- A rotating "cycle": an array where each entry is either a workout index (0-based, into your workouts array) or -1 for a REST day. The cycle repeats back-to-back for the whole program, so it defines how often each workout recurs. Include every workout at least once per cycle and place rest sensibly (typically 1 rest after every 2-4 training days). Keep the cycle compact (roughly ${input.distinctWorkouts}-${input.distinctWorkouts + 3} days). Example for 3 workouts training then resting: [0,1,2,-1].
+- For EACH workout, choose 1-3 ANCHOR lifts (the key compound movements that drive progression). Each anchor gets a linear progression: a realistic starting load in POUNDS for a ${input.experience} lifter with this equipment (use 0 for bodyweight or unloaded movements), a per-week load increment in pounds (typically 2.5-10 lb for upper body, 5-15 lb for lower body; 0 for bodyweight), the fixed sets, and a rep prescription string (e.g. "5", "8-12"). Only pick anchors the equipment allows; respect injuries.
 - ${durationWeeks >= 6 ? `Lay out 2-4 training PHASES (e.g. Foundation, Strength, Hypertrophy, Peak) that tile weeks 1..${durationWeeks} with no gaps or overlaps.` : `Lay out 1-2 training PHASES that tile weeks 1..${durationWeeks}.`}
 - Include a deload roughly every 4-6 weeks (list those 1-indexed week numbers in deloadWeeks; deloadLoadFactor ~0.9). ${durationWeeks < 4 ? "For a short program, deloadWeeks may be empty." : ""}
 
 Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shape:
-{"name":"string","durationWeeks":${durationWeeks},"daysPerWeek":${input.daysPerWeek},"split":[{"dayLabel":"Upper A","dayOfWeek":"Monday","muscleGroups":["Chest","Back"],"anchorLifts":[{"name":"Barbell Bench Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","isAssisted":false,"restSeconds":180,"progression":{"scheme":"linear","startLoadLbs":135,"incrementLbs":5,"sets":4,"reps":"5"}}]}],"phases":[{"name":"Foundation","focus":"hypertrophy","startWeek":1,"endWeek":4}],"deloadWeeks":[4],"deloadLoadFactor":0.9}`;
+{"name":"string","durationWeeks":${durationWeeks},"workouts":[{"label":"Push","muscleGroups":["Chest","Shoulders"],"anchorLifts":[{"name":"Barbell Bench Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","isAssisted":false,"restSeconds":180,"progression":{"scheme":"linear","startLoadLbs":135,"incrementLbs":5,"sets":4,"reps":"5"}}]}],"cycle":[0,1,2,-1],"phases":[{"name":"Foundation","focus":"hypertrophy","startWeek":1,"endWeek":4}],"deloadWeeks":[4],"deloadLoadFactor":0.9}`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-5",
@@ -93,5 +97,7 @@ Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shap
   if (!result.success) {
     throw new ApiError(502, "Fit Bot's program structure was incomplete. Please try again.");
   }
-  return result.data;
+  // The exact program length in days is authoritative from the wizard, not the
+  // model; inject it so the assembler builds exactly this many days.
+  return { ...result.data, durationDays: input.programLength };
 });

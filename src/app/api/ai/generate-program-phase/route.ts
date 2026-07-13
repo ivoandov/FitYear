@@ -7,7 +7,7 @@ import { SkeletonSchema, PhaseVarietySchema } from "@/lib/program-schema";
 
 // Stage 2 of the segmented program builder: ONE fast Sonnet call per skeleton
 // phase that authors that phase's exercise variety — a phase-flavored workout
-// name + accessory exercises per split day — layered on top of the anchor lifts
+// name + accessory exercises per workout — layered on top of the anchor lifts
 // (whose per-week loads are already computed deterministically). One phase's
 // worth of output is small, so this stays well under the 60s Hobby budget.
 // Deliberately does NOT charge the daily quota: the whole build was already
@@ -54,13 +54,13 @@ export const POST = handle(async (request: NextRequest) => {
   }
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // Compact split summary so the model knows each day's focus + which anchors
-  // already exist (so accessories complement rather than duplicate them).
-  const splitSummary = input.skeleton.split
+  // Compact workout summary so the model knows each workout's focus + which
+  // anchors already exist (so accessories complement rather than duplicate them).
+  const workoutSummary = input.skeleton.workouts
     .map((d) => {
       const anchors = d.anchorLifts.map((a) => a.name).join(", ") || "none";
       const muscles = d.muscleGroups.join(", ") || "full body";
-      return `- "${d.dayLabel}" (${muscles}); anchor lifts already programmed: ${anchors}`;
+      return `- "${d.label}" (${muscles}); anchor lifts already programmed: ${anchors}`;
     })
     .join("\n");
 
@@ -75,15 +75,15 @@ USER PROFILE:
 ${input.imbalanceMuscles.length ? `- Bring up these muscles: ${input.imbalanceMuscles.join(", ")}. Notes: ${input.imbalanceNotes}` : ""}
 ${input.injuryDetails.length ? `- Train around: ${input.injuryDetails.join(", ")}. Notes: ${input.injuryNotes}` : ""}
 
-The training split (anchor lifts are ALREADY programmed — do NOT repeat them):
-${splitSummary}
+The distinct workouts (anchor lifts are ALREADY programmed — do NOT repeat them):
+${workoutSummary}
 
-For EACH split day above, author:
-- workoutName: a short, phase-appropriate name (e.g. "${phase.name} Upper", "Upper Power", "Lower Hypertrophy").
-- accessories: 2-4 accessory/isolation exercises that COMPLEMENT the day's anchors and suit this phase's ${phase.focus} focus, the equipment, and any injuries. Do not repeat the anchor lifts. Each accessory has: name; the muscleGroups it trains; exerciseType ("weight_reps" for lifting/bodyweight, "distance_time" for cardio/carries measured by distance or time); sets; a reps prescription string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).
+For EACH workout above, author:
+- workoutName: a short, phase-appropriate name (e.g. "${phase.name} Push", "Upper Power", "Lower Hypertrophy").
+- accessories: 2-4 accessory/isolation exercises that COMPLEMENT the workout's anchors and suit this phase's ${phase.focus} focus, the equipment, and any injuries. Do not repeat the anchor lifts. Each accessory has: name; the muscleGroups it trains; exerciseType ("weight_reps" for lifting/bodyweight, "distance_time" for cardio/carries measured by distance or time); sets; a reps prescription string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).
 
-Return ONLY valid JSON, no preamble and no markdown fences. Include EVERY split day, matching each "dayLabel" exactly, in this shape:
-{"days":[{"dayLabel":"Upper A","workoutName":"Upper Power","accessories":[{"name":"Incline Dumbbell Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","sets":3,"reps":"8-12","rest":90,"notes":""}]}]}`;
+Return ONLY valid JSON, no preamble and no markdown fences. Include EVERY workout, matching each "label" exactly, in this shape:
+{"days":[{"label":"Push","workoutName":"Push Power","accessories":[{"name":"Incline Dumbbell Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","sets":3,"reps":"8-12","rest":90,"notes":""}]}]}`;
 
   const message = await client.messages.create({
     model: "claude-sonnet-5",

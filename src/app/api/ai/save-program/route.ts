@@ -6,31 +6,25 @@ import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { ProgramSchema } from "@/lib/program-schema";
 
-const DAY_INDEX_BY_NAME: Record<string, number> = {
-  Monday: 1,
-  Tuesday: 2,
-  Wednesday: 3,
-  Thursday: 4,
-  Friday: 5,
-  Saturday: 6,
-  Sunday: 7,
-};
-
 const InputSchema = z.object({
   program: ProgramSchema,
   focus: z.array(z.string()),
   experience: z.string(),
   programLength: z.number().int().min(7).max(180),
+  distinctWorkouts: z.number().int().min(1).max(8).optional(),
 });
 
-// Persists a Fit Bot-generated program. Split out from the streaming generator
-// route so the slow Anthropic call and the quick DB writes never share a
-// function invocation budget.
+// Persists a Fit Bot-generated program. Split out from the generator route so
+// the slow Anthropic call and the quick DB writes never share a function
+// invocation budget. The program is a flat rotating-cycle sequence: each
+// non-rest day carries its absolute 1-indexed `dayIndex`, which routine_entries
+// stores verbatim and the routine-start route turns into a calendar date
+// (startDate + dayIndex - 1). Rest days have no entry, so they become gaps in
+// the schedule. No weekday mapping is involved.
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
-  const { program, focus, experience, programLength } = InputSchema.parse(
-    await request.json(),
-  );
+  const { program, focus, experience, programLength, distinctWorkouts } =
+    InputSchema.parse(await request.json());
 
   const [routine] = await db
     .insert(routines)
@@ -43,25 +37,14 @@ export const POST = handle(async (request: NextRequest) => {
     })
     .returning();
 
-  const entries: Array<{
-    routineId: string;
-    dayIndex: number;
-    workoutName: string | null;
-    exercises: unknown;
-  }> = [];
-  for (const week of program.weeks) {
-    for (const day of week.days) {
-      if (day.isRest) continue;
-      const dow = DAY_INDEX_BY_NAME[day.dayOfWeek] ?? 1;
-      const dayIndex = (week.weekNum - 1) * 7 + dow;
-      entries.push({
-        routineId: routine.id,
-        dayIndex,
-        workoutName: day.workoutName,
-        exercises: day.exercises,
-      });
-    }
-  }
+  const entries = program.days
+    .filter((day) => !day.isRest)
+    .map((day) => ({
+      routineId: routine.id,
+      dayIndex: day.dayIndex,
+      workoutName: day.workoutName,
+      exercises: day.exercises as unknown,
+    }));
   if (entries.length) {
     await db.insert(routineEntries).values(entries);
   }
@@ -69,7 +52,9 @@ export const POST = handle(async (request: NextRequest) => {
   return {
     routineId: routine.id,
     name: program.name,
-    weeksGenerated: program.weeks.length,
+    cycleLength: program.cycleLength,
+    distinctWorkouts: distinctWorkouts ?? null,
+    weeksGenerated: Math.ceil(programLength / 7),
     daysGenerated: entries.length,
   };
 });
