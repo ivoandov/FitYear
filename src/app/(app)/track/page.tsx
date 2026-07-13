@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { Input } from "@/components/ui/input";
 import { RestTimer } from "@/components/RestTimer";
 import { SetRow } from "@/components/track/SetRow";
@@ -323,7 +324,7 @@ export default function TrackPage() {
   if (!activeWorkout) {
     return (
       <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="text-center py-12">
             <h1 className="text-2xl font-bold mb-4" data-testid="text-no-workout">No Active Workout</h1>
             <p className="text-muted-foreground mb-6">
@@ -649,7 +650,7 @@ export default function TrackPage() {
   if (enrichedWorkoutExercises.length === 0) {
     return (
       <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold" data-testid="text-page-title">
               {activeWorkout.name?.trim() || "New Workout"}
@@ -700,16 +701,26 @@ export default function TrackPage() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <DesktopTopBar
+        title={
+          <span className="flex items-baseline gap-3">
+            <span className="truncate">{activeWorkout.name}</span>
+            <span className="shrink-0 font-mono text-[12px] font-normal uppercase tracking-[0.06em] text-tertiary-foreground">
+              Exercise {currentExerciseIndex + 1} / {enrichedWorkoutExercises.length}
+            </span>
+          </span>
+        }
+      />
+      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 md:pt-7">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary md:hidden">
             Exercise {currentExerciseIndex + 1} / {enrichedWorkoutExercises.length}
           </div>
-          <h1 className="mt-1.5 text-2xl font-bold tracking-[-0.01em]" data-testid="text-page-title">
+          <h1 className="mt-1.5 text-2xl font-bold tracking-[-0.01em] md:hidden" data-testid="text-page-title">
             {activeWorkout.name}
           </h1>
           <div
-            className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08]"
+            className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.08] md:mt-0"
             role="progressbar"
             aria-valuenow={Math.round(progress)}
             aria-valuemin={0}
