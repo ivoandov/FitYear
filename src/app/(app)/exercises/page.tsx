@@ -12,6 +12,7 @@ import { useSettings } from "@/components/SettingsProvider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 
 interface DBExercise {
   id: string;
@@ -231,8 +232,28 @@ export default function ExercisesPage() {
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between gap-3">
+      <DesktopTopBar title="Exercises">
+        <div className="relative w-[280px]">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search exercises…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-11 rounded-xl bg-input pl-10 text-sm"
+            aria-label="Search exercises"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddDialog(true)}
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+          Add
+        </button>
+      </DesktopTopBar>
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6 md:pt-7">
+        <div className="flex items-center justify-between gap-3 md:hidden">
           <div>
             <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]" data-testid="text-page-title">
               Exercises
@@ -253,7 +274,7 @@ export default function ExercisesPage() {
         </div>
 
         <div className="space-y-3">
-          <div className="relative">
+          <div className="relative md:hidden">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search exercises…"
