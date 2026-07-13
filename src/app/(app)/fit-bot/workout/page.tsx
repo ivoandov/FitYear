@@ -228,9 +228,14 @@ export default function FitBotWorkoutPage() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
-      {/* Immersive single-column flow; on desktop center it in a focused column
-          (with hairline sides) rather than stretching the prompt/preview full-width. */}
-      <div className="mx-auto flex w-full flex-1 flex-col overflow-hidden md:max-w-xl md:border-x md:border-divider">
+      {/* Immersive flow. Prompt/generating/error stay a focused centered column;
+          the review+refine state widens on desktop into the two-column split
+          (chat/refine left, live workout right) - see ReviewScreen. */}
+      <div
+        className={`mx-auto flex w-full flex-1 flex-col overflow-hidden md:border-x md:border-divider ${
+          phase === "review" ? "md:max-w-5xl" : "md:max-w-xl"
+        }`}
+      >
         {phase === "prompt" && (
           <PromptScreen
             prompt={prompt}
@@ -640,35 +645,51 @@ function ReviewScreen({
 
   return (
     <>
-      {view === "list" ? (
-        <TopBar onClose={onClose} label="Built by FitBot" backIcon right="Built by FitBot" />
-      ) : (
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Back"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white/[0.03] text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-[18px] w-[18px]" />
-          </button>
-          <div className="truncate px-2 text-[15px] font-bold">{name}</div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white/[0.03] text-muted-foreground">
-            <List className="h-[18px] w-[18px]" />
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 overflow-y-auto px-5 pb-4">
+      {/* Header. Mobile keeps the per-view header (list = "Built by FitBot";
+          chat = back + name + list icon). Desktop shows one "Built by FitBot"
+          bar spanning the split. */}
+      <div className="md:hidden">
         {view === "list" ? (
-          <ListView
-            workout={workout}
-            name={name}
-            setName={setName}
-            newFlags={newFlags}
-            summaryLine={summaryLine}
-          />
+          <TopBar onClose={onClose} label="Built by FitBot" backIcon right="Built by FitBot" />
         ) : (
+          <div className="flex items-center justify-between px-5 pt-4 pb-2">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Back"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white/[0.03] text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-[18px] w-[18px]" />
+            </button>
+            <div className="truncate px-2 text-[15px] font-bold">{name}</div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white/[0.03] text-muted-foreground">
+              <List className="h-[18px] w-[18px]" />
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="hidden md:block">
+        <TopBar onClose={onClose} label="Built by FitBot" backIcon right="Built by FitBot" />
+      </div>
+
+      {/* Content. Mobile: one column toggling list <-> chat. Desktop: a two-column
+          split - chat/refine transcript left, the live workout right - so both are
+          visible at once (mobile stacks them across the list/chat states). */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+        {/* Chat / refine column */}
+        <div
+          className={`${
+            view === "chat" ? "flex" : "hidden"
+          } min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-4 md:flex md:border-r md:border-divider`}
+        >
+          <div className="mt-2 hidden md:block">
+            <h2 className="text-[19px] font-bold leading-tight tracking-[-0.01em]">
+              Refine with FitBot
+            </h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Ask for swaps or tweaks by text or voice. Nothing is saved until you start.
+            </p>
+          </div>
           <ChatView
             workout={workout}
             transcript={transcript}
@@ -676,77 +697,104 @@ function ReviewScreen({
             newFlags={newFlags}
             refining={refining}
           />
-        )}
+        </div>
+
+        {/* Live workout column */}
+        <div
+          className={`${
+            view === "list" ? "flex" : "hidden"
+          } min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-4 md:flex`}
+        >
+          <ListView
+            workout={workout}
+            name={name}
+            setName={setName}
+            newFlags={newFlags}
+            summaryLine={summaryLine}
+          />
+        </div>
       </div>
 
-      {/* Docked refine + Start (shared by both views) */}
-      <div className="flex flex-col gap-2.5 bg-gradient-to-t from-background via-background to-transparent px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3">
-        {view === "list" && (
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
-            {REFINE_CHIPS.map((c) => (
-              <button
-                key={c}
-                type="button"
+      {/* Docked controls. Mobile: chips + refine input + Start stacked. Desktop:
+          the refine input sits under the chat column (left), Start under the
+          workout column (right), matching the split above. */}
+      <div className="bg-gradient-to-t from-background via-background to-transparent px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3">
+        <div className="flex flex-col gap-2.5 md:grid md:grid-cols-2 md:items-end md:gap-6">
+          {/* Left cell: refine chips + input */}
+          <div className="flex min-w-0 flex-col gap-2.5">
+            <div
+              className={`${
+                view === "list" ? "flex" : "hidden"
+              } gap-2 overflow-x-auto pb-0.5 md:flex`}
+            >
+              {REFINE_CHIPS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={refining}
+                  onClick={() => onRefine(c)}
+                  className="shrink-0 rounded-full border bg-white/[0.05] px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            <div className="flex h-[50px] items-center gap-2 rounded-2xl border-[1.5px] border-yellow bg-[#141412] pl-3.5 pr-2">
+              <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+              <input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onRefine(message);
+                }}
                 disabled={refining}
-                onClick={() => onRefine(c)}
-                className="shrink-0 rounded-full border bg-white/[0.05] px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+                placeholder={view === "list" ? "Ask FitBot to change anything…" : "Message FitBot…"}
+                maxLength={1000}
+                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary-foreground disabled:opacity-60"
+                data-testid="input-fitbot-refine"
+              />
+              <VoiceInputButton
+                value={message}
+                onChange={setMessage}
+                disabled={refining}
+                tone="ghost"
+                className="h-9 w-9"
+              />
+              <button
+                type="button"
+                onClick={() => onRefine(message)}
+                disabled={refining || !message.trim()}
+                aria-label="Send"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground disabled:opacity-40"
+                data-testid="button-fitbot-send"
               >
-                {c}
+                {refining ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-[18px] w-[18px]" />}
               </button>
-            ))}
+            </div>
           </div>
-        )}
-        <div className="flex h-[50px] items-center gap-2 rounded-2xl border-[1.5px] border-yellow bg-[#141412] pl-3.5 pr-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-          <input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onRefine(message);
-            }}
-            disabled={refining}
-            placeholder={view === "list" ? "Ask FitBot to change anything…" : "Message FitBot…"}
-            maxLength={1000}
-            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary-foreground disabled:opacity-60"
-            data-testid="input-fitbot-refine"
-          />
-          <VoiceInputButton
-            value={message}
-            onChange={setMessage}
-            disabled={refining}
-            tone="ghost"
-            className="h-9 w-9"
-          />
-          <button
-            type="button"
-            onClick={() => onRefine(message)}
-            disabled={refining || !message.trim()}
-            aria-label="Send"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-primary text-primary-foreground disabled:opacity-40"
-            data-testid="button-fitbot-send"
-          >
-            {refining ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-[18px] w-[18px]" />}
-          </button>
+          {/* Right cell: Start */}
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={onStart}
+              disabled={starting || workout.exercises.length === 0}
+              className={CTA}
+              data-testid="button-fitbot-start"
+            >
+              {starting ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Setting up…
+                </>
+              ) : (
+                <>
+                  <Play className="h-[19px] w-[19px] fill-current" />
+                  Start Workout
+                </>
+              )}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={starting || workout.exercises.length === 0}
-          className={CTA}
-          data-testid="button-fitbot-start"
-        >
-          {starting ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Setting up…
-            </>
-          ) : (
-            <>
-              <Play className="h-[19px] w-[19px] fill-current" />
-              Start Workout
-            </>
-          )}
-        </button>
       </div>
     </>
   );
