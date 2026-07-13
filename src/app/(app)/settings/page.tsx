@@ -18,6 +18,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useRouter, useSearchParams } from "next/navigation";
 
 interface CalendarInfo {
@@ -334,8 +335,10 @@ export default function SettingsPage() {
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="mx-auto max-w-2xl space-y-5 p-4 pb-8 sm:p-6 sm:pb-12">
-        <div className="flex items-center gap-3">
+      <DesktopTopBar title="Settings" />
+      <div className="mx-auto max-w-2xl space-y-5 p-4 pb-8 sm:p-6 sm:pb-12 md:max-w-3xl md:grid md:grid-cols-2 md:items-start md:gap-5 md:space-y-0 md:pt-7">
+        {/* Mobile header (desktop shows the title in the top bar). */}
+        <div className="flex items-center gap-3 md:hidden">
           <button
             type="button"
             onClick={() => router.back()}
