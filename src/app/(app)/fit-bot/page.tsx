@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -40,6 +40,7 @@ type WizardStep =
   | "focus"
   | "equipment"
   | "experience"
+  | "schedule"
   | "extras"
   | "imbalances"
   | "injuries"
@@ -64,7 +65,7 @@ interface UserSettings {
 // The wizard's step path is dynamic: imbalances/injuries only appear if the user
 // opted into them, so the "Step n of N" + progress bar reflect the real path.
 function wizardSequence(extras: string[]): WizardStep[] {
-  const seq: WizardStep[] = ["focus", "equipment", "experience", "extras"];
+  const seq: WizardStep[] = ["focus", "equipment", "experience", "schedule", "extras"];
   if (extras.includes("Fix muscle imbalances")) seq.push("imbalances");
   if (extras.includes("Train around injury")) seq.push("injuries");
   seq.push("summary");
@@ -106,8 +107,20 @@ export default function FitBotProgramPage() {
     program: Program;
   } | null>(null);
 
-  const daysPerWeek = userSettings?.onboardingDaysPerWeek ?? 4;
-  const programLength = userSettings?.onboardingProgramLength ?? 60;
+  // Days/week + program length are user-editable in the wizard (Schedule step),
+  // seeded once from the onboarding settings when they load. Any later user edit
+  // wins (the ref guards against re-seeding on subsequent settings refetches).
+  const [daysPerWeek, setDaysPerWeek] = useState(4);
+  const [programLength, setProgramLength] = useState(60);
+  const seededScheduleRef = useRef(false);
+  useEffect(() => {
+    if (seededScheduleRef.current || !userSettings) return;
+    seededScheduleRef.current = true;
+    if (userSettings.onboardingDaysPerWeek != null)
+      setDaysPerWeek(userSettings.onboardingDaysPerWeek);
+    if (userSettings.onboardingProgramLength != null)
+      setProgramLength(userSettings.onboardingProgramLength);
+  }, [userSettings]);
 
   const sequence = useMemo(() => wizardSequence(extras), [extras]);
 
@@ -310,7 +323,7 @@ export default function FitBotProgramPage() {
                 type="button"
                 onClick={() => {
                   setExperience(e);
-                  setScreen("extras");
+                  setScreen("schedule");
                 }}
                 className={`rounded-2xl border px-4 py-4 text-sm font-semibold transition-colors ${
                   experience === e
@@ -321,6 +334,47 @@ export default function FitBotProgramPage() {
                 {e}
               </button>
             ))}
+          </div>
+        );
+      case "schedule":
+        return (
+          <div className="space-y-6">
+            <div>
+              <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+                Days per week
+              </div>
+              <div className="flex flex-wrap gap-2.5">
+                {[2, 3, 4, 5, 6, 7].map((n) => (
+                  <Chip
+                    key={n}
+                    label={String(n)}
+                    active={daysPerWeek === n}
+                    onClick={() => setDaysPerWeek(n)}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                How many days a week you want to train.
+              </p>
+            </div>
+            <div>
+              <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+                Program length
+              </div>
+              <div className="flex flex-wrap gap-2.5">
+                {[30, 60, 90, 120].map((n) => (
+                  <Chip
+                    key={n}
+                    label={`${n} days`}
+                    active={programLength === n}
+                    onClick={() => setProgramLength(n)}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                How long the whole program runs.
+              </p>
+            </div>
           </div>
         );
       case "extras":
@@ -414,8 +468,8 @@ export default function FitBotProgramPage() {
                 onEdit={() => setScreen("injuries")}
               />
             )}
-            <SummaryRow label="Days / week" value={`${daysPerWeek}`} />
-            <SummaryRow label="Program length" value={`${programLength} days`} />
+            <SummaryRow label="Days / week" value={`${daysPerWeek}`} onEdit={() => setScreen("schedule")} />
+            <SummaryRow label="Program length" value={`${programLength} days`} onEdit={() => setScreen("schedule")} />
           </div>
         );
       default:
@@ -437,8 +491,12 @@ export default function FitBotProgramPage() {
         );
       case "experience":
         return <WizardFooter onBack={() => setScreen("equipment")} />;
+      case "schedule":
+        return (
+          <WizardFooter onBack={() => setScreen("experience")} onNext={() => setScreen("extras")} />
+        );
       case "extras":
-        return <WizardFooter onBack={() => setScreen("experience")} onNext={() => handleNext("extras")} />;
+        return <WizardFooter onBack={() => setScreen("schedule")} onNext={() => handleNext("extras")} />;
       case "imbalances":
         return <WizardFooter onBack={() => setScreen("extras")} onNext={() => handleNext("imbalances")} />;
       case "injuries":
@@ -481,6 +539,10 @@ const WIZARD_COPY: Record<WizardStep, { title: string; hint?: string }> = {
   focus: { title: "What's your training focus?", hint: "Pick one or more." },
   equipment: { title: "What equipment do you have?", hint: "Pick all that apply." },
   experience: { title: "What's your experience level?", hint: "Pick one." },
+  schedule: {
+    title: "How often and how long?",
+    hint: "Set your weekly frequency and program length.",
+  },
   extras: { title: "Anything else?", hint: "Optional — pick any that apply." },
   imbalances: { title: "Which muscles need extra work?", hint: "Pick areas you want to bring up." },
   injuries: { title: "What should we work around?", hint: "So Fit Bot can pick safe alternatives." },
