@@ -2,7 +2,6 @@ import { Providers } from "@/components/Providers";
 import { BottomNav } from "@/components/BottomNav";
 import { AppSidebar } from "@/components/AppSidebar";
 import { FloatingTimerPill } from "@/components/FloatingTimerPill";
-import { AppHeader } from "@/components/AppHeader";
 
 // Auth gating + onboarding redirect happen in src/proxy.ts using cookies, so
 // this layout is intentionally cheap: no getUser(), no DB query, no headers().
@@ -20,13 +19,10 @@ export default function AppLayout({
   return (
     <Providers>
       <div className="flex min-h-screen w-full flex-col">
-        {/* Mobile: every screen now owns its in-page header (the A+ refresh) and
-            account access lives on the Home avatar menu, so the global header is
-            hidden to avoid a double header. Desktop (md+, out of refresh scope)
-            keeps it as the top bar. AppHeader's own route guards still apply. */}
-        <div className="hidden md:block">
-          <AppHeader />
-        </div>
+        {/* Every screen owns its own header: a mobile in-page header, plus a
+            desktop <DesktopTopBar> (md+) inside its content. Account access
+            lives on the sidebar avatar (desktop) and the Home avatar (mobile),
+            so there is no global top bar here. */}
         <AppSidebar />
         <main className="flex flex-1 flex-col overflow-auto pb-20 md:pb-0 md:pl-20 lg:pl-24">
           {children}
