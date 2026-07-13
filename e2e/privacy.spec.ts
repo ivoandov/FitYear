@@ -28,8 +28,10 @@ test("logout purges cache so the next user cannot see the previous user's data",
     await page.goto("/history");
     await expect(page.getByText(workoutName)).toBeVisible();
 
-    // A logs out via the header menu (this triggers the cache purge).
-    await page.getByRole("button", { name: "User menu" }).click();
+    // A logs out via the account menu (this triggers the cache purge). The A+
+    // desktop refresh moved account access from the top-bar "User menu" to the
+    // sidebar avatar's "Account menu"; the logout behavior is unchanged.
+    await page.getByRole("button", { name: "Account menu" }).click();
     await page.getByRole("menuitem", { name: /log out/i }).click();
     await page.waitForURL(/\/login/);
 
