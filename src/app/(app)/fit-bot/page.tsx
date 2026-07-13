@@ -268,36 +268,40 @@ export default function FitBotProgramPage() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
-      {screen === "building" ? (
-        <BuildingScreen
-          structureStatus={structureStatus}
-          structureError={structureError}
-          phases={phases}
-          finalizing={finalizing}
-          finalizeError={finalizeError}
-          onCancel={() => setScreen("summary")}
-          onRetryStructure={startBuild}
-          onRetryPhase={retryPhase}
-          onRetrySave={retrySave}
-        />
-      ) : screen === "preview" && result ? (
-        <PreviewScreen
-          result={result}
-          onOpen={() => router.push("/routines")}
-          onClose={() => router.push("/routines")}
-        />
-      ) : (
-        <WizardFrame
-          sequence={sequence}
-          step={screen as WizardStep}
-          onClose={close}
-          title={WIZARD_COPY[screen as WizardStep].title}
-          hint={WIZARD_COPY[screen as WizardStep].hint}
-          footer={renderFooter()}
-        >
-          {renderWizardBody()}
-        </WizardFrame>
-      )}
+      {/* The wizard is an immersive single-column flow; on desktop center it in a
+          focused column (with hairline sides) instead of stretching full-width. */}
+      <div className="mx-auto flex w-full flex-1 flex-col overflow-hidden md:max-w-xl md:border-x md:border-divider">
+        {screen === "building" ? (
+          <BuildingScreen
+            structureStatus={structureStatus}
+            structureError={structureError}
+            phases={phases}
+            finalizing={finalizing}
+            finalizeError={finalizeError}
+            onCancel={() => setScreen("summary")}
+            onRetryStructure={startBuild}
+            onRetryPhase={retryPhase}
+            onRetrySave={retrySave}
+          />
+        ) : screen === "preview" && result ? (
+          <PreviewScreen
+            result={result}
+            onOpen={() => router.push("/routines")}
+            onClose={() => router.push("/routines")}
+          />
+        ) : (
+          <WizardFrame
+            sequence={sequence}
+            step={screen as WizardStep}
+            onClose={close}
+            title={WIZARD_COPY[screen as WizardStep].title}
+            hint={WIZARD_COPY[screen as WizardStep].hint}
+            footer={renderFooter()}
+          >
+            {renderWizardBody()}
+          </WizardFrame>
+        )}
+      </div>
     </div>
   );
 

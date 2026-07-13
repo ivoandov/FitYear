@@ -228,47 +228,51 @@ export default function FitBotWorkoutPage() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
-      {phase === "prompt" && (
-        <PromptScreen
-          prompt={prompt}
-          setPrompt={setPrompt}
-          options={options}
-          setOptions={setOptions}
-          onClose={close}
-          onGenerate={handleGenerate}
-        />
-      )}
+      {/* Immersive single-column flow; on desktop center it in a focused column
+          (with hairline sides) rather than stretching the prompt/preview full-width. */}
+      <div className="mx-auto flex w-full flex-1 flex-col overflow-hidden md:max-w-xl md:border-x md:border-divider">
+        {phase === "prompt" && (
+          <PromptScreen
+            prompt={prompt}
+            setPrompt={setPrompt}
+            options={options}
+            setOptions={setOptions}
+            onClose={close}
+            onGenerate={handleGenerate}
+          />
+        )}
 
-      {phase === "generating" && (
-        <GeneratingScreen prompt={prompt} options={options} onCancel={() => setPhase("prompt")} />
-      )}
+        {phase === "generating" && (
+          <GeneratingScreen prompt={prompt} options={options} onCancel={() => setPhase("prompt")} />
+        )}
 
-      {phase === "error" && (
-        <ErrorScreen
-          message={error}
-          onRetry={() => setPhase("prompt")}
-          onClose={close}
-        />
-      )}
+        {phase === "error" && (
+          <ErrorScreen
+            message={error}
+            onRetry={() => setPhase("prompt")}
+            onClose={close}
+          />
+        )}
 
-      {phase === "review" && workout && (
-        <ReviewScreen
-          workout={workout}
-          name={name}
-          setName={setName}
-          view={view}
-          transcript={transcript}
-          lastChanges={lastChanges}
-          newFlags={newFlags}
-          refining={refining}
-          starting={starting}
-          message={message}
-          setMessage={setMessage}
-          onClose={close}
-          onRefine={handleRefine}
-          onStart={handleStart}
-        />
-      )}
+        {phase === "review" && workout && (
+          <ReviewScreen
+            workout={workout}
+            name={name}
+            setName={setName}
+            view={view}
+            transcript={transcript}
+            lastChanges={lastChanges}
+            newFlags={newFlags}
+            refining={refining}
+            starting={starting}
+            message={message}
+            setMessage={setMessage}
+            onClose={close}
+            onRefine={handleRefine}
+            onStart={handleStart}
+          />
+        )}
+      </div>
     </div>
   );
 }
