@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   RotateCw,
   Plus,
+  Info,
 } from "lucide-react";
 import { apiRequest, describeApiError } from "@/lib/queryClient";
 import { assembleProgram } from "@/lib/program-assembler";
@@ -338,13 +339,13 @@ export default function FitBotProgramPage() {
         );
       case "schedule":
         return (
-          <div className="space-y-6">
+          <div className="space-y-7">
             <div>
-              <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
                 Days per week
               </div>
               <div className="flex flex-wrap gap-2.5">
-                {[2, 3, 4, 5, 6, 7].map((n) => (
+                {[2, 3, 4, 5, 6].map((n) => (
                   <Chip
                     key={n}
                     label={String(n)}
@@ -353,12 +354,9 @@ export default function FitBotProgramPage() {
                   />
                 ))}
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                How many days a week you want to train.
-              </p>
             </div>
             <div>
-              <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
                 Program length
               </div>
               <div className="flex flex-wrap gap-2.5">
@@ -371,9 +369,6 @@ export default function FitBotProgramPage() {
                   />
                 ))}
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">
-                How long the whole program runs.
-              </p>
             </div>
           </div>
         );
@@ -449,27 +444,46 @@ export default function FitBotProgramPage() {
         );
       case "summary":
         return (
-          <div className="card-elevated divide-y divide-[color:var(--divider)] px-4">
-            <SummaryRow label="Focus" value={focus.join(", ")} onEdit={() => setScreen("focus")} />
-            <SummaryRow label="Equipment" value={equipment.join(", ")} onEdit={() => setScreen("equipment")} />
-            <SummaryRow label="Experience" value={experience ?? "—"} onEdit={() => setScreen("experience")} />
-            <SummaryRow label="Extras" value={extras.join(", ") || "none"} onEdit={() => setScreen("extras")} />
-            {extras.includes("Fix muscle imbalances") && (
+          <div className="space-y-3.5">
+            <div className="card-elevated divide-y divide-[color:var(--divider)] px-4">
+              <SummaryRow label="Focus" value={focus.join(", ")} onEdit={() => setScreen("focus")} />
+              <SummaryRow label="Equipment" value={equipment.join(", ")} onEdit={() => setScreen("equipment")} />
+              <SummaryRow label="Experience" value={experience ?? "—"} onEdit={() => setScreen("experience")} />
               <SummaryRow
-                label="Imbalances"
-                value={imbalanceMuscles.join(", ") + (imbalanceNotes ? ` · ${imbalanceNotes}` : "")}
-                onEdit={() => setScreen("imbalances")}
+                label="Days / week"
+                value={`${daysPerWeek} days`}
+                onEdit={() => setScreen("schedule")}
+                highlight
               />
-            )}
-            {extras.includes("Train around injury") && (
               <SummaryRow
-                label="Injuries"
-                value={injuryDetails.join(", ") + (injuryNotes ? ` · ${injuryNotes}` : "")}
-                onEdit={() => setScreen("injuries")}
+                label="Program length"
+                value={`${programLength} days`}
+                onEdit={() => setScreen("schedule")}
+                highlight
               />
-            )}
-            <SummaryRow label="Days / week" value={`${daysPerWeek}`} onEdit={() => setScreen("schedule")} />
-            <SummaryRow label="Program length" value={`${programLength} days`} onEdit={() => setScreen("schedule")} />
+              <SummaryRow label="Extras" value={extras.join(", ") || "none"} onEdit={() => setScreen("extras")} />
+              {extras.includes("Fix muscle imbalances") && (
+                <SummaryRow
+                  label="Imbalances"
+                  value={imbalanceMuscles.join(", ") + (imbalanceNotes ? ` · ${imbalanceNotes}` : "")}
+                  onEdit={() => setScreen("imbalances")}
+                />
+              )}
+              {extras.includes("Train around injury") && (
+                <SummaryRow
+                  label="Injuries"
+                  value={injuryDetails.join(", ") + (injuryNotes ? ` · ${injuryNotes}` : "")}
+                  onEdit={() => setScreen("injuries")}
+                />
+              )}
+            </div>
+            <div className="flex items-start gap-2.5 px-0.5">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-tertiary-foreground" />
+              <p className="text-xs leading-relaxed text-tertiary-foreground">
+                Days / week and program length are highlighted; they used to be read silently
+                from onboarding, and are now editable here.
+              </p>
+            </div>
           </div>
         );
       default:
@@ -708,13 +722,19 @@ function SummaryRow({
   label,
   value,
   onEdit,
+  highlight,
 }: {
   label: string;
   value: string;
   onEdit?: () => void;
+  highlight?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-3">
+    <div
+      className={`flex items-start justify-between gap-3 py-3 ${
+        highlight ? "-mx-4 bg-primary/5 px-4" : ""
+      }`}
+    >
       <div className="min-w-0 flex-1">
         <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-tertiary-foreground">
           {label}
