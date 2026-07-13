@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { format, addDays } from "date-fns";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
 
 interface RoutineWithEntries extends Routine {
@@ -476,7 +477,7 @@ export default function RoutinesPage() {
   const renderRoutineGrid = (routines: Routine[], isOwner: boolean, loading: boolean, empty: ReactNode) => {
     if (loading) {
       return (
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="card-elevated p-4">
               <Skeleton className="h-5 w-40" />
@@ -488,7 +489,7 @@ export default function RoutinesPage() {
     }
     if (routines.length === 0) return empty;
     return (
-      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {routines.map(routine => renderRoutineCard(routine, isOwner))}
       </div>
     );
@@ -496,9 +497,19 @@ export default function RoutinesPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="container mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
+      <DesktopTopBar title="Routines">
+        <button
+          type="button"
+          onClick={openNewRoutine}
+          className="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground shadow-cta"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.4} />
+          Create
+        </button>
+      </DesktopTopBar>
+      <div className="container mx-auto max-w-5xl space-y-5 p-4 sm:p-6 md:max-w-6xl md:px-9 md:pt-7">
+        {/* Header (mobile only; desktop shows title + Create in the top bar) */}
+        <div className="flex items-start justify-between gap-3 md:hidden">
           <div>
             <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]">Routines</h1>
             <p className="mt-1 text-sm text-muted-foreground">Your programs &amp; library</p>
@@ -579,8 +590,8 @@ export default function RoutinesPage() {
           </div>
         )}
 
-        {/* Segmented tabs */}
-        <div className="flex gap-1 rounded-xl border bg-[#141412] p-[3px]">
+        {/* Segmented tabs (full-width on mobile, compact on desktop) */}
+        <div className="flex gap-1 rounded-xl border bg-[#141412] p-[3px] md:inline-flex">
           {([["my-routines", "My Routines"], ["public-library", "Public Library"]] as const).map(([value, label]) => {
             const active = activeTab === value;
             return (
@@ -589,7 +600,7 @@ export default function RoutinesPage() {
                 type="button"
                 onClick={() => setActiveTab(value)}
                 data-testid={value === "my-routines" ? "tab-my-routines" : "tab-public-library"}
-                className={`flex-1 rounded-[9px] border py-2 text-center text-[13px] font-semibold transition-colors ${
+                className={`flex-1 rounded-[9px] border py-2 text-center text-[13px] font-semibold transition-colors md:flex-none md:px-6 ${
                   active
                     ? "border-strong bg-white/[0.08] text-foreground"
                     : "border-transparent text-tertiary-foreground hover:text-foreground"
