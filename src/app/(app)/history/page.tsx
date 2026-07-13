@@ -11,6 +11,7 @@ import { useWorkout } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { localDateKey } from "@/lib/date";
 import type { ExerciseGoal } from "@/lib/db/schema";
 
@@ -194,11 +195,37 @@ export default function HistoryPage() {
     { label: "Total sets", value: totalSetsCompleted.toString(), testId: "total-sets", accent: false },
   ];
 
+  const tabControl = (
+    <div className="inline-flex gap-1 rounded-[11px] border bg-input p-[3px]" role="tablist">
+      {([
+        { key: "workouts", label: "Workouts" },
+        { key: "prs", label: "PRs" },
+      ] as const).map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          role="tab"
+          aria-selected={historyTab === t.key}
+          onClick={() => setHistoryTab(t.key)}
+          className={`rounded-[8px] px-3.5 py-1.5 text-xs transition-colors ${
+            historyTab === t.key
+              ? "border border-strong bg-white/[0.08] font-bold text-foreground"
+              : "border border-transparent font-semibold text-tertiary-foreground hover:text-foreground"
+          }`}
+          data-testid={`tab-history-${t.key}`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="mx-auto w-full max-w-2xl px-5 py-6 pb-12 space-y-5">
-        {/* Title */}
-        <div>
+      <DesktopTopBar title="History">{tabControl}</DesktopTopBar>
+      <div className="mx-auto w-full max-w-2xl px-5 py-6 pb-12 space-y-5 md:max-w-6xl md:px-9 md:pt-7">
+        {/* Title (mobile only; desktop shows it in the top bar) */}
+        <div className="md:hidden">
           <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]" data-testid="text-page-title">
             History
           </h1>
@@ -207,8 +234,12 @@ export default function HistoryPage() {
           </p>
         </div>
 
+        {/* Desktop dashboard: stats + goals + muscle chart on the left, the
+            Workouts/PRs session list on the right (lg+); stacks below lg. */}
+        <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-6 lg:space-y-0">
+          <div className="space-y-5">
         {/* 2×2 stat tiles */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {stats.map((stat) => (
             <div key={stat.label} className="card-elevated p-4" data-testid={`card-stat-${stat.testId}`}>
               <div
@@ -315,34 +346,15 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {/* Segmented tab control: Workouts | PRs */}
-        <div className="space-y-4">
+          </div>
+
+          {/* Right column: the Workouts | PRs session list. */}
+          <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold">
               {historyTab === "workouts" ? "Recent" : "Personal Bests"}
             </h2>
-            <div className="inline-flex gap-1 rounded-[11px] border bg-input p-[3px]" role="tablist">
-              {([
-                { key: "workouts", label: "Workouts" },
-                { key: "prs", label: "PRs" },
-              ] as const).map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={historyTab === t.key}
-                  onClick={() => setHistoryTab(t.key)}
-                  className={`rounded-[8px] px-3.5 py-1.5 text-xs transition-colors ${
-                    historyTab === t.key
-                      ? "border border-strong bg-white/[0.08] font-bold text-foreground"
-                      : "border border-transparent font-semibold text-tertiary-foreground hover:text-foreground"
-                  }`}
-                  data-testid={`tab-history-${t.key}`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <div className="md:hidden">{tabControl}</div>
           </div>
 
           {historyTab === "workouts" ? (
@@ -414,6 +426,7 @@ export default function HistoryPage() {
               </p>
             </div>
           )}
+          </div>
         </div>
       </div>
 
