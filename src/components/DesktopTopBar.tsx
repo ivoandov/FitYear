@@ -5,7 +5,7 @@
  * at the top of its content: the page title (or a mono eyebrow + greeting on
  * Home) on the left, screen-specific actions on the right. It sticks to the top
  * of the scrolling `<main>` while content scrolls beneath it. On mobile it's
- * hidden — each page keeps its own mobile header (`md:hidden`).
+ * hidden; each page keeps its own mobile header (`md:hidden`).
  */
 export function DesktopTopBar({
   title,
