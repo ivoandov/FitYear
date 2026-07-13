@@ -142,7 +142,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
     .filter((e) => e.sets > 0);
 
   return (
-    <div className="mx-auto max-w-md pb-2">
+    <div className="mx-auto max-w-md pb-2 md:max-w-4xl md:pt-6">
       {/* Celebratory hero - neon radial glow + scattered confetti */}
       <div className="relative overflow-hidden bg-[radial-gradient(120%_70%_at_50%_0%,rgba(229,255,0,0.14),rgba(229,255,0,0)_60%)] px-6 pb-7 pt-9 text-center">
         {/* confetti dots */}
@@ -177,7 +177,9 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 px-5 pb-6">
+      <div className="px-5 pb-6 md:grid md:grid-cols-2 md:items-start md:gap-5">
+        {/* Left column: stats + muscles trained */}
+        <div className="flex flex-col gap-4">
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Duration" value={formatDuration(summary.durationSeconds)} />
@@ -189,6 +191,42 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
           <Stat label="Exercises" value={summary.exerciseCount.toString()} />
         </div>
 
+        {/* Muscles trained */}
+        {muscleEntries.length > 0 ? (
+          <section className="card-elevated p-5">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+              Muscles trained
+            </h2>
+            <div className="mt-4 space-y-3.5">
+              {muscleEntries.map(([muscle, sets]) => {
+                const pct = Math.min(
+                  100,
+                  Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
+                );
+                return (
+                  <div key={muscle} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] text-foreground">{muscle}</span>
+                      <span className="font-mono text-xs text-tertiary-foreground">
+                        {sets}/{WEEKLY_TARGET_PER_MUSCLE}
+                      </span>
+                    </div>
+                    <div className="h-[7px] overflow-hidden rounded-full bg-white/[0.08]">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+        </div>
+
+        {/* Right column: personal bests + actions */}
+        <div className="mt-4 flex flex-col gap-4 md:mt-0">
         {/* Personal bests */}
         {prHits.length > 0 ? (
           <section className="rounded-[18px] border-[1.5px] border-yellow bg-[radial-gradient(120%_100%_at_0%_0%,rgba(229,255,0,0.1),rgba(229,255,0,0.03))] p-[18px]">
@@ -230,39 +268,6 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
           </section>
         ) : null}
 
-        {/* Muscles trained */}
-        {muscleEntries.length > 0 ? (
-          <section className="card-elevated p-5">
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Muscles trained
-            </h2>
-            <div className="mt-4 space-y-3.5">
-              {muscleEntries.map(([muscle, sets]) => {
-                const pct = Math.min(
-                  100,
-                  Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
-                );
-                return (
-                  <div key={muscle} className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] text-foreground">{muscle}</span>
-                      <span className="font-mono text-xs text-tertiary-foreground">
-                        {sets}/{WEEKLY_TARGET_PER_MUSCLE}
-                      </span>
-                    </div>
-                    <div className="h-[7px] overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
         {/* Actions - circular Share + primary Done */}
         <div className="flex gap-2.5 pt-1">
           <ShareWorkoutButton
@@ -289,6 +294,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
           >
             Done
           </Link>
+        </div>
         </div>
       </div>
     </div>
