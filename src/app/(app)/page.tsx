@@ -46,6 +46,7 @@ import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
 import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
 import { ScheduledWorkoutCard } from "@/components/ScheduledWorkoutCard";
+import { DesktopTopBar } from "@/components/DesktopTopBar";
 
 interface ScheduledWorkout {
   id: string;
@@ -675,11 +676,29 @@ export default function WorkoutsPage() {
 
   return (
     <div className="flex-1 overflow-auto h-full">
-      <div className="mx-auto w-full max-w-xl space-y-6 px-5 pt-3 pb-8">
-        {/* Header: mono neon eyebrow + greeting + avatar account menu. On mobile
-            the global AppHeader is hidden (each screen owns its header), so the
-            avatar is the account access point (Settings / Log out). */}
-        <header className="flex items-center justify-between">
+      <DesktopTopBar eyebrow="Ready to train" title={`Let's go${firstName ? `, ${firstName}` : ""}`}>
+        <button
+          type="button"
+          onClick={() => { startEmptyWorkout(); router.push("/track"); }}
+          className="flex h-11 items-center gap-2 rounded-[13px] bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] px-5 text-sm font-bold text-primary-foreground shadow-cta"
+        >
+          <Play className="h-[17px] w-[17px] fill-current" />
+          Start Workout
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/settings")}
+          aria-label="Settings"
+          className="flex h-11 w-11 items-center justify-center rounded-xl border border-strong bg-white/[0.03] text-muted-foreground hover:text-foreground"
+        >
+          <Settings className="h-[19px] w-[19px]" />
+        </button>
+      </DesktopTopBar>
+      <div className="mx-auto w-full max-w-xl space-y-6 px-5 pt-3 pb-8 md:max-w-6xl md:px-9 md:pt-7">
+        {/* Mobile header: mono neon eyebrow + greeting + avatar account menu.
+            On desktop the DesktopTopBar carries the greeting + actions and the
+            account menu lives on the sidebar avatar, so this is md:hidden. */}
+        <header className="flex items-center justify-between md:hidden">
           <div>
             <div className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-primary">
               Ready to train
@@ -730,6 +749,18 @@ export default function WorkoutsPage() {
         </header>
 
         <GoalsStrip />
+
+        {/* Desktop dashboard: Today + Upcoming in the main column, Recent in a
+            side rail (lg+). Below lg (and when there is no Recent history) this
+            is a single stacked column. */}
+        <div
+          className={
+            completedWorkouts.length > 0
+              ? "space-y-6 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6 lg:space-y-0"
+              : "space-y-6"
+          }
+        >
+          <div className="space-y-6 lg:min-w-0">
 
         {/* TODAY eyebrow row: calendar picker + new-workout affordance. */}
         <div className="flex items-center justify-between">
@@ -1015,9 +1046,11 @@ export default function WorkoutsPage() {
             </div>
           </div>
         )}
+          </div>
 
-        {completedWorkouts.length > 0 && (
-          <div className="space-y-3">
+          {completedWorkouts.length > 0 && (
+            <aside className="space-y-6 lg:sticky lg:top-6">
+              <div className="space-y-3">
             <span
               className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground"
               data-testid="text-recent-workouts-title"
@@ -1094,8 +1127,10 @@ export default function WorkoutsPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+              </div>
+            </aside>
+          )}
+        </div>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -1107,7 +1142,7 @@ export default function WorkoutsPage() {
             </span>
           </div>
           {workoutTemplates.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-3 xl:grid-cols-4">
               {workoutTemplates.map((template) => {
                 const templateImage = getWorkoutImageUrl(template.exercises);
                 return (
