@@ -33,6 +33,9 @@ export const POST = handle(async (request: NextRequest) => {
       name: program.name,
       description: `Built by Fit Bot · ${focus.join(" + ")} · ${experience}`,
       defaultDurationDays: programLength,
+      // Persist the rotation period so the Routines card can render the true
+      // cycle (workout/rest rotation) instead of the weekday-collapse strip.
+      cycleLength: program.cycleLength,
       isPublic: false,
     })
     .returning();

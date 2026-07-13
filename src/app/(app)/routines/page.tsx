@@ -64,6 +64,76 @@ function weekdayFlags(routine: Routine): boolean[] | null {
   return flags;
 }
 
+// The TRUE rotation for a FitBot rotating-cycle routine: one full cycle of
+// `cycleLength` days, each a training day (its workout) or rest, read from the
+// stored `cycleLength` + the entries' absolute `dayIndex`. Because the cycle
+// repeats back to back, days 1..cycleLength fully describe the rotation. Returns
+// null for manual / legacy weekday routines (no cycleLength), which keep the
+// weekday strip. This replaces the old `(dayIndex-1)%7` collapse, which lit a
+// wrong 7-slot pattern for cycles that aren't weekly.
+interface CycleDay {
+  training: boolean;
+  initial: string;
+  name: string;
+}
+function cycleDays(routine: Routine): CycleDay[] | null {
+  const cl = routine.cycleLength;
+  if (!cl || cl < 1) return null;
+  const entries = (routine as Routine & { entries?: RoutineEntry[] }).entries;
+  if (!entries || !Array.isArray(entries)) return null;
+  const nameByDay = new Map<number, string>();
+  for (const e of entries) {
+    if (e.workoutName || e.workoutTemplateId) {
+      nameByDay.set(e.dayIndex, e.workoutName ?? "Workout");
+    }
+  }
+  return Array.from({ length: cl }, (_, i) => {
+    const name = nameByDay.get(i + 1);
+    return {
+      training: !!name,
+      initial: (name ?? "").trim().charAt(0).toUpperCase(),
+      name: name ?? "Rest",
+    };
+  });
+}
+
+// Accurate cycle indicator: a mono "N-DAY CYCLE" caption over a strip of one
+// rotation's days (neon = training with the workout's initial, dim = rest).
+// Wraps for longer cycles; caps the cells so a pathological cycle can't blow out
+// the card.
+function CycleStrip({ days, cycleLength }: { days: CycleDay[]; cycleLength: number }) {
+  const MAX = 14;
+  const shown = days.slice(0, MAX);
+  const overflow = cycleLength - shown.length;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-tertiary-foreground">
+        {cycleLength}-day cycle
+      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {shown.map((d, i) => (
+          <div
+            key={i}
+            title={`Day ${i + 1}: ${d.name}`}
+            className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
+              d.training
+                ? "bg-primary font-bold text-primary-foreground"
+                : "bg-white/[0.05] text-tertiary-foreground"
+            }`}
+          >
+            {d.training ? d.initial || "•" : "·"}
+          </div>
+        ))}
+        {overflow > 0 && (
+          <span className="font-mono text-[9px] text-tertiary-foreground">
+            +{overflow}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function RoutinesPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("my-routines");
@@ -380,7 +450,10 @@ export default function RoutinesPage() {
   };
 
   const renderRoutineCard = (routine: Routine, isOwner: boolean) => {
-    const flags = weekdayFlags(routine);
+    // A rotating-cycle FitBot routine shows its true cycle; everything else keeps
+    // the weekday strip (or the created date when it has no entries).
+    const cycle = cycleDays(routine);
+    const flags = cycle ? null : weekdayFlags(routine);
 
     return (
       <div key={routine.id} className="card-elevated p-4" data-testid={`card-routine-${routine.id}`}>
@@ -442,24 +515,28 @@ export default function RoutinesPage() {
         )}
 
         <div className="mt-3.5 flex items-center justify-between gap-3">
-          {flags ? (
-            <div className="flex gap-1.5">
-              {flags.map((on, i) => (
-                <div
-                  key={i}
-                  className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
-                    on ? "bg-primary font-bold text-primary-foreground" : "bg-white/[0.05] text-tertiary-foreground"
-                  }`}
-                >
-                  {WEEKDAY_LETTERS[i]}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">
-              Created {format(new Date(routine.createdAt), "MMM d, yyyy")}
-            </span>
-          )}
+          <div className="min-w-0 flex-1">
+            {cycle ? (
+              <CycleStrip days={cycle} cycleLength={routine.cycleLength!} />
+            ) : flags ? (
+              <div className="flex gap-1.5">
+                {flags.map((on, i) => (
+                  <div
+                    key={i}
+                    className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
+                      on ? "bg-primary font-bold text-primary-foreground" : "bg-white/[0.05] text-tertiary-foreground"
+                    }`}
+                  >
+                    {WEEKDAY_LETTERS[i]}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">
+                Created {format(new Date(routine.createdAt), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => openApplyRoutine(routine)}

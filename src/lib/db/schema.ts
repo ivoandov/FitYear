@@ -183,6 +183,12 @@ export const routines = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     defaultDurationDays: integer("default_duration_days").notNull().default(7),
+    // Rotation period in days for FitBot rotating-cycle programs (the number of
+    // days in one repeat of the workout/rest cycle). Null for manual routines and
+    // legacy weekday-split routines, which fall back to the M-S weekday strip on
+    // the Routines card. Set by ai/save-program from the assembled program's
+    // cycleLength so the card can show the true rotation, not a 7-day collapse.
+    cycleLength: integer("cycle_length"),
     isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
