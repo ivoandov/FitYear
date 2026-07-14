@@ -254,13 +254,15 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
                     Next session · progressive overload
                   </div>
                   <div className="mt-1.5 text-[15px] font-bold">
-                    Try {lbsToDisplay(overload.suggestedWeightLbs, weightUnit)} {weightUnit} × {overload.suggestedReps}
+                    Try {lbsToDisplay(overload.suggestedWeightLbs, weightUnit)} {weightUnit}
+                    {exercise.isAssisted ? " assist" : ""} × {overload.suggestedReps}
                   </div>
                   <p className="mt-1 text-[13px] leading-relaxed text-foreground/80">
                     {overload.rationale}
                   </p>
                   <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">
-                    Last: {lbsToDisplay(overload.lastWeightLbs, weightUnit)} {weightUnit} × {overload.lastReps}
+                    Last: {lbsToDisplay(overload.lastWeightLbs, weightUnit)} {weightUnit}
+                    {exercise.isAssisted ? " assist" : ""} × {overload.lastReps}
                   </p>
                 </div>
               </div>

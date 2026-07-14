@@ -159,7 +159,7 @@ export function ExerciseProgressChart({
           </LineChart>
         </ResponsiveContainer>
         <p className="text-xs text-muted-foreground mt-2 px-1">
-          {blurb} Red rings = anomalies (&lt;50% of median). Tap a point for details.
+          {blurb}{" "}Red rings = anomalies (&lt;50% of median). Tap a point for details.
         </p>
       </div>
 
