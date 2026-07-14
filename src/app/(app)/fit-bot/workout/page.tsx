@@ -13,6 +13,7 @@ import {
   Play,
   Loader2,
   List,
+  RotateCcw,
 } from "lucide-react";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
@@ -275,6 +276,7 @@ export default function FitBotWorkoutPage() {
             onClose={close}
             onRefine={handleRefine}
             onStart={handleStart}
+            onStartOver={() => setPhase("prompt")}
           />
         )}
       </div>
@@ -619,6 +621,7 @@ function ReviewScreen({
   onClose,
   onRefine,
   onStart,
+  onStartOver,
 }: {
   workout: GeneratedWorkout;
   name: string;
@@ -634,6 +637,7 @@ function ReviewScreen({
   onClose: () => void;
   onRefine: (text: string) => void;
   onStart: () => void;
+  onStartOver: () => void;
 }) {
   const summaryLine = [
     `${workout.exercises.length} EXERCISES`,
@@ -720,8 +724,20 @@ function ReviewScreen({
           workout column (right), matching the split above. */}
       <div className="bg-gradient-to-t from-background via-background to-transparent px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3">
         <div className="flex flex-col gap-2.5 md:grid md:grid-cols-2 md:items-end md:gap-6">
-          {/* Left cell: refine chips + input */}
+          {/* Left cell: start-over escape hatch + refine chips + input */}
           <div className="flex min-w-0 flex-col gap-2.5">
+            {/* Low-emphasis "give me a different one" escape hatch - never a
+                button rivaling Start (design review 2026-07-13). */}
+            <button
+              type="button"
+              onClick={onStartOver}
+              disabled={refining || starting}
+              className="flex items-center gap-1.5 self-start text-xs text-tertiary-foreground hover:text-foreground disabled:opacity-50"
+              data-testid="button-fitbot-startover"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Start over
+            </button>
             <div
               className={`${
                 view === "list" ? "flex" : "hidden"
