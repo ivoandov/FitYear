@@ -8,14 +8,14 @@ import { handle } from "@/lib/api/handler";
 // over completed sets) split by muscle group, last N weeks. Muscle identity
 // comes from workout_exercises.muscle_groups_snapshot (the inline snapshot taken
 // at log time - the historical source of truth, unaffected by later exercise
-// renames/deletes). That column holds TWO shapes across history: a genuine jsonb
-// array (["Legs"]) on newer rows, and a jsonb STRING whose text is a JSON array
-// ('["Legs"]', double-encoded) on the ~470 older rows - the app's read path
-// tolerates both, so the SQL decode must too, or jsonb_array_elements_text throws
-// "cannot extract elements from a scalar". The CASE below normalizes both (and a
-// bare-string name) to a jsonb array before unnesting. The weeks axis is a
-// zero-filled generate_series so the stacked bars read as a continuous timeline.
-// Volume returned in lbs; the client converts + stacks.
+// renames/deletes). That column is now uniformly a jsonb ARRAY: the ~470 legacy
+// rows that stored a double-encoded jsonb STRING ('["Legs"]') were normalized to
+// real arrays by scripts/normalize-muscle-snapshots.ts (2026-07-14), and the
+// write path only ever stores arrays. The `array`-guard below keeps the unnest
+// crash-proof regardless (a non-array would contribute nothing rather than throw
+// 22023 "cannot extract elements from a scalar"). The weeks axis is a zero-filled
+// generate_series so the stacked bars read as a continuous timeline. Volume
+// returned in lbs; the client converts + stacks.
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const weeks = Math.min(
@@ -44,13 +44,8 @@ export const GET = handle(async (request: NextRequest) => {
     join workout_exercises we on we.completed_workout_id = cw.id
     join workout_sets ws on ws.workout_exercise_id = we.id
     cross join lateral jsonb_array_elements_text(
-      case
-        when jsonb_typeof(we.muscle_groups_snapshot) = 'array' then we.muscle_groups_snapshot
-        when jsonb_typeof(we.muscle_groups_snapshot) = 'string'
-             and left(we.muscle_groups_snapshot #>> '{}', 1) = '[' then (we.muscle_groups_snapshot #>> '{}')::jsonb
-        when jsonb_typeof(we.muscle_groups_snapshot) = 'string' then jsonb_build_array(we.muscle_groups_snapshot #>> '{}')
-        else '[]'::jsonb
-      end
+      case when jsonb_typeof(we.muscle_groups_snapshot) = 'array'
+           then we.muscle_groups_snapshot else '[]'::jsonb end
     ) as muscle
     where cw.user_id = ${user.id}
       and ws.completed = true

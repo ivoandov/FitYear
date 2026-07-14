@@ -48,6 +48,10 @@ next-env.d.ts
 # backup contains full workout JSON for affected rows.
 /migration/lbs-kg-fix-backups/
 
+# Pre-mutation backups from scripts/normalize-muscle-snapshots.ts
+# (the affected rows' id + prior muscle_groups_snapshot value).
+/migration/muscle-snapshot-backups/
+
 # Playwright
 /test-results/
 /playwright-report/
