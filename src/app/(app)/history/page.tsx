@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
 import { Button } from "@/components/ui/button";
-import { Plus, Target, Trophy } from "lucide-react";
+import { Plus, Target, Trophy, BarChart3, Medal } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -12,8 +12,20 @@ import { useSettings } from "@/components/SettingsProvider";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
+import { VolumeTrendChart, type VolumePoint } from "@/components/VolumeTrendChart";
 import { localDateKey } from "@/lib/date";
+import { lbsToDisplay } from "@/lib/units";
 import type { ExerciseGoal } from "@/lib/db/schema";
+
+interface RecordRow {
+  exerciseId: string;
+  name: string | null;
+  isAssisted: boolean;
+  bestWeightLbs: number;
+  best1RMLbs: number | null;
+  bestVolumeLbs: number | null;
+  lastPerformed: string;
+}
 
 // Muscle / goal progress bars: 6-7px neon indicator over a faint white track,
 // styled via arbitrary descendant selectors on the base-ui <Progress> so the
@@ -50,6 +62,20 @@ export default function HistoryPage() {
   }
   const { data: prHistoryRows = [] } = useQuery<PrHistoryRow[]>({
     queryKey: ["/api/pr-history?limit=5"],
+  });
+
+  const { data: userSettings } = useQuery<{ weightUnit?: "lbs" | "kg" }>({
+    queryKey: ["/api/user-settings"],
+  });
+  const weightUnit = userSettings?.weightUnit ?? "lbs";
+
+  // Phase-4 analytics (SQL over the normalized tables): weekly volume trend +
+  // all-time per-exercise records (server-side PR detection).
+  const { data: volumeTrend = [] } = useQuery<VolumePoint[]>({
+    queryKey: ["/api/analytics/volume-trend"],
+  });
+  const { data: records = [] } = useQuery<RecordRow[]>({
+    queryKey: ["/api/analytics/records?limit=8"],
   });
 
   const historyData = useMemo(() => completedWorkouts.map((workout, index) => {
@@ -346,6 +372,20 @@ export default function HistoryPage() {
           </div>
         </div>
 
+        {/* Training volume trend (SQL, weekly total volume over the last 12 weeks) */}
+        <div className="card-elevated p-5" data-testid="card-volume-trend">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            <BarChart3 className="h-3.5 w-3.5 text-primary" />
+            Training volume · last 12 weeks
+          </div>
+          <p className="mt-1 text-xs text-tertiary-foreground">
+            Total weight moved per week ({weightUnit}), all lifts
+          </p>
+          <div className="mt-4">
+            <VolumeTrendChart data={volumeTrend} weightUnit={weightUnit} />
+          </div>
+        </div>
+
           </div>
 
           {/* Right column: the Workouts | PRs session list. */}
@@ -372,51 +412,95 @@ export default function HistoryPage() {
                 </p>
               </div>
             )
-          ) : prHistoryRows.length > 0 ? (
-            <div className="card-elevated p-5">
-              <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                <Trophy className="h-3.5 w-3.5 text-primary" />
-                Recent personal bests
-              </div>
-              <p className="mt-1 text-xs text-tertiary-foreground">
-                Last {prHistoryRows.length} {prHistoryRows.length === 1 ? "PR" : "PRs"} across all your lifts
-              </p>
-              <div className="mt-4 space-y-3">
-                {prHistoryRows.map((pr) => {
-                  const date = new Date(pr.achievedAt);
-                  const dateLabel = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-                  return (
-                    <div key={pr.id} className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-start gap-2">
-                        <span className="shrink-0 text-base">
-                          {pr.prType === "weight" ? "🏆" : "⭐"}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-foreground">{pr.exerciseName ?? "Unknown exercise"}</div>
-                          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em]">
-                            <span className={pr.prType === "weight" ? "text-primary" : "text-success"}>
-                              {pr.prType}
+          ) : prHistoryRows.length > 0 || records.length > 0 ? (
+            <div className="space-y-4">
+              {prHistoryRows.length > 0 ? (
+                <div className="card-elevated p-5">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                    <Trophy className="h-3.5 w-3.5 text-primary" />
+                    Recent personal bests
+                  </div>
+                  <p className="mt-1 text-xs text-tertiary-foreground">
+                    Last {prHistoryRows.length} {prHistoryRows.length === 1 ? "PR" : "PRs"} across all your lifts
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {prHistoryRows.map((pr) => {
+                      const date = new Date(pr.achievedAt);
+                      const dateLabel = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                      return (
+                        <div key={pr.id} className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span className="shrink-0 text-base">
+                              {pr.prType === "weight" ? "🏆" : "⭐"}
                             </span>
-                            <span className="text-tertiary-foreground">{" · "}{dateLabel}</span>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-foreground">{pr.exerciseName ?? "Unknown exercise"}</div>
+                              <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em]">
+                                <span className={pr.prType === "weight" ? "text-primary" : "text-success"}>
+                                  {pr.prType}
+                                </span>
+                                <span className="text-tertiary-foreground">{" · "}{dateLabel}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="font-mono text-sm font-bold text-foreground">
+                              {pr.prType === "weight" ? `${pr.newValue} lb` : `${pr.newValue.toLocaleString()} vol`}
+                            </div>
+                            {pr.previousValue != null ? (
+                              <div className="font-mono text-[10px] text-tertiary-foreground">
+                                was {pr.prType === "weight" ? `${pr.previousValue} lb` : pr.previousValue.toLocaleString()}
+                              </div>
+                            ) : (
+                              <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">first time</div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-mono text-sm font-bold text-foreground">
-                          {pr.prType === "weight" ? `${pr.newValue} lb` : `${pr.newValue.toLocaleString()} vol`}
-                        </div>
-                        {pr.previousValue != null ? (
-                          <div className="font-mono text-[10px] text-tertiary-foreground">
-                            was {pr.prType === "weight" ? `${pr.previousValue} lb` : pr.previousValue.toLocaleString()}
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {records.length > 0 ? (
+                <div className="card-elevated p-5" data-testid="card-records">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                    <Medal className="h-3.5 w-3.5 text-primary" />
+                    All-time records
+                  </div>
+                  <p className="mt-1 text-xs text-tertiary-foreground">
+                    Your best set per exercise, from every logged set
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {records.map((r) => (
+                      <div key={r.exerciseId} className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">
+                            {r.name ?? "Exercise"}
                           </div>
-                        ) : (
-                          <div className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">first time</div>
-                        )}
+                          <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                            {r.isAssisted
+                              ? "assisted · least assist"
+                              : r.best1RMLbs
+                                ? `est 1RM ${lbsToDisplay(r.best1RMLbs, weightUnit)} ${weightUnit}`
+                                : "best set"}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="font-mono text-sm font-bold text-foreground">
+                            {lbsToDisplay(r.bestWeightLbs, weightUnit)} {weightUnit}
+                          </div>
+                          {!r.isAssisted && r.bestVolumeLbs ? (
+                            <div className="font-mono text-[10px] text-tertiary-foreground">
+                              {Math.round(lbsToDisplay(r.bestVolumeLbs, weightUnit) ?? 0).toLocaleString()} vol
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="py-12 text-center">
