@@ -33,6 +33,7 @@ import {
   getLastRecordedValues as getLastRecordedValuesHelper,
   getDefaultSets as getDefaultSetsHelper,
 } from "@/lib/track-helpers";
+import { overloadSuggestion } from "@/lib/analytics";
 import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "@/hooks/use-toast";
 
@@ -355,6 +356,32 @@ export default function TrackPage() {
   const progress = ((currentExerciseIndex + 1) / enrichedWorkoutExercises.length) * 100;
   const allSetsCompleted = sets.every(s => s.completed);
   const isLastExercise = currentExerciseIndex === enrichedWorkoutExercises.length - 1;
+
+  // Progressive-overload ghost target for the current weight/reps exercise,
+  // derived from the last recorded session's top set (the same source that
+  // prefills row 0). Rendered as a subtle mono hint under the weight pill and
+  // cleared the moment the prefilled row is edited (Design review 2026-07-13: a
+  // set-row hint, never a card that shifts the grid). Needs prior history, so a
+  // first-ever session shows nothing. Note: getLastRecordedValues picks the
+  // heaviest set, which for an assisted lift is the easiest one - the same
+  // wrinkle the exercise-page overload card has, kept consistent on purpose.
+  const overloadGhost = (() => {
+    const ex = currentExercise as any;
+    if (!ex || ex.exerciseType === "distance_time") return null;
+    const last = getLastRecordedValues(ex.id);
+    if (!last || last.weight == null || last.reps == null) return null;
+    const s = overloadSuggestion({
+      lastTopWeightLbs: last.weight,
+      lastReps: last.reps,
+      isAssisted: !!ex.isAssisted,
+    });
+    const assist = ex.isAssisted ? " assist" : "";
+    return {
+      prefillWeight: fromLbs(last.weight),
+      prefillReps: last.reps,
+      text: `target ${fromLbs(s.suggestedWeightLbs)}${assist} × ${s.suggestedReps}`,
+    };
+  })();
 
   // Copy weight+reps from a completed set into the next uncompleted set (if still empty)
   const propagateToNextSet = (setsArr: SetData[], completedIndex: number): SetData[] => {
@@ -792,6 +819,15 @@ export default function TrackPage() {
                 const isActive = isCurrentSet && trackingState === "in_set";
                 const currentInstanceId = activeWorkout?.exercises[currentExerciseIndex]?.instanceId;
                 const isPR = !!currentInstanceId && (prSetMarkers.get(currentInstanceId)?.has(index) ?? false);
+                // Show the overload ghost only on the current set while it still
+                // holds the untouched prefill (weight + reps === last session's
+                // top set) - any edit clears it, with no extra state.
+                const ghostTarget =
+                  isCurrentSet && overloadGhost &&
+                  set.weight === overloadGhost.prefillWeight &&
+                  set.reps === overloadGhost.prefillReps
+                    ? overloadGhost.text
+                    : undefined;
                 return (
                   <SetRow
                     key={set.setNumber}
@@ -803,6 +839,7 @@ export default function TrackPage() {
                     weightUnit={weightUnit}
                     weightIncrement={weightIncrement}
                     showKgConversion={showKgConversion}
+                    ghostTarget={ghostTarget}
                     onFieldChange={(field, value) => {
                       const newSets = [...sets];
                       newSets[index][field] = value;

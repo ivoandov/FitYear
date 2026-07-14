@@ -17,6 +17,10 @@ interface SetRowProps {
   weightUnit: WeightUnit;
   weightIncrement: number;
   showKgConversion: boolean;
+  // Progressive-overload ghost target (already unit-formatted, e.g. "target
+  // 155 × 8"). Shown under the weight pill on the untouched prefilled current
+  // set only; TrackPage clears it the moment the row is edited.
+  ghostTarget?: string;
   onFieldChange: (field: Field, value: number | null) => void;
   onToggleComplete: (checked: boolean) => void;
 }
@@ -51,6 +55,7 @@ export function SetRow({
   weightUnit,
   weightIncrement,
   showKgConversion,
+  ghostTarget,
   onFieldChange,
   onToggleComplete,
 }: SetRowProps) {
@@ -165,6 +170,14 @@ export function SetRow({
             {(set.weight * LB_PER_KG).toFixed(0)} lb
           </p>
         )}
+        {ghostTarget ? (
+          <p
+            className="whitespace-nowrap text-center font-mono text-[9px] tabular-nums text-tertiary-foreground"
+            data-testid={`text-overload-ghost-${set.setNumber}`}
+          >
+            {ghostTarget}
+          </p>
+        ) : null}
       </div>
 
       {/* Reps — stepper pill (whole-rep +/- over the existing onFieldChange data flow) */}
