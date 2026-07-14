@@ -73,8 +73,7 @@ function weekdayFlags(routine: Routine): boolean[] | null {
 // wrong 7-slot pattern for cycles that aren't weekly.
 interface CycleDay {
   training: boolean;
-  initial: string;
-  name: string;
+  label: string; // the workout name, or "Rest"
 }
 function cycleDays(routine: Routine): CycleDay[] | null {
   const cl = routine.cycleLength;
@@ -89,48 +88,33 @@ function cycleDays(routine: Routine): CycleDay[] | null {
   }
   return Array.from({ length: cl }, (_, i) => {
     const name = nameByDay.get(i + 1);
-    return {
-      training: !!name,
-      initial: (name ?? "").trim().charAt(0).toUpperCase(),
-      name: name ?? "Rest",
-    };
+    return { training: !!name, label: name ?? "Rest" };
   });
 }
 
-// Accurate cycle indicator: a mono "N-DAY CYCLE" caption over a strip of one
-// rotation's days (neon = training with the workout's initial, dim = rest).
-// Wraps for longer cycles; caps the cells so a pathological cycle can't blow out
-// the card.
-function CycleStrip({ days, cycleLength }: { days: CycleDay[]; cycleLength: number }) {
-  const MAX = 14;
+// CycleStrip = Claude Design's Option C (design-review 2026-07-13): the cells
+// carry RHYTHM only (a neon bar = training day, a dim bar = rest day, in rotation
+// order), and a text legend under them carries IDENTITY ("Push -> Pull -> Legs ->
+// Rest"), so two workouts that share a first letter never collide (the old
+// in-cell initial did). This helper builds the truncating legend line; the cells
+// + caption render inline in the routine card. Manual/legacy weekday routines
+// keep the M-S weekday strip.
+function cycleLegend(days: CycleDay[]): ReactNode {
+  const MAX = 6;
   const shown = days.slice(0, MAX);
-  const overflow = cycleLength - shown.length;
+  const extra = days.length - shown.length;
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-tertiary-foreground">
-        {cycleLength}-day cycle
-      </span>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {shown.map((d, i) => (
-          <div
-            key={i}
-            title={`Day ${i + 1}: ${d.name}`}
-            className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
-              d.training
-                ? "bg-primary font-bold text-primary-foreground"
-                : "bg-white/[0.05] text-tertiary-foreground"
-            }`}
-          >
-            {d.training ? d.initial || "•" : "·"}
-          </div>
-        ))}
-        {overflow > 0 && (
-          <span className="font-mono text-[9px] text-tertiary-foreground">
-            +{overflow}
-          </span>
-        )}
-      </div>
-    </div>
+    <>
+      {shown.map((d, i) => (
+        <span key={i}>
+          {i > 0 ? <span className="text-tertiary-foreground">{" → "}</span> : null}
+          {d.label}
+        </span>
+      ))}
+      {extra > 0 ? (
+        <span className="text-tertiary-foreground">{" → +"}{extra}</span>
+      ) : null}
+    </>
   );
 }
 
@@ -450,10 +434,23 @@ export default function RoutinesPage() {
   };
 
   const renderRoutineCard = (routine: Routine, isOwner: boolean) => {
-    // A rotating-cycle FitBot routine shows its true cycle; everything else keeps
-    // the weekday strip (or the created date when it has no entries).
+    // A rotating-cycle FitBot routine shows its true cycle (Option C: rhythm cells
+    // + name legend); everything else keeps the weekday strip (or the created date
+    // when it has no entries).
     const cycle = cycleDays(routine);
     const flags = cycle ? null : weekdayFlags(routine);
+
+    const startFab = (
+      <button
+        type="button"
+        onClick={() => openApplyRoutine(routine)}
+        aria-label="Start routine"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-cta"
+        data-testid={`button-apply-routine-${routine.id}`}
+      >
+        <Play className="h-[18px] w-[18px] fill-current" />
+      </button>
+    );
 
     return (
       <div key={routine.id} className="card-elevated p-4" data-testid={`card-routine-${routine.id}`}>
@@ -514,39 +511,54 @@ export default function RoutinesPage() {
           </p>
         )}
 
-        <div className="mt-3.5 flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            {cycle ? (
-              <CycleStrip days={cycle} cycleLength={routine.cycleLength!} />
-            ) : flags ? (
-              <div className="flex gap-1.5">
-                {flags.map((on, i) => (
-                  <div
-                    key={i}
-                    className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
-                      on ? "bg-primary font-bold text-primary-foreground" : "bg-white/[0.05] text-tertiary-foreground"
-                    }`}
-                  >
-                    {WEEKDAY_LETTERS[i]}
-                  </div>
-                ))}
+        {cycle ? (
+          <div className="mt-3.5">
+            <div className="mb-2.5 font-mono text-[10px] uppercase tracking-[0.14em] text-tertiary-foreground">
+              {routine.cycleLength}-day cycle
+            </div>
+            {/* Rhythm cells: neon bar = training day, dim bar = rest day. */}
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {cycle.map((d, i) => (
+                <div
+                  key={i}
+                  title={`Day ${i + 1}: ${d.label}`}
+                  className={`h-2.5 w-[26px] rounded ${d.training ? "bg-primary" : "bg-white/[0.08]"}`}
+                />
+              ))}
+            </div>
+            {/* Legend (identity) + Start. */}
+            <div className="flex items-end justify-between gap-3">
+              <div className="min-w-0 flex-1 truncate text-xs leading-relaxed text-muted-foreground">
+                {cycleLegend(cycle)}
               </div>
-            ) : (
-              <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">
-                Created {format(new Date(routine.createdAt), "MMM d, yyyy")}
-              </span>
-            )}
+              {startFab}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => openApplyRoutine(routine)}
-            aria-label="Start routine"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-cta"
-            data-testid={`button-apply-routine-${routine.id}`}
-          >
-            <Play className="h-[18px] w-[18px] fill-current" />
-          </button>
-        </div>
+        ) : (
+          <div className="mt-3.5 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {flags ? (
+                <div className="flex gap-1.5">
+                  {flags.map((on, i) => (
+                    <div
+                      key={i}
+                      className={`flex h-[22px] w-[22px] items-center justify-center rounded-md font-mono text-[9px] ${
+                        on ? "bg-primary font-bold text-primary-foreground" : "bg-white/[0.05] text-tertiary-foreground"
+                      }`}
+                    >
+                      {WEEKDAY_LETTERS[i]}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-tertiary-foreground">
+                  Created {format(new Date(routine.createdAt), "MMM d, yyyy")}
+                </span>
+              )}
+            </div>
+            {startFab}
+          </div>
+        )}
       </div>
     );
   };
