@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Loader2 } from "lucide-react";
+import { LogOut, Settings, Loader2, LineChart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/components/nav-items";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -96,6 +96,40 @@ export function AppSidebar() {
             </Link>
           );
         })}
+
+        {/* Insights lives on the desktop rail only (per design: no 6th bottom-nav
+            slot). NAV_ITEMS feeds BOTH navs, so this is hand-added here rather
+            than in the shared config; mobile reaches Insights from History. */}
+        {(() => {
+          const insightsActive = pathname === "/insights";
+          return (
+            <Link
+              href="/insights"
+              data-testid="side-insights"
+              className={cn(
+                "flex w-[76px] flex-col items-center justify-center gap-1.5 rounded-[14px] px-2 py-2.5 transition-colors hover:bg-white/[0.03]",
+                insightsActive && "bg-white/[0.04]",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
+                  insightsActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                <LineChart className="h-[22px] w-[22px]" />
+              </div>
+              <span
+                className={cn(
+                  "font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.04em]",
+                  insightsActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                Insights
+              </span>
+            </Link>
+          );
+        })()}
       </nav>
 
       {/* Account menu pinned to the bottom */}
