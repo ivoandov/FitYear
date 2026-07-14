@@ -70,3 +70,46 @@ export function overloadSuggestion(input: OverloadInput): OverloadSuggestion {
     rationale: `Build to ${threshold}+ reps at this weight, then add load. Aim for ${r + 1} this session.`,
   };
 }
+
+/**
+ * Consistency summary for the Insights screen, derived from the per-day
+ * completed-workout counts returned by GET /api/analytics/consistency (oldest
+ * day first, newest last). Days are binned into trailing 7-day weeks from the
+ * most-recent day backwards (index 0 = the current week), so the numbers don't
+ * depend on calendar-week alignment and never read 0 just because today is a
+ * rest day. Pure + unit-tested.
+ */
+export interface DayCount {
+  day: string; // "YYYY-MM-DD"
+  workouts: number;
+}
+
+export interface ConsistencySummary {
+  totalWorkouts: number;
+  activeDays: number;
+  totalWeeks: number;
+  weeksTrained: number;
+  currentWeekStreak: number; // consecutive most-recent weeks with >= 1 workout
+}
+
+export function consistencySummary(days: DayCount[]): ConsistencySummary {
+  const n = days.length;
+  const totalWorkouts = days.reduce((a, d) => a + Math.max(0, d.workouts), 0);
+  const activeDays = days.filter((d) => d.workouts > 0).length;
+  const totalWeeks = Math.max(1, Math.ceil(n / 7));
+  // index 0 = the most-recent trailing week
+  const weekActive: boolean[] = Array(totalWeeks).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (days[i].workouts > 0) {
+      const wk = Math.floor((n - 1 - i) / 7);
+      weekActive[wk] = true;
+    }
+  }
+  const weeksTrained = weekActive.filter(Boolean).length;
+  let currentWeekStreak = 0;
+  for (const active of weekActive) {
+    if (active) currentWeekStreak++;
+    else break;
+  }
+  return { totalWorkouts, activeDays, totalWeeks, weeksTrained, currentWeekStreak };
+}
