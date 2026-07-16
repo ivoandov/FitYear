@@ -827,41 +827,49 @@ export default function WorkoutsPage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/70 to-black/40" />
                   )}
 
-                  {heroRoutine && (
-                    <div className="absolute left-3.5 top-3.5 z-20 rounded-lg border border-yellow bg-black/45 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.1em] text-primary backdrop-blur-sm">
-                      DAY {heroRoutine.dayNumber} / {heroRoutine.totalDays}
+                  {/* Single top row so the DAY pill (left) and the badge cluster
+                      (right) share the width and never overlap; the routine-name
+                      badge truncates instead of overrunning the pill. */}
+                  <div className="absolute inset-x-0 top-3 z-20 flex items-start justify-between gap-2 px-3">
+                    {heroRoutine ? (
+                      <div className="shrink-0 rounded-lg border border-yellow bg-black/45 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.1em] text-primary backdrop-blur-sm">
+                        DAY {heroRoutine.dayNumber} / {heroRoutine.totalDays}
+                      </div>
+                    ) : (
+                      <span />
+                    )}
+                    <div className="flex min-w-0 items-center gap-2">
+                      {heroPastDue && (
+                        <Badge variant="outline" className="shrink-0 text-red-500 border-red-500 bg-red-950/50">
+                          Past Due
+                        </Badge>
+                      )}
+                      {heroCompleted && (
+                        <Badge variant="outline" className="shrink-0 text-green-500 border-green-500 bg-green-950/50">
+                          <Check className="h-3 w-3 mr-1" />
+                          Done
+                        </Badge>
+                      )}
+                      {heroWorkout.routineInstanceId && (
+                        <Badge variant="outline" className="min-w-0 text-primary border-primary/50 bg-black/40">
+                          <span className="block max-w-[42vw] truncate sm:max-w-[220px]">
+                            {routineInstanceMap.get(heroWorkout.routineInstanceId) || "Routine"}
+                          </span>
+                        </Badge>
+                      )}
+                      <WorkoutCardMenu
+                        displayId={heroWorkout.displayId}
+                        workoutId={heroWorkout.id}
+                        name={heroWorkout.name}
+                        templateId={heroWorkout.templateId}
+                        routineInstanceId={heroWorkout.routineInstanceId}
+                        triggerClassName="text-white"
+                        onEdit={handleEditWorkout}
+                        onEditTemplate={handleEditTemplate}
+                        onSkip={handleSkipWorkout}
+                        onDelete={handleDeleteWorkout}
+                      />
                     </div>
-                  )}
-
-                  <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
-                    {heroPastDue && (
-                      <Badge variant="outline" className="text-red-500 border-red-500 bg-red-950/50">
-                        Past Due
-                      </Badge>
-                    )}
-                    {heroCompleted && (
-                      <Badge variant="outline" className="text-green-500 border-green-500 bg-green-950/50">
-                        <Check className="h-3 w-3 mr-1" />
-                        Done
-                      </Badge>
-                    )}
-                    {heroWorkout.routineInstanceId && (
-                      <Badge variant="outline" className="text-primary border-primary/50 bg-black/40">
-                        {routineInstanceMap.get(heroWorkout.routineInstanceId) || "Routine"}
-                      </Badge>
-                    )}
-                    <WorkoutCardMenu
-                      displayId={heroWorkout.displayId}
-                      workoutId={heroWorkout.id}
-                      name={heroWorkout.name}
-                      templateId={heroWorkout.templateId}
-                      routineInstanceId={heroWorkout.routineInstanceId}
-                      triggerClassName="text-white"
-                      onEdit={handleEditWorkout}
-                      onEditTemplate={handleEditTemplate}
-                      onSkip={handleSkipWorkout}
-                      onDelete={handleDeleteWorkout}
-                    />
                   </div>
 
                   <div className="absolute inset-x-0 bottom-0 z-10 p-5">
