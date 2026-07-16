@@ -25,6 +25,8 @@ import { Plus, X, GripVertical, ChevronUp, ChevronDown, Calendar as CalendarIcon
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MuscleFilterChips } from "@/components/MuscleFilterChips";
+import { coarseGroupsOf, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { type Exercise } from "@/data/exercises";
 
 export interface WorkoutData {
@@ -60,25 +62,11 @@ export function WorkoutEditorDialog({
   const [showCalendar, setShowCalendar] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [selectedMuscleFilters, setSelectedMuscleFilters] = useState<string[]>([]);
+  const [muscleFilter, setMuscleFilter] = useState<string>("All");
 
-  const allMuscleGroups = [...new Set(
-    availableExercises.flatMap(e => e.muscleGroups || [])
-  )].sort();
-
-  const toggleMuscleFilter = (muscle: string) => {
-    setSelectedMuscleFilters(prev =>
-      prev.includes(muscle)
-        ? prev.filter(m => m !== muscle)
-        : [...prev, muscle]
-    );
-  };
-
-  const filteredExercises = selectedMuscleFilters.length === 0
+  const filteredExercises = muscleFilter === "All"
     ? availableExercises
-    : availableExercises.filter(e =>
-        e.muscleGroups?.some(mg => selectedMuscleFilters.includes(mg))
-      );
+    : availableExercises.filter(e => matchesCoarse(e.muscleGroups ?? [], muscleFilter as CoarseGroup));
 
   useEffect(() => {
     if (initialData) {
@@ -96,7 +84,7 @@ export function WorkoutEditorDialog({
     }
     setActiveTab("details");
     setShowCalendar(false);
-    setSelectedMuscleFilters([]);
+    setMuscleFilter("All");
   }, [initialData, isOpen]);
 
   const handleSave = () => {
@@ -308,7 +296,7 @@ export function WorkoutEditorDialog({
                           <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
                           <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
                           <Badge variant="outline" className="text-xs hidden sm:flex">
-                            {exercise.muscleGroups[0] || ""}
+                            {coarseGroupsOf(exercise.muscleGroups)[0] || ""}
                           </Badge>
                           <div className="flex gap-0.5">
                             <Button
@@ -350,35 +338,8 @@ export function WorkoutEditorDialog({
 
               <div className="space-y-2">
                 <Label className="text-sm">Available Exercises ({filteredExercises.length})</Label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {allMuscleGroups.map((muscle) => {
-                    const isActive = selectedMuscleFilters.includes(muscle);
-                    return (
-                      <button
-                        key={muscle}
-                        type="button"
-                        onClick={() => toggleMuscleFilter(muscle)}
-                        className={`inline-flex h-7 items-center rounded-full border px-3 text-xs font-medium transition-colors ${
-                          isActive
-                            ? "bg-primary-dim border-yellow text-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                        data-testid={`filter-muscle-${muscle.toLowerCase().replace(/\s+/g, '-')}`}
-                      >
-                        {muscle}
-                      </button>
-                    );
-                  })}
-                  {selectedMuscleFilters.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMuscleFilters([])}
-                      className="inline-flex h-7 items-center rounded-full border border-transparent px-3 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      data-testid="button-clear-filters"
-                    >
-                      Clear all
-                    </button>
-                  )}
+                <div className="mb-2">
+                  <MuscleFilterChips exercises={availableExercises} value={muscleFilter} onChange={setMuscleFilter} />
                 </div>
                 <div className="border rounded-md">
                   <div className="p-2 space-y-1">
@@ -402,7 +363,7 @@ export function WorkoutEditorDialog({
                         >
                           <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
                           <Badge variant="outline" className="text-xs">
-                            {exercise.muscleGroups[0] || ""}
+                            {coarseGroupsOf(exercise.muscleGroups)[0] || ""}
                           </Badge>
                           {!isSelected && (
                             <Plus className="h-4 w-4 text-muted-foreground" />

@@ -11,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Search, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MuscleFilterChips } from "@/components/MuscleFilterChips";
+import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
+import { matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 
 export interface PickerExercise {
   id: string;
@@ -48,16 +51,10 @@ export function AddExercisesSheet({
 
   const existing = useMemo(() => new Set(existingIds), [existingIds]);
 
-  const muscleFilters = useMemo(() => {
-    const set = new Set<string>();
-    for (const ex of exercises) (ex.muscleGroups ?? []).forEach((g) => set.add(g));
-    return ["All", ...Array.from(set).sort()];
-  }, [exercises]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return exercises.filter((ex) => {
-      if (muscle !== "All" && !(ex.muscleGroups ?? []).includes(muscle)) return false;
+      if (muscle !== "All" && !matchesCoarse(ex.muscleGroups ?? [], muscle as CoarseGroup)) return false;
       if (q && !ex.name.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -115,23 +112,7 @@ export function AddExercisesSheet({
                 data-testid="input-add-exercise-search"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-              {muscleFilters.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMuscle(m)}
-                  className={cn(
-                    "shrink-0 rounded-full px-3 h-7 text-xs font-semibold border transition-colors",
-                    muscle === m
-                      ? "bg-primary-dim border-yellow text-primary"
-                      : "border text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+            <MuscleFilterChips exercises={exercises} value={muscle} onChange={setMuscle} />
           </div>
         </div>
 
@@ -164,9 +145,7 @@ export function AddExercisesSheet({
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm line-clamp-2 leading-snug">{ex.name}</div>
                     {ex.muscleGroups?.length ? (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {ex.muscleGroups.join(" · ")}
-                      </div>
+                      <MuscleGroupsLabel groups={ex.muscleGroups} className="text-xs truncate" />
                     ) : null}
                   </div>
                   {isAdded ? (
