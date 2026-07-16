@@ -44,9 +44,10 @@ export function ConsistencyPanel({
     cols = colOf(parse(days[days.length - 1].day)) + 1;
   }
 
+  // Label all seven rows (Design review 2026-07-16: sparse S/T/T was ambiguous).
   const weekdayLabels = weekStart === "monday"
-    ? ["M", "", "W", "", "F", "", ""]
-    : ["S", "", "T", "", "T", "", ""];
+    ? ["M", "T", "W", "T", "F", "S", "S"]
+    : ["S", "M", "T", "W", "T", "F", "S"];
 
   const tiles = [
     { label: "Week streak", value: String(summary.currentWeekStreak), accent: true },
