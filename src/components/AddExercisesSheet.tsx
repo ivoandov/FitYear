@@ -162,7 +162,7 @@ export function AddExercisesSheet({
                 >
                   <Checkbox checked={isChecked} disabled={isAdded} className="pointer-events-none" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{ex.name}</div>
+                    <div className="font-medium text-sm line-clamp-2 leading-snug">{ex.name}</div>
                     {ex.muscleGroups?.length ? (
                       <div className="text-xs text-muted-foreground truncate">
                         {ex.muscleGroups.join(" · ")}

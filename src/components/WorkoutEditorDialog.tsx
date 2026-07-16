@@ -306,39 +306,39 @@ export function WorkoutEditorDialog({
                           data-testid={`selected-exercise-${exercise.id}`}
                         >
                           <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
-                          <span className="flex-1 text-sm truncate">{exercise.name}</span>
+                          <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
                           <Badge variant="outline" className="text-xs hidden sm:flex">
                             {exercise.muscleGroups[0] || ""}
                           </Badge>
-                          <div className="flex gap-1">
+                          <div className="flex gap-0.5">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6"
+                              className="h-9 w-9"
                               onClick={() => handleMoveExercise(index, "up")}
                               disabled={index === 0}
                               data-testid={`button-move-up-${exercise.id}`}
                             >
-                              <ChevronUp className="h-3 w-3" />
+                              <ChevronUp className="h-[18px] w-[18px]" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6"
+                              className="h-9 w-9"
                               onClick={() => handleMoveExercise(index, "down")}
                               disabled={index === selectedExercises.length - 1}
                               data-testid={`button-move-down-${exercise.id}`}
                             >
-                              <ChevronDown className="h-3 w-3" />
+                              <ChevronDown className="h-[18px] w-[18px]" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-6 w-6 text-destructive"
+                              className="h-9 w-9 text-destructive"
                               onClick={() => handleRemoveExercise(exercise.id)}
                               data-testid={`button-remove-${exercise.id}`}
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-[18px] w-[18px]" />
                             </Button>
                           </div>
                         </div>
@@ -400,7 +400,7 @@ export function WorkoutEditorDialog({
                           onClick={() => !isSelected && handleAddExercise(exercise)}
                           data-testid={`available-exercise-${exercise.id}`}
                         >
-                          <span className="flex-1 text-sm truncate">{exercise.name}</span>
+                          <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
                           <Badge variant="outline" className="text-xs">
                             {exercise.muscleGroups[0] || ""}
                           </Badge>

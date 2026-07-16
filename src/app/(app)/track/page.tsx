@@ -775,7 +775,7 @@ export default function TrackPage() {
               <ChevronLeft className="h-[18px] w-[18px]" />
             </Button>
             <div className="min-w-0 flex-1 text-center">
-              <div className="truncate text-[19px] font-bold text-foreground" data-testid="text-current-exercise">
+              <div className="line-clamp-2 text-balance text-[19px] font-bold leading-tight text-foreground" data-testid="text-current-exercise">
                 {currentExercise.name}
               </div>
               {currentExercise.muscleGroups?.length ? (
