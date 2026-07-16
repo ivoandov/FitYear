@@ -39,6 +39,7 @@ export default function InsightsPage() {
   });
 
   const lifts = e1rm?.lifts ?? [];
+  const liftWeeks = e1rm?.weeks ?? [];
   const muscles = muscle?.muscles ?? [];
   const muscleWeeks = muscle?.weeks.length ?? 12;
   const hasAnything =
@@ -77,7 +78,7 @@ export default function InsightsPage() {
               {e1rmLoading ? (
                 <GridSkeleton />
               ) : lifts.length > 0 ? (
-                <LiftTrendGrid lifts={lifts} weightUnit={weightUnit} />
+                <LiftTrendGrid lifts={lifts} weeks={liftWeeks} weightUnit={weightUnit} />
               ) : (
                 <Empty>Log a couple of weighted lifts to see strength trends.</Empty>
               )}
