@@ -108,4 +108,14 @@ describe("matchExercise", () => {
   it("returns null for an empty candidate", () => {
     expect(matchExercise("", catalog)).toBeNull();
   });
+
+  it("reuses an existing exercise when FitBot reorders the qualifier", () => {
+    // The exact case the program-builder reconcile guards against: FitBot names
+    // a lift "Incline Bicep Curls" while the catalog already has it as
+    // "Bicep Curls - Incline" -> must reuse, not spawn a duplicate.
+    const cat = [{ id: "x", name: "Bicep Curls - Incline" }];
+    const m = matchExercise("Incline Bicep Curls", cat);
+    expect(m).not.toBeNull();
+    expect(m!.id).toBe("x");
+  });
 });
