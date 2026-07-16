@@ -36,6 +36,7 @@ export function MuscleVolumeGrid({
       {shown.map((m) => {
         const totalDisp = lbsToDisplay(m.totalLbs, weightUnit) ?? 0;
         const perWeek = lbsToDisplay(m.totalLbs / Math.max(1, weeks), weightUnit) ?? 0;
+        const thisWk = lbsToDisplay(m.volumeLbs[m.volumeLbs.length - 1] ?? 0, weightUnit) ?? 0;
         return (
           <div
             key={m.muscle}
@@ -55,6 +56,9 @@ export function MuscleVolumeGrid({
             </div>
             <div className="mt-1.5 font-mono text-[11px] tabular-nums text-tertiary-foreground">
               ~{compact(perWeek)} {weightUnit}/wk
+              {thisWk > 0 ? (
+                <span className="text-foreground"> · {compact(thisWk)} this wk</span>
+              ) : null}
             </div>
             <div className="mt-2.5">
               <Sparkline values={m.volumeLbs} variant="bar" height={36} />
