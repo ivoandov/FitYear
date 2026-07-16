@@ -52,6 +52,9 @@ next-env.d.ts
 # (the affected rows' id + prior muscle_groups_snapshot value).
 /migration/muscle-snapshot-backups/
 
+# Pre-mutation backups from scripts/normalize-muscle-taxonomy.ts.
+/migration/muscle-taxonomy-backups/
+
 # Playwright
 /test-results/
 /playwright-report/
