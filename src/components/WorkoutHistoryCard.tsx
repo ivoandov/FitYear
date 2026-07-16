@@ -113,7 +113,7 @@ export function WorkoutHistoryCard({
     setEditedExercises(enrichedExercises.map(ex => {
       const sets = ex.sets.length > 0
         ? ex.sets.map(s => ({ ...s, weight: lbsToDisplay(s.weight, weightUnit) }))
-        : [{ setNumber: 1, weight: 0, reps: 0, completed: true }];
+        : [{ setNumber: 1, completed: true }];
       return {
         ...ex,
         sets,
@@ -139,11 +139,18 @@ export function WorkoutHistoryCard({
       name: ex.name,
       muscleGroups: ex.muscleGroups || [],
       exerciseType: ex.exerciseType || 'weight_reps',
-      setsData: ex.sets.map(set => ({
-        ...set,
-        weight: displayToLbs(set.weight, weightUnit),
-        completed: true,
-      })),
+      // Coerce any left-empty inputs to 0 on save (they were kept empty during
+      // editing so the fields are clearable), preserving each set's field shape.
+      setsData: ex.sets.map(set => {
+        const isCardio = (ex.exerciseType || 'weight_reps') === 'distance_time';
+        return {
+          ...set,
+          completed: true,
+          ...(isCardio
+            ? { distance: set.distance ?? 0, time: set.time ?? 0 }
+            : { weight: displayToLbs(set.weight, weightUnit) ?? 0, reps: set.reps ?? 0 }),
+        };
+      }),
     }));
     
     setIsSaving(true);
@@ -166,7 +173,7 @@ export function WorkoutHistoryCard({
     }
   };
 
-  const updateSet = (exerciseIdx: number, setIdx: number, field: keyof SetDetail, value: number) => {
+  const updateSet = (exerciseIdx: number, setIdx: number, field: keyof SetDetail, value: number | undefined) => {
     setEditedExercises(prev => {
       const newExercises = [...prev];
       const exercise = { ...newExercises[exerciseIdx] };
@@ -182,11 +189,10 @@ export function WorkoutHistoryCard({
     setEditedExercises(prev => {
       const newExercises = [...prev];
       const exercise = { ...newExercises[exerciseIdx] };
-      const isCardioStyle = exercise.exerciseType === 'distance_time';
       const newSetNumber = exercise.sets.length + 1;
-      const newSet: SetDetail = isCardioStyle
-        ? { setNumber: newSetNumber, distance: 0, time: 0, completed: true }
-        : { setNumber: newSetNumber, weight: 0, reps: 0, completed: true };
+      // Start empty (not 0) so the user can type straight in - a prefilled "0"
+      // is annoying to clear on mobile. Empties coerce to 0 on save.
+      const newSet: SetDetail = { setNumber: newSetNumber, completed: true };
       exercise.sets = [...exercise.sets, newSet];
       newExercises[exerciseIdx] = exercise;
       return newExercises;
@@ -324,7 +330,7 @@ export function WorkoutHistoryCard({
                                     type="number"
                                     step="0.1"
                                     value={set.distance ?? ""}
-                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'distance', e.target.value === "" ? 0 : parseFloat(e.target.value))}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'distance', e.target.value === "" ? undefined : parseFloat(e.target.value))}
                                     className="w-16 h-8 text-center"
                                     data-testid={`input-distance-${id}-${exIdx}-${setIdx}`}
                                   />
@@ -332,7 +338,7 @@ export function WorkoutHistoryCard({
                                   <Input
                                     type="number"
                                     value={set.time ?? ""}
-                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'time', e.target.value === "" ? 0 : parseInt(e.target.value))}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'time', e.target.value === "" ? undefined : parseInt(e.target.value))}
                                     className="w-16 h-8 text-center"
                                     data-testid={`input-time-${id}-${exIdx}-${setIdx}`}
                                   />
@@ -344,7 +350,7 @@ export function WorkoutHistoryCard({
                                     type="number"
                                     step={weightUnit === 'kg' ? '0.5' : '1'}
                                     value={set.weight ?? ""}
-                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'weight', e.target.value === "" ? 0 : parseFloat(e.target.value))}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'weight', e.target.value === "" ? undefined : parseFloat(e.target.value))}
                                     className="w-16 h-8 text-center"
                                     data-testid={`input-weight-${id}-${exIdx}-${setIdx}`}
                                   />
@@ -352,7 +358,7 @@ export function WorkoutHistoryCard({
                                   <Input
                                     type="number"
                                     value={set.reps ?? ""}
-                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'reps', e.target.value === "" ? 0 : parseInt(e.target.value))}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'reps', e.target.value === "" ? undefined : parseInt(e.target.value))}
                                     className="w-16 h-8 text-center"
                                     data-testid={`input-reps-${id}-${exIdx}-${setIdx}`}
                                   />
