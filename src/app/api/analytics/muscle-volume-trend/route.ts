@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { resolveMuscle } from "@/lib/muscle-groups";
 
 // Volume-by-muscle over time: weekly training volume (sum of weight_lbs * reps
 // over completed sets) split by muscle group, last N weeks. Muscle identity
@@ -61,20 +62,23 @@ export const GET = handle(async (request: NextRequest) => {
     volume_lbs: number;
   }>(dataResult);
 
-  // Pivot into one zero-filled series per muscle, aligned to the week axis, and
-  // rank muscles by total volume (the client can then cap/stack the top ones).
-  const byMuscle = new Map<string, Map<string, number>>();
+  // Pivot into one zero-filled series per COARSE muscle group (Design 2026-07-16:
+  // the volume cards stay coarse - ~9 clean cards, not 25). Each raw tag is rolled
+  // up to its coarse group and its weekly volume ADDED in (several specifics can
+  // share one coarse). Unresolved tags are dropped.
+  const byCoarse = new Map<string, Map<string, number>>();
   for (const r of dataRows) {
-    if (!r.muscle) continue;
-    let m = byMuscle.get(r.muscle);
+    const resolved = r.muscle ? resolveMuscle(r.muscle) : null;
+    if (!resolved) continue;
+    let m = byCoarse.get(resolved.coarse);
     if (!m) {
       m = new Map();
-      byMuscle.set(r.muscle, m);
+      byCoarse.set(resolved.coarse, m);
     }
-    m.set(r.week_start, Number(r.volume_lbs));
+    m.set(r.week_start, (m.get(r.week_start) ?? 0) + Number(r.volume_lbs));
   }
 
-  const muscles = [...byMuscle.entries()]
+  const muscles = [...byCoarse.entries()]
     .map(([muscle, byWeek]) => {
       const volumeLbs = axis.map((w) => byWeek.get(w) ?? 0);
       const total = volumeLbs.reduce((a, b) => a + b, 0);

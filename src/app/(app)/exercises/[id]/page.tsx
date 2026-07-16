@@ -13,6 +13,7 @@ import {
 import { rewriteImageUrl } from "@/lib/image-url";
 import { lbsToDisplay } from "@/lib/units";
 import { overloadSuggestion } from "@/lib/analytics";
+import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
 import { localDateKey } from "@/lib/date";
 import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 
@@ -199,16 +200,10 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
             </div>
           ) : null}
           <div className="flex-1 min-w-0">
-            <div className="flex gap-1.5 flex-wrap mb-2">
-              {(exercise.muscleGroups as string[] | null)?.map((g) => (
-                <span
-                  key={g}
-                  className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground"
-                >
-                  {g}
-                </span>
-              )) ?? null}
-            </div>
+            <MuscleGroupsLabel
+              groups={(exercise.muscleGroups as string[] | null) ?? []}
+              className="mb-2 block font-mono text-xs"
+            />
             <h1 className="text-2xl font-bold tracking-tight">
               {exercise.name}
             </h1>

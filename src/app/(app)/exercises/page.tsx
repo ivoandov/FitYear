@@ -8,7 +8,7 @@ import { AddToWorkoutDialog } from "@/components/AddToWorkoutDialog";
 import { Input } from "@/components/ui/input";
 import { Search, Plus } from "lucide-react";
 import { type Exercise } from "@/data/exercises";
-import { useSettings } from "@/components/SettingsProvider";
+import { COARSE_MUSCLE_GROUPS, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
@@ -35,8 +35,7 @@ export default function ExercisesPage() {
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const { user } = useAuth();
-  const { muscleGroups: userMuscleGroups } = useSettings();
-  const muscleGroups = ["All", ...userMuscleGroups];
+  const muscleGroups = ["All", ...COARSE_MUSCLE_GROUPS];
 
   const { data: dbExercises = [], isLoading, isError, error } = useQuery<DBExercise[]>({
     queryKey: ["/api/exercises"],
@@ -192,7 +191,7 @@ export default function ExercisesPage() {
   const filteredExercises = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return allExercises.filter((exercise) => {
-      const matchesMuscleGroup = selectedMuscleGroup === "All" || exercise.muscleGroups.includes(selectedMuscleGroup);
+      const matchesMuscleGroup = selectedMuscleGroup === "All" || matchesCoarse(exercise.muscleGroups, selectedMuscleGroup as CoarseGroup);
       const matchesSearch = exercise.name.toLowerCase().includes(q) ||
                             exercise.muscleGroups.some(g => g.toLowerCase().includes(q));
       return matchesMuscleGroup && matchesSearch;

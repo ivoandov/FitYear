@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
+import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
 import { Input } from "@/components/ui/input";
 import { RestTimer } from "@/components/RestTimer";
 import { SetRow } from "@/components/track/SetRow";
@@ -778,11 +779,10 @@ export default function TrackPage() {
               <div className="line-clamp-2 text-balance text-[19px] font-bold leading-tight text-foreground" data-testid="text-current-exercise">
                 {currentExercise.name}
               </div>
-              {currentExercise.muscleGroups?.length ? (
-                <div className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-[0.04em] text-tertiary-foreground">
-                  {currentExercise.muscleGroups.join(" · ")}
-                </div>
-              ) : null}
+              <MuscleGroupsLabel
+                groups={currentExercise.muscleGroups ?? []}
+                className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
+              />
             </div>
             <Button
               variant="outline"

@@ -24,15 +24,21 @@ export const authUsers = authSchema.table("users", {
   id: uuid("id").primaryKey(),
 });
 
+// The coarse muscle-group vocabulary (fixed anatomical order). Source of truth
+// for the taxonomy is src/lib/muscle-groups.ts (COARSE_MUSCLE_GROUPS); this
+// literal is kept in schema.ts to avoid a client<-schema import and MUST stay in
+// sync with it. Drives the Settings muscle manager + the manual create form.
 export const DEFAULT_MUSCLE_GROUPS = [
   "Chest",
-  "Triceps",
   "Back",
-  "Biceps",
   "Shoulders",
-  "Legs",
+  "Biceps",
+  "Triceps",
+  "Forearms",
   "Abs/Core",
+  "Legs",
   "Cardio",
+  "PT",
 ] as const;
 
 export function isCustomMuscleGroup(group: string): boolean {

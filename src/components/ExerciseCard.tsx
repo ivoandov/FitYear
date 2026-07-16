@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { coarseGroupsOf } from "@/lib/muscle-groups";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   AlertDialog,
@@ -139,11 +140,11 @@ function ExerciseCardImpl({
 
         <div className="flex flex-1 flex-col p-4">
           <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {muscleGroups.map((group) => (
+            {coarseGroupsOf(muscleGroups).map((group) => (
               <span
                 key={group}
                 className="rounded-md bg-white/[0.06] px-2.5 py-[3px] text-[11px] text-muted-foreground"
-                data-testid={`badge-muscle-${id}-${group.toLowerCase()}`}
+                data-testid={`badge-muscle-${id}-${group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
               >
                 {group}
               </span>
