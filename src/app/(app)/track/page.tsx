@@ -72,8 +72,8 @@ export default function TrackPage() {
   // Both route through the shared lib/units convention (round to 1 decimal).
   const fromLbs = (lbs: number | null): number | null => lbsToDisplay(lbs, weightUnit);
   const toLbs = (val: number | null): number | null => displayToLbs(val, weightUnit);
-  // Increment for +/- buttons: 5 lbs or 2.5 kg
-  const weightIncrement = weightUnit === 'kg' ? 2.5 : 5;
+  // Increment for +/- buttons: 2.5 lbs or 2.5 kg
+  const weightIncrement = 2.5;
 
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [trackingState, setTrackingState] = useState<TrackingState>("not_started");

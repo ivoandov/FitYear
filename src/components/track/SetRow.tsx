@@ -144,7 +144,7 @@ export function SetRow({
           </button>
           <Input
             type="number"
-            step={weightUnit === "kg" ? "0.5" : "1"}
+            step="0.5"
             value={set.weight ?? ""}
             onChange={(e) => onFieldChange("weight", e.target.value === "" ? null : parseFloat(e.target.value))}
             className={FIELD_INPUT}
