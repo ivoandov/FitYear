@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -120,6 +121,7 @@ function cycleLegend(days: CycleDay[]): ReactNode {
 
 export default function RoutinesPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("my-routines");
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<RoutineWithEntries | null>(null);
@@ -589,6 +591,15 @@ export default function RoutinesPage() {
       <DesktopTopBar title="Routines">
         <button
           type="button"
+          onClick={() => router.push("/fit-bot")}
+          className="flex h-11 items-center gap-1.5 rounded-xl border border-yellow bg-primary-dim px-4 text-sm font-semibold text-primary"
+          data-testid="button-fitbot-routine-desktop"
+        >
+          <Sparkles className="h-4 w-4" />
+          Build with FitBot
+        </button>
+        <button
+          type="button"
           onClick={openNewRoutine}
           className="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground shadow-cta"
         >
@@ -603,15 +614,26 @@ export default function RoutinesPage() {
             <h1 className="text-[26px] font-bold leading-tight tracking-[-0.02em]">Routines</h1>
             <p className="mt-1 text-sm text-muted-foreground">Your programs &amp; library</p>
           </div>
-          <button
-            type="button"
-            onClick={openNewRoutine}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground shadow-cta"
-            data-testid="button-create-routine"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.4} />
-            Create
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => router.push("/fit-bot")}
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-yellow bg-primary-dim px-3.5 text-sm font-semibold text-primary"
+              data-testid="button-fitbot-routine-mobile"
+            >
+              <Sparkles className="h-4 w-4" />
+              FitBot
+            </button>
+            <button
+              type="button"
+              onClick={openNewRoutine}
+              className="flex h-11 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground shadow-cta"
+              data-testid="button-create-routine"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2.4} />
+              Create
+            </button>
+          </div>
         </div>
 
         {/* Active program cards */}
@@ -710,11 +732,22 @@ export default function RoutinesPage() {
               <div className="card-elevated flex flex-col items-center p-10 text-center">
                 <CalendarIcon className="mb-4 h-10 w-10 text-tertiary-foreground" />
                 <h3 className="text-base font-bold">No routines yet</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">Create your first routine to get started.</p>
-                <button type="button" onClick={openNewRoutine} className={`${CTA_DIALOG} mt-5`} data-testid="button-create-first-routine">
-                  <Plus className="h-4 w-4" strokeWidth={2.4} />
-                  Create Routine
-                </button>
+                <p className="mt-1.5 text-sm text-muted-foreground">Let FitBot design a program, or build one yourself.</p>
+                <div className="mt-5 flex flex-col items-center gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/fit-bot")}
+                    className={`${CTA_DIALOG} gap-2`}
+                    data-testid="button-fitbot-first-routine"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Build with FitBot
+                  </button>
+                  <button type="button" onClick={openNewRoutine} className={`${BTN_SECONDARY} gap-2`} data-testid="button-create-first-routine">
+                    <Plus className="h-4 w-4" strokeWidth={2.4} />
+                    Create manually
+                  </button>
+                </div>
               </div>,
             )
           : renderRoutineGrid(
