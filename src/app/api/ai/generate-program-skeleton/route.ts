@@ -5,6 +5,7 @@ import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { SkeletonSchema } from "@/lib/program-schema";
+import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 
 // Stage 1 of the segmented program builder: one fast Sonnet call that lays out
 // the whole macrocycle (the distinct workouts + their rotation cycle, phases,
@@ -74,6 +75,7 @@ Design:
 - For EACH workout, choose 1-3 ANCHOR lifts (the key compound movements that drive progression). Each anchor gets a linear progression: a realistic starting load in POUNDS for a ${input.experience} lifter with this equipment (use 0 for bodyweight or unloaded movements), a per-week load increment in pounds (typically 2.5-10 lb for upper body, 5-15 lb for lower body; 0 for bodyweight), the fixed sets, and a rep prescription string (e.g. "5", "8-12"). Only pick anchors the equipment allows; respect injuries.
 - ${durationWeeks >= 6 ? `Lay out 2-4 training PHASES (e.g. Foundation, Strength, Hypertrophy, Peak) that tile weeks 1..${durationWeeks} with no gaps or overlaps.` : `Lay out 1-2 training PHASES that tile weeks 1..${durationWeeks}.`}
 - Include a deload roughly every 4-6 weeks (list those 1-indexed week numbers in deloadWeeks; deloadLoadFactor ~0.9). ${durationWeeks < 4 ? "For a short program, deloadWeeks may be empty." : ""}
+- Every muscleGroups value (on workouts and anchorLifts) MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group; do not invent other muscle names.
 
 Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shape:
 {"name":"string","durationWeeks":${durationWeeks},"workouts":[{"label":"Push","muscleGroups":["Chest","Shoulders"],"anchorLifts":[{"name":"Barbell Bench Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","isAssisted":false,"restSeconds":180,"progression":{"scheme":"linear","startLoadLbs":135,"incrementLbs":5,"sets":4,"reps":"5"}}]}],"cycle":[0,1,2,-1],"phases":[{"name":"Foundation","focus":"hypertrophy","startWeek":1,"endWeek":4}],"deloadWeeks":[4],"deloadLoadFactor":0.9}`;

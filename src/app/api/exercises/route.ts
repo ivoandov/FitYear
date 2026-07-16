@@ -5,6 +5,7 @@ import { exercises, insertExerciseSchema } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { rewriteImageUrl } from "@/lib/image-url";
+import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -36,6 +37,13 @@ export const POST = handle(async (request: NextRequest) => {
     .insert(exercises)
     .values({
       ...parsed,
+      // Canonicalize muscle groups on write (manual create + AI reconcile-on-Start
+      // both POST here) so the catalog never accretes freeform/case-variant tags.
+      muscleGroups: normalizeMuscleGroups(
+        Array.isArray(parsed.muscleGroups)
+          ? parsed.muscleGroups.filter((m): m is string => typeof m === "string")
+          : [],
+      ),
       userId: user.id,
       // User-created exercises are shared (visible to all), editable only by
       // the creator. isPublic is legacy; kept true for consistency.

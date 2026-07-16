@@ -5,6 +5,7 @@ import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { GeneratedWorkoutSchema } from "@/lib/workout-schema";
+import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 
 // A single workout is a small generation that finishes well under the Hobby 60s
 // function limit even on Opus, so this is a plain non-streaming call (no
@@ -70,6 +71,7 @@ Requirements:
 - Be creative and effective. You are NOT limited to any fixed exercise library; choose the best movements for the goal, including variations and unilateral/accessory work.
 - Respect any injuries or limitations the user mentions; never program something that would aggravate them.
 - For each exercise give: name; the muscle groups it trains; exerciseType ("weight_reps" for lifting/bodyweight strength, "distance_time" for cardio/carries measured by distance or time); isAssisted (true ONLY for assisted-machine movements such as assisted pull-ups); sets; a reps prescription as a string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).
+- muscleGroups MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group name; add a specific only when it is clearly the emphasis. Do not invent other muscle names.
 - Give the workout a short motivating name, an estimatedMinutes, the primary targetMuscles, and the equipment used.
 
 Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shape:
