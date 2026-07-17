@@ -118,17 +118,46 @@ function coarseOf(label: string): CoarseGroup | null {
   return SPECIFIC_TO_COARSE[label] ?? null;
 }
 
+function lookupKey(raw: string): string | null {
+  const key = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!key) return null;
+  return SYNONYMS[key] ?? CANONICAL_BY_KEY.get(key) ?? null;
+}
+
+/**
+ * Expand one raw tag that may be in the NESTED display notation the FitBot
+ * model sometimes emits (it mimics the prompt vocabulary's "Legs (Hamstrings,
+ * Glutes)" grouping) into flat resolvable labels. A plain tag passes through
+ * unchanged; a nested tag yields its resolvable inner specifics, or the outer
+ * group when nothing inside resolves but the outer does. A string that is
+ * neither stays as-is (the caller quarantines it).
+ */
+export function expandMuscleLabel(raw: string): string[] {
+  if (lookupKey(raw)) return [raw];
+  const m = raw.trim().match(/^(.+?)\s*\(([^)]*)\)$/);
+  if (!m) return [raw];
+  const inner = m[2]
+    .split(/[,/]/)
+    .map((s) => s.trim())
+    .filter((s) => s && lookupKey(s));
+  if (inner.length) return inner;
+  return lookupKey(m[1]) ? [m[1]] : [raw];
+}
+
+function expandAll(raw: string[]): string[] {
+  return raw.flatMap(expandMuscleLabel);
+}
+
 /**
  * Resolve one raw muscle string to its canonical label (a coarse group or a
  * known specific) plus that label's coarse group. Case- and whitespace-
- * insensitive. Returns null for an unmatched string (caller quarantines it).
+ * insensitive; a nested "Coarse (Specific)" string resolves via its first
+ * resolvable part. Returns null for an unmatched string (caller quarantines it).
  */
 export function resolveMuscle(
   raw: string,
 ): { label: string; coarse: CoarseGroup } | null {
-  const key = raw.trim().toLowerCase().replace(/\s+/g, " ");
-  if (!key) return null;
-  const label = SYNONYMS[key] ?? CANONICAL_BY_KEY.get(key) ?? null;
+  const label = lookupKey(raw) ?? lookupKey(expandMuscleLabel(raw)[0] ?? "");
   if (!label) return null;
   const coarse = coarseOf(label);
   return coarse ? { label, coarse } : null;
@@ -136,12 +165,13 @@ export function resolveMuscle(
 
 /**
  * Normalize an exercise's raw muscle tags to canonical labels (specific-
- * preserving), de-duped, order preserved. Unmatched strings are dropped
+ * preserving), de-duped, order preserved. Nested display-format tags are
+ * expanded first so no specific is lost. Unmatched strings are dropped
  * (quarantined). This is what the write path + migration store.
  */
 export function normalizeMuscleGroups(raw: string[]): string[] {
   const out: string[] = [];
-  for (const m of raw) {
+  for (const m of expandAll(raw)) {
     const r = resolveMuscle(m);
     if (r && !out.includes(r.label)) out.push(r.label);
   }
@@ -159,7 +189,7 @@ export function unmatchedMuscles(raw: string[]): string[] {
  */
 export function coarseGroupsOf(raw: string[]): CoarseGroup[] {
   const set = new Set<CoarseGroup>();
-  for (const m of raw) {
+  for (const m of expandAll(raw)) {
     const r = resolveMuscle(m);
     if (r) set.add(r.coarse);
   }
@@ -175,7 +205,7 @@ export function nestedMuscleGroups(
   raw: string[],
 ): Array<{ coarse: CoarseGroup; specifics: string[] }> {
   const byCoarse = new Map<CoarseGroup, string[]>();
-  for (const m of raw) {
+  for (const m of expandAll(raw)) {
     const r = resolveMuscle(m);
     if (!r) continue;
     if (!byCoarse.has(r.coarse)) byCoarse.set(r.coarse, []);
@@ -205,14 +235,17 @@ export function matchesCoarse(raw: string[], coarse: CoarseGroup): boolean {
 }
 
 /**
- * The controlled muscle vocabulary as a prompt-ready string, e.g.
- * "Chest; Back (Lats, Upper Back, ...); Shoulders (Front Delts, ...); ...".
- * Injected into the FitBot prompts so the model tags with canonical names
- * instead of inventing freeform ones.
+ * The controlled muscle vocabulary as a prompt-ready string. Injected into the
+ * FitBot prompts so the model tags with canonical names instead of inventing
+ * freeform ones. Deliberately AVOIDS the "Legs (Hamstrings)" nested notation:
+ * the model mimicked that grouping in its answers, and those combined strings
+ * failed resolution on the write path (quarantined to an empty tag list). The
+ * trailing instruction makes the bare-name contract explicit.
  */
 export function muscleVocabularyForPrompt(): string {
-  return COARSE_MUSCLE_GROUPS.map((c) => {
+  const grouped = COARSE_MUSCLE_GROUPS.map((c) => {
     const s = SPECIFICS_BY_COARSE[c];
-    return s.length ? `${c} (${s.join(", ")})` : c;
+    return s.length ? `${c} - specifics: ${s.join(", ")}` : c;
   }).join("; ");
+  return `${grouped}. Each muscleGroups entry must be ONE bare name from this list exactly as written (e.g. "Hamstrings", never "Legs (Hamstrings)")`;
 }

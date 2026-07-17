@@ -99,6 +99,50 @@ describe("unmatchedMuscles", () => {
   });
 });
 
+describe("nested display-format input (the FitBot mimicry wart)", () => {
+  // The model mimicked the prompt vocabulary's grouped notation and emitted
+  // tags like "Legs (Hamstrings)". These used to be quarantined wholesale,
+  // leaving exercises with an empty muscle list; now they expand and resolve.
+  it("resolveMuscle resolves a single nested tag", () => {
+    expect(resolveMuscle("Legs (Hamstrings)")).toEqual({
+      label: "Hamstrings",
+      coarse: "Legs",
+    });
+    expect(resolveMuscle("Back (Lower Back)")).toEqual({
+      label: "Lower Back",
+      coarse: "Back",
+    });
+  });
+
+  it("normalizeMuscleGroups expands multi-specific nested tags losslessly", () => {
+    expect(normalizeMuscleGroups(["Legs (Hamstrings, Glutes)"])).toEqual([
+      "Hamstrings",
+      "Glutes",
+    ]);
+    expect(
+      normalizeMuscleGroups(["Legs (Hamstrings)", "Legs (Glutes)", "Abs/Core"]),
+    ).toEqual(["Hamstrings", "Glutes", "Abs/Core"]);
+  });
+
+  it("falls back to the outer group when nothing inside resolves", () => {
+    expect(normalizeMuscleGroups(["Legs (whatever)"])).toEqual(["Legs"]);
+  });
+
+  it("still quarantines a string that is neither", () => {
+    expect(normalizeMuscleGroups(["Shoulder Press (Machine)"])).toEqual([]);
+  });
+
+  it("coarseGroupsOf and subtitles read nested tags", () => {
+    expect(coarseGroupsOf(["Legs (Hamstrings)", "Back (Lower Back)"])).toEqual([
+      "Back",
+      "Legs",
+    ]);
+    expect(muscleSubtitle(["Legs (Hamstrings, Glutes)"])).toBe(
+      "Legs (Hamstrings, Glutes)",
+    );
+  });
+});
+
 describe("COARSE_MUSCLE_GROUPS", () => {
   it("is the ratified 10 in fixed anatomical order", () => {
     expect(COARSE_MUSCLE_GROUPS).toEqual([
