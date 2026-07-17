@@ -35,6 +35,20 @@ export function normalizeExerciseName(name: string): string {
 }
 
 /**
+ * Common gym-equipment abbreviations folded to their full word BEFORE
+ * singularization, so "DB Bicep Curl" == "Dumbbell Bicep Curl" scores as an
+ * identical token set. Only unambiguous equipment shorthand belongs here -
+ * folding anything semantic (e.g. "assisted") would merge distinct movements.
+ */
+const TOKEN_SYNONYMS: Record<string, string> = {
+  db: "dumbbell",
+  dbs: "dumbbell",
+  bb: "barbell",
+  kb: "kettlebell",
+  rdl: "romanian deadlift",
+};
+
+/**
  * Fold a single token toward a rough singular stem so plural variants match
  * ("curls" -> "curl", "pushups" -> "pushup", "raises" -> "raise", "flies" ->
  * "fly", "presses" -> "press"). Short tokens are left alone so we never mangle
@@ -58,7 +72,10 @@ interface Analyzed {
 function analyze(name: string): Analyzed {
   const normalized = normalizeExerciseName(name);
   const raw = normalized ? normalized.split(" ") : [];
-  const singular = raw.map(singularize);
+  // Expand abbreviations first (a synonym may expand to multiple tokens, e.g.
+  // "rdl" -> "romanian deadlift"), then singularize.
+  const expanded = raw.flatMap((t) => (TOKEN_SYNONYMS[t] ?? t).split(" "));
+  const singular = expanded.map(singularize);
   return {
     normalized,
     condensed: singular.join(""),

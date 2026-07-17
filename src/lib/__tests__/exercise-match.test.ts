@@ -60,6 +60,36 @@ describe("nameMatchScore", () => {
     expect(nameMatchScore("Overhead Press", "Overhead Press")).toBe(1);
   });
 
+  it("folds equipment abbreviations (DB/BB/KB) to the full word", () => {
+    // The prod-observed duplicate class: FitBot spells out "Dumbbell", users
+    // abbreviate "DB", and the two never matched.
+    expect(
+      nameMatchScore("DB Bicep Curl", "Dumbbell Bicep Curl"),
+    ).toBeGreaterThanOrEqual(0.95);
+    expect(
+      nameMatchScore("Seated DB Shoulder Press", "Seated Dumbbell Shoulder Press"),
+    ).toBeGreaterThanOrEqual(0.95);
+    expect(
+      nameMatchScore("KB Goblet Squat", "Kettlebell Goblet Squat"),
+    ).toBeGreaterThanOrEqual(0.95);
+    expect(
+      nameMatchScore("DB Romanian Deadlift", "Dumbbell Romanian Deadlift"),
+    ).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it("expands RDL to Romanian Deadlift", () => {
+    expect(
+      nameMatchScore("DB RDL", "Dumbbell Romanian Deadlift"),
+    ).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it("still separates different equipment variants after folding", () => {
+    // Folding db->dumbbell must NOT make dumbbell and barbell rows converge.
+    expect(
+      nameMatchScore("Bent Over DB Row", "Bent Over Barbell Row"),
+    ).toBeLessThan(DEFAULT_MATCH_THRESHOLD);
+  });
+
   it("scores empty / whitespace names as 0", () => {
     expect(nameMatchScore("", "deadlift")).toBe(0);
     expect(nameMatchScore("   ", "deadlift")).toBe(0);
