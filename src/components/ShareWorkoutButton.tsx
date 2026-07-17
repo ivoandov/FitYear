@@ -58,6 +58,13 @@ const C = {
 // computed style by html2canvas - unlike oklch colors, they capture fine).
 const MONO = "var(--font-mono), ui-monospace, monospace";
 
+// html2canvas clips the ascenders of text inside an `overflow:hidden` box
+// (regardless of line-height), so the capture card truncates long labels in JS
+// rather than with CSS ellipsis - no overflow-clip means nothing to mis-crop.
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+}
+
 export function ShareWorkoutButton(props: Props) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -309,11 +316,11 @@ export function ShareWorkoutButton(props: Props) {
                     {i > 0 ? (
                       <div style={{ height: 1, background: "rgba(10,10,10,0.15)", margin: "8px 0" }} />
                     ) : null}
-                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: C.onPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {pr.exerciseName}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ fontSize: 14, lineHeight: 1.4, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap" }}>
+                        {truncate(pr.exerciseName, 22)}
                       </span>
-                      <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.4, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap", flexShrink: 0 }}>
                         {pr.type === "weight"
                           ? `${pr.newValue} lb`
                           : `${pr.newValue.toLocaleString()} vol`}
@@ -360,11 +367,11 @@ export function ShareWorkoutButton(props: Props) {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
                   {exercises.slice(0, 6).map((ex, i) => (
-                    <div key={`${ex.name}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-                      <span style={{ fontSize: 12, color: C.exText, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {ex.name}
+                    <div key={`${ex.name}-${i}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                      <span style={{ fontSize: 12, lineHeight: 1.4, color: C.exText, whiteSpace: "nowrap" }}>
+                        {truncate(ex.name, 16)}
                       </span>
-                      <span style={{ fontFamily: MONO, fontSize: 11, color: C.tertiary, flexShrink: 0 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 11, lineHeight: 1.4, color: C.tertiary, flexShrink: 0 }}>
                         {ex.sets}×{ex.reps ?? "-"}
                       </span>
                     </div>
