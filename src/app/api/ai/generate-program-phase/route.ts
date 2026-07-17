@@ -5,6 +5,7 @@ import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { SkeletonSchema, PhaseVarietySchema } from "@/lib/program-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
+import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 
 // Stage 2 of the segmented program builder: ONE fast Sonnet call per skeleton
 // phase that authors that phase's exercise variety — a phase-flavored workout
@@ -54,6 +55,7 @@ export const POST = handle(async (request: NextRequest) => {
     throw new ApiError(500, "AI is not configured");
   }
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const catalogBlock = await exerciseCatalogPromptBlock();
 
   // Compact workout summary so the model knows each workout's focus + which
   // anchors already exist (so accessories complement rather than duplicate them).
@@ -83,6 +85,7 @@ For EACH workout above, author:
 - workoutName: a short, phase-appropriate name (e.g. "${phase.name} Push", "Upper Power", "Lower Hypertrophy").
 - accessories: 2-4 accessory/isolation exercises that COMPLEMENT the workout's anchors and suit this phase's ${phase.focus} focus, the equipment, and any injuries. Do not repeat the anchor lifts. Each accessory has: name; the muscleGroups it trains; exerciseType ("weight_reps" for lifting/bodyweight, "distance_time" for cardio/carries measured by distance or time); sets; a reps prescription string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).
 - muscleGroups MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group; do not invent other muscle names.
+${catalogBlock}
 
 Return ONLY valid JSON, no preamble and no markdown fences. Include EVERY workout, matching each "label" exactly, in this shape:
 {"days":[{"label":"Push","workoutName":"Push Power","accessories":[{"name":"Incline Dumbbell Press","muscleGroups":["Chest"],"exerciseType":"weight_reps","sets":3,"reps":"8-12","rest":90,"notes":""}]}]}`;

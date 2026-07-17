@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import {
   GeneratedWorkoutSchema,
@@ -41,6 +42,7 @@ export const POST = handle(async (request: NextRequest) => {
     throw new ApiError(500, "AI is not configured");
   }
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const catalogBlock = await exerciseCatalogPromptBlock();
 
   const prompt = `You are an expert strength and conditioning coach refining a workout you built for this user.
 
@@ -52,7 +54,8 @@ ${JSON.stringify(input.workout)}
 USER'S CHANGE REQUEST:
 "${input.instruction}"
 
-Apply the requested change. You may substitute exercises freely (you are NOT limited to any fixed library) and you MUST respect any injury or constraint the user mentions, swapping out anything that would aggravate it. Keep every exercise the user did NOT ask to change exactly as it was, in the same order. Preserve the overall duration and target focus unless the user asked to change them. Each exercise keeps the same shape as in the current workout (name, muscleGroups, exerciseType, isAssisted, sets, reps, rest, notes).
+Apply the requested change. You may substitute exercises freely (you are NOT limited to the user's library in WHAT you program) and you MUST respect any injury or constraint the user mentions, swapping out anything that would aggravate it. Keep every exercise the user did NOT ask to change exactly as it was, in the same order. Preserve the overall duration and target focus unless the user asked to change them. Each exercise keeps the same shape as in the current workout (name, muscleGroups, exerciseType, isAssisted, sets, reps, rest, notes).
+${catalogBlock}
 
 Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shape:
 {"workout":{ ...the full revised workout, same shape as the current workout... },"changes":[{"type":"swap|add|remove|modify","name":"resulting exercise name","previousName":"prior name if a swap or modify","reason":"short why"}],"summary":"one short sentence describing what changed"}`;

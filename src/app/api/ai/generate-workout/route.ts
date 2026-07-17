@@ -6,6 +6,7 @@ import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { GeneratedWorkoutSchema } from "@/lib/workout-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
+import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 
 // A single workout is a small generation that finishes well under the Hobby 60s
 // function limit even on Opus, so this is a plain non-streaming call (no
@@ -60,6 +61,7 @@ export const POST = handle(async (request: NextRequest) => {
   const hints = hintParts.length
     ? `\n\nADDITIONAL PREFERENCES:\n- ${hintParts.join("\n- ")}`
     : "";
+  const catalogBlock = await exerciseCatalogPromptBlock();
 
   const prompt = `You are an expert strength and conditioning coach. Design ONE effective single workout for this request.
 
@@ -68,7 +70,8 @@ USER REQUEST:
 
 Requirements:
 - Honor the requested duration, equipment/location, target muscles, and intensity. Size the number of exercises and sets so the session realistically fits the time, including rest.
-- Be creative and effective. You are NOT limited to any fixed exercise library; choose the best movements for the goal, including variations and unilateral/accessory work.
+- Be creative and effective. You are NOT limited to the user's library in WHAT you program; choose the best movements for the goal, including variations and unilateral/accessory work.
+${catalogBlock}
 - Respect any injuries or limitations the user mentions; never program something that would aggravate them.
 - For each exercise give: name; the muscle groups it trains; exerciseType ("weight_reps" for lifting/bodyweight strength, "distance_time" for cardio/carries measured by distance or time); isAssisted (true ONLY for assisted-machine movements such as assisted pull-ups); sets; a reps prescription as a string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).
 - muscleGroups MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group name; add a specific only when it is clearly the emphasis. Do not invent other muscle names.
