@@ -311,7 +311,7 @@ export function ShareWorkoutButton(props: Props) {
                 <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: C.onPrimary, opacity: 0.7, marginBottom: 9 }}>
                   {props.prs.length} New personal best{props.prs.length !== 1 ? "s" : ""}
                 </div>
-                {props.prs.slice(0, 2).map((pr, i) => (
+                {props.prs.slice(0, 3).map((pr, i) => (
                   <div key={`${pr.exerciseName}-${pr.type}-${i}`}>
                     {i > 0 ? (
                       <div style={{ height: 1, background: "rgba(10,10,10,0.15)", margin: "8px 0" }} />
@@ -328,6 +328,11 @@ export function ShareWorkoutButton(props: Props) {
                     </div>
                   </div>
                 ))}
+                {props.prs.length > 3 ? (
+                  <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: C.onPrimary, opacity: 0.6, marginTop: 9 }}>
+                    +{props.prs.length - 3} more
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
