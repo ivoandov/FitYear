@@ -167,8 +167,6 @@ export function ShareWorkoutButton(props: Props) {
     setTimeout(() => setCopied(false), 1500);
   }
 
-  const exercises = props.exercises ?? [];
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -206,10 +204,10 @@ export function ShareWorkoutButton(props: Props) {
               position: "relative",
               overflow: "hidden",
               boxSizing: "border-box",
-              padding: "22px 22px 16px",
+              padding: "18px 20px 14px",
               display: "flex",
               flexDirection: "column",
-              gap: 10,
+              gap: 8,
               color: C.fg,
               fontFamily:
                 "var(--font-sans), ui-sans-serif, system-ui, sans-serif",
@@ -243,11 +241,11 @@ export function ShareWorkoutButton(props: Props) {
             </div>
 
             {/* Hero - trophy + name + streak */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 7 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 }}>
               <div
                 style={{
-                  width: 48,
-                  height: 48,
+                  width: 42,
+                  height: 42,
                   borderRadius: 999,
                   background: C.primaryDim,
                   border: `1.5px solid ${C.primaryBorder}`,
@@ -258,12 +256,12 @@ export function ShareWorkoutButton(props: Props) {
                   boxShadow: "0 0 40px -6px rgba(229,255,0,0.4)",
                 }}
               >
-                <TrophySvg size={24} />
+                <TrophySvg size={21} />
               </div>
-              <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 2.4, textTransform: "uppercase", color: C.primary }}>
+              <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", color: C.primary }}>
                 Workout complete
               </div>
-              <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
                 {props.workoutName}
               </div>
               {props.streakDays > 0 ? (
@@ -271,24 +269,24 @@ export function ShareWorkoutButton(props: Props) {
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 5,
+                    gap: 4,
                     background: C.primaryDim,
                     border: `1px solid rgba(229,255,0,0.3)`,
                     color: C.primary,
                     borderRadius: 999,
-                    padding: "4px 12px",
-                    fontSize: 12,
+                    padding: "3px 11px",
+                    fontSize: 11,
                     fontWeight: 600,
                   }}
                 >
-                  <FlameSvg size={13} />
+                  <FlameSvg size={12} />
                   <span style={{ fontFamily: MONO }}>{props.streakDays}</span> DAY STREAK
                 </div>
               ) : null}
             </div>
 
             {/* 2x2 stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <StatBox label="Duration" value={props.durationLabel} />
               <StatBox
                 label="Volume"
@@ -305,22 +303,22 @@ export function ShareWorkoutButton(props: Props) {
                 style={{
                   background: "linear-gradient(180deg,#f0ff5c,#E5FF00)",
                   borderRadius: 15,
-                  padding: "13px 16px",
+                  padding: "11px 14px",
                 }}
               >
-                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: C.onPrimary, opacity: 0.7, marginBottom: 9 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: C.onPrimary, opacity: 0.7, marginBottom: 7 }}>
                   {props.prs.length} New personal best{props.prs.length !== 1 ? "s" : ""}
                 </div>
                 {props.prs.slice(0, 3).map((pr, i) => (
                   <div key={`${pr.exerciseName}-${pr.type}-${i}`}>
                     {i > 0 ? (
-                      <div style={{ height: 1, background: "rgba(10,10,10,0.15)", margin: "8px 0" }} />
+                      <div style={{ height: 1, background: "rgba(10,10,10,0.15)", margin: "6px 0" }} />
                     ) : null}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 14, lineHeight: 1.4, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 14, lineHeight: 1.3, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap" }}>
                         {truncate(pr.exerciseName, 22)}
                       </span>
-                      <span style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.4, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.3, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap", flexShrink: 0 }}>
                         {pr.type === "weight"
                           ? `${pr.newValue} lb`
                           : `${pr.newValue.toLocaleString()} vol`}
@@ -329,7 +327,7 @@ export function ShareWorkoutButton(props: Props) {
                   </div>
                 ))}
                 {props.prs.length > 3 ? (
-                  <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: C.onPrimary, opacity: 0.6, marginTop: 9 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: C.onPrimary, opacity: 0.6, marginTop: 7 }}>
                     +{props.prs.length - 3} more
                   </div>
                 ) : null}
@@ -338,7 +336,7 @@ export function ShareWorkoutButton(props: Props) {
 
             {/* Muscles trained */}
             {props.muscleGroups.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: "uppercase", color: C.tertiary }}>
                   Muscles trained
                 </div>
@@ -348,40 +346,19 @@ export function ShareWorkoutButton(props: Props) {
                     Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
                   );
                   return (
-                    <div key={muscle} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div key={muscle} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ fontSize: 13, color: C.fg }}>{muscle}</span>
                         <span style={{ fontFamily: MONO, fontSize: 11, color: C.tertiary }}>
                           {sets} sets
                         </span>
                       </div>
-                      <div style={{ height: 6, borderRadius: 999, background: C.track, overflow: "hidden" }}>
+                      <div style={{ height: 5, borderRadius: 999, background: C.track, overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${pct}%`, background: C.primary, borderRadius: 999 }} />
                       </div>
                     </div>
                   );
                 })}
-              </div>
-            ) : null}
-
-            {/* Exercise list */}
-            {exercises.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: 1.4, textTransform: "uppercase", color: C.tertiary }}>
-                  Exercises
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
-                  {exercises.slice(0, 6).map((ex, i) => (
-                    <div key={`${ex.name}-${i}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                      <span style={{ fontSize: 12, lineHeight: 1.4, color: C.exText, whiteSpace: "nowrap" }}>
-                        {truncate(ex.name, 16)}
-                      </span>
-                      <span style={{ fontFamily: MONO, fontSize: 11, lineHeight: 1.4, color: C.tertiary, flexShrink: 0 }}>
-                        {ex.sets}×{ex.reps ?? "-"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
               </div>
             ) : null}
 
@@ -443,7 +420,7 @@ function StatBox({
         border: `1px solid ${C.border}`,
         background: C.surface,
         borderRadius: 13,
-        padding: "10px 12px",
+        padding: "8px 11px",
       }}
     >
       <div
@@ -453,12 +430,12 @@ function StatBox({
           textTransform: "uppercase",
           letterSpacing: 1,
           color: C.tertiary,
-          marginBottom: 4,
+          marginBottom: 3,
         }}
       >
         {label}
       </div>
-      <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: accent ? C.primary : C.fg }}>
+      <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: accent ? C.primary : C.fg }}>
         {value}
       </div>
     </div>
