@@ -13,6 +13,36 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+/**
+ * Extract the duplicate-guard payload from a thrown apiRequest error. The
+ * create API answers 409 + { error: "duplicate", match } when the name
+ * confidently matches an existing exercise; anything else returns null.
+ */
+function duplicateMatchFrom(e: unknown): { id: string; name: string } | null {
+  if (!(e instanceof Error)) return null;
+  const m = e.message.match(/^409:\s*([\s\S]*)$/);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(m[1]);
+    if (parsed?.error === "duplicate" && parsed.match?.id && parsed.match?.name) {
+      return { id: parsed.match.id, name: parsed.match.name };
+    }
+  } catch {
+    // not our payload
+  }
+  return null;
+}
 
 interface DBExercise {
   id: string;
@@ -33,6 +63,12 @@ export default function ExercisesPage() {
   const [editingExercise, setEditingExercise] = useState<ExerciseFormData | null>(null);
   const [exerciseToAddToWorkout, setExerciseToAddToWorkout] = useState<Exercise | null>(null);
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
+  // The create call hit the duplicate guard: hold the submitted form + the
+  // server's match while the user picks "use existing" vs "create anyway".
+  const [duplicatePrompt, setDuplicatePrompt] = useState<{
+    pending: { name: string; muscleGroups: string[]; description: string; exerciseType: string; isAssisted: boolean };
+    match: { id: string; name: string };
+  } | null>(null);
   const { toast } = useToast();
   const { user } = useAuth();
   const muscleGroups = ["All", ...COARSE_MUSCLE_GROUPS];
@@ -60,7 +96,7 @@ export default function ExercisesPage() {
   );
 
   const createMutation = useMutation({
-    mutationFn: async (exercise: { name: string; muscleGroups: string[]; description: string; exerciseType: string; isAssisted: boolean }) => {
+    mutationFn: async (exercise: { name: string; muscleGroups: string[]; description: string; exerciseType: string; isAssisted: boolean; force?: boolean }) => {
       const res = await apiRequest("POST", "/api/exercises", exercise);
       return res.json() as Promise<{ id: string }>;
     },
@@ -92,7 +128,12 @@ export default function ExercisesPage() {
           });
       }
     },
-    onError: (error) => {
+    onError: (error, variables) => {
+      const match = duplicateMatchFrom(error);
+      if (match) {
+        setDuplicatePrompt({ pending: variables, match });
+        return;
+      }
       toast({
         title: "Couldn't create exercise",
         description: describeApiError(error),
@@ -347,6 +388,7 @@ export default function ExercisesPage() {
           onSave={handleSaveExercise}
           isPending={createMutation.isPending}
           mode="add"
+          library={allExercises}
         />
 
         <AddExerciseDialog
@@ -356,7 +398,53 @@ export default function ExercisesPage() {
           isPending={updateMutation.isPending}
           initialData={editingExercise}
           mode="edit"
+          library={allExercises}
         />
+
+        <AlertDialog
+          open={!!duplicatePrompt}
+          onOpenChange={(open) => !open && setDuplicatePrompt(null)}
+        >
+          <AlertDialogContent data-testid="dialog-duplicate-exercise">
+            <AlertDialogHeader>
+              <AlertDialogTitle>This exercise may already exist</AlertDialogTitle>
+              <AlertDialogDescription>
+                &ldquo;{duplicatePrompt?.pending.name}&rdquo; looks like the
+                library&apos;s &ldquo;{duplicatePrompt?.match.name}&rdquo;.
+                Using the existing exercise keeps its history, PRs, and progress
+                in one place.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                data-testid="button-use-existing"
+                onClick={() => {
+                  const existing = duplicatePrompt?.match;
+                  setDuplicatePrompt(null);
+                  setShowAddDialog(false);
+                  if (existing) {
+                    toast({
+                      title: "Using the existing exercise",
+                      description: `"${existing.name}" is already in the library.`,
+                    });
+                  }
+                }}
+              >
+                Use existing
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="button-create-anyway"
+                onClick={() => {
+                  const pending = duplicatePrompt?.pending;
+                  setDuplicatePrompt(null);
+                  if (pending) createMutation.mutate({ ...pending, force: true });
+                }}
+              >
+                Create anyway
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AddToWorkoutDialog
           isOpen={!!exerciseToAddToWorkout}

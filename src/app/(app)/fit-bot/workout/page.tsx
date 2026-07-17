@@ -168,17 +168,33 @@ export default function FitBotWorkoutPage() {
       const creates = distinctCreates(plan);
 
       // Create each genuinely-new exercise as a custom (shared) library entry,
-      // then kick off its AI illustration best-effort (non-blocking).
+      // then kick off its AI illustration best-effort (non-blocking). The
+      // server runs its own duplicate guard; a 409 means it found an existing
+      // match our client-side catalog missed (stale cache, fresher matcher), so
+      // reuse that id instead of creating.
       const createdByKey = new Map<string, string>();
       for (const ex of creates) {
         try {
-          const res = await apiRequest("POST", "/api/exercises", {
-            name: ex.name,
-            muscleGroups: ex.muscleGroups ?? [],
-            description: ex.notes?.trim() || "",
-            exerciseType: ex.exerciseType ?? "weight_reps",
-            isAssisted: ex.isAssisted ?? false,
+          const res = await fetch("/api/exercises", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              name: ex.name,
+              muscleGroups: ex.muscleGroups ?? [],
+              description: ex.notes?.trim() || "",
+              exerciseType: ex.exerciseType ?? "weight_reps",
+              isAssisted: ex.isAssisted ?? false,
+            }),
           });
+          if (res.status === 409) {
+            const dup = (await res.json()) as { match?: { id: string } };
+            if (dup.match?.id) {
+              createdByKey.set(normalizeExerciseName(ex.name), dup.match.id);
+            }
+            continue;
+          }
+          if (!res.ok) continue;
           const created = (await res.json()) as { id: string };
           createdByKey.set(normalizeExerciseName(ex.name), created.id);
           apiRequest("POST", `/api/exercises/${created.id}/regenerate-image`, {}).catch(

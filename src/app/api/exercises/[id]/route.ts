@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { exercises, insertExerciseSchema } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,6 +12,15 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
   const body = insertExerciseSchema.partial().parse(await request.json());
+  // Same write-path canonicalization as POST (this route was missed when the
+  // taxonomy landed, so edits could reintroduce freeform/nested tags).
+  if (body.muscleGroups !== undefined) {
+    body.muscleGroups = normalizeMuscleGroups(
+      Array.isArray(body.muscleGroups)
+        ? body.muscleGroups.filter((m): m is string => typeof m === "string")
+        : [],
+    );
+  }
 
   const [existing] = await db
     .select()

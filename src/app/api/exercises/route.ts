@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { rewriteImageUrl } from "@/lib/image-url";
 import { normalizeMuscleGroups } from "@/lib/muscle-groups";
+import { matchExercise } from "@/lib/exercise-match";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -29,9 +30,39 @@ export const GET = handle(async () => {
   return rows.map((r) => ({ ...r, imageUrl: rewriteImageUrl(r.imageUrl) }));
 });
 
+const CreateOptionsSchema = z.object({
+  // Deliberate-duplicate escape hatch: the client saw the 409 match and the
+  // user chose "create anyway" (or FitBot decided the movement is distinct).
+  force: z.boolean().optional(),
+});
+
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
-  const parsed = insertExerciseSchema.parse(await request.json());
+  const json = await request.json();
+  const parsed = insertExerciseSchema.parse(json);
+  const { force } = CreateOptionsSchema.parse(json);
+
+  // Duplicate guard: a name that confidently matches an existing catalog row is
+  // rejected with the match so the caller can reuse it (or re-POST with
+  // force:true to create deliberately). Keeps every creation path — the manual
+  // dialog AND FitBot's reconcile-on-Start — from fragmenting history across
+  // near-duplicate rows.
+  if (!force) {
+    const catalog = await db
+      .select({ id: exercises.id, name: exercises.name })
+      .from(exercises);
+    const match = matchExercise(parsed.name, catalog);
+    if (match) {
+      return new Response(
+        JSON.stringify({
+          error: "duplicate",
+          message: `An exercise like this already exists: ${match.name}`,
+          match,
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      );
+    }
+  }
 
   const [created] = await db
     .insert(exercises)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSettings } from "@/components/SettingsProvider";
+import { nameMatchScore, DEFAULT_MATCH_THRESHOLD } from "@/lib/exercise-match";
 
 export type ExerciseType = "weight_reps" | "distance_time";
 
@@ -41,6 +42,8 @@ interface AddExerciseDialogProps {
   isPending?: boolean;
   initialData?: ExerciseFormData | null;
   mode?: "add" | "edit";
+  /** Existing catalog, for the live similar-name hint (dup prevention). */
+  library?: Array<{ id: string; name: string }>;
 }
 
 export function AddExerciseDialog({
@@ -50,6 +53,7 @@ export function AddExerciseDialog({
   isPending = false,
   initialData = null,
   mode = "add",
+  library = [],
 }: AddExerciseDialogProps) {
   const { muscleGroups } = useSettings();
   const [name, setName] = useState("");
@@ -106,6 +110,21 @@ export function AddExerciseDialog({
   const isValid = name && selectedMuscleGroups.length > 0;
   const isEditMode = mode === "edit";
 
+  // Live duplicate hint: surface the closest existing names while typing so
+  // the user picks the library exercise instead of minting a near-duplicate.
+  // (The API's duplicate guard is the backstop; this is the friendly nudge.)
+  const similar = useMemo(() => {
+    const q = name.trim();
+    if (q.length < 3) return [] as Array<{ name: string; score: number }>;
+    return library
+      .filter((e) => e.id !== initialData?.id)
+      .map((e) => ({ name: e.name, score: nameMatchScore(q, e.name) }))
+      .filter((e) => e.score >= 0.6)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }, [name, library, initialData?.id]);
+  const strongDuplicate = similar.length > 0 && similar[0].score >= DEFAULT_MATCH_THRESHOLD;
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
@@ -128,6 +147,16 @@ export function AddExerciseDialog({
               onChange={(e) => setName(e.target.value)}
               data-testid="input-exercise-name"
             />
+            {similar.length > 0 && (
+              <p
+                className={`text-xs ${strongDuplicate ? "text-primary" : "text-muted-foreground"}`}
+                data-testid="text-similar-exercises"
+              >
+                {strongDuplicate
+                  ? `Already in the library: ${similar[0].name}`
+                  : `Similar: ${similar.map((s) => s.name).join(", ")}`}
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
