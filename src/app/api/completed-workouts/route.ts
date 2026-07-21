@@ -55,9 +55,45 @@ const PostSchema = z.object({
   localDate: z.string().optional(), // accepted but unused server-side; calendar sync deferred to Phase 5b
 });
 
+// True when the error (or its cause chain) is a Postgres unique violation.
+function isUniqueViolation(e: unknown): boolean {
+  let cur = e as { code?: string; cause?: unknown } | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    if (cur.code === "23505") return true;
+    cur = cur.cause as { code?: string; cause?: unknown } | undefined;
+  }
+  return false;
+}
+
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PostSchema.parse(await request.json());
+
+  // Idempotency: the same save retried or double-fired (double-tap, a second
+  // tab/device sharing the active workout - the 2026-07-14 duplicate) must not
+  // insert twice. displayId is client-unique per workout instance and a DB
+  // unique index enforces (user_id, display_id); a repeat save returns the
+  // already-saved row (200) and skips every side effect the first save ran.
+  const findExisting = () =>
+    db
+      .select()
+      .from(completedWorkouts)
+      .where(
+        and(
+          eq(completedWorkouts.userId, user.id),
+          eq(completedWorkouts.displayId, body.displayId),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+  const duplicate = await findExisting();
+  if (duplicate) {
+    return new Response(JSON.stringify(duplicate), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   // Stage 1: parallel reads — scheduled workout (for templateId/routineInstance/
   // stale calendar event), calendar-connected check, and selected calendar id.
@@ -96,23 +132,39 @@ export const POST = handle(async (request: NextRequest) => {
   // transaction — the normalized tables are the sole store, so a failure to
   // write the sets must roll the whole save back (the request then 500s and the
   // client retries) rather than persist a workout with no sets.
-  const created = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(completedWorkouts)
-      .values({
-        userId: user.id,
-        templateId,
-        displayId: body.displayId,
-        name: body.name,
-        completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
-        startedAt: body.startedAt ? new Date(body.startedAt) : null,
-        durationSeconds: body.durationSeconds ?? null,
-        routineInstanceId: scheduledRoutineInstanceId,
-      })
-      .returning();
-    await writeNormalizedRows(tx, row.id, body.exercises);
-    return row;
-  });
+  let created;
+  try {
+    created = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(completedWorkouts)
+        .values({
+          userId: user.id,
+          templateId,
+          displayId: body.displayId,
+          name: body.name,
+          completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
+          startedAt: body.startedAt ? new Date(body.startedAt) : null,
+          durationSeconds: body.durationSeconds ?? null,
+          routineInstanceId: scheduledRoutineInstanceId,
+        })
+        .returning();
+      await writeNormalizedRows(tx, row.id, body.exercises);
+      return row;
+    });
+  } catch (e) {
+    // Two truly concurrent saves can both pass the pre-check; the unique index
+    // rejects the loser, which then returns the winner's row.
+    if (isUniqueViolation(e)) {
+      const winner = await findExisting();
+      if (winner) {
+        return new Response(JSON.stringify(winner), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+    }
+    throw e;
+  }
 
   // Stage 2: parallel side effects after the insert succeeds.
   //   - Routine progress increment

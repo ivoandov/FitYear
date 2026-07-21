@@ -127,6 +127,8 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const activeWorkoutRef = useRef<ActiveWorkout | null>(null);
   const trackingProgressRef = useRef<TrackingProgress | null>(null);
   const userRef = useRef(user);
+  // Non-null while a completeWorkout save is in flight (see completeWorkout).
+  const completeInFlightRef = useRef<Promise<string | null> | null>(null);
   
   // Keep refs in sync with state
   useEffect(() => {
@@ -551,6 +553,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
   const completeWorkout = useCallback(async (exerciseSets?: Map<string, SetData[]>): Promise<string | null> => {
     if (!activeWorkout) return null;
+    // In-flight guard: a double-tap on Finish must not fire two saves. The
+    // second caller gets the SAME promise (same workout id), not an error.
+    // The server's (user_id, display_id) idempotency is the hard backstop.
+    if (completeInFlightRef.current) return completeInFlightRef.current;
+    const run = (async (): Promise<string | null> => {
 
     const exercisesWithSets = activeWorkout.exercises.map((exercise) => {
       const sets = exerciseSets?.get(exercise.instanceId);
@@ -622,6 +629,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("[WorkoutContext] completeWorkout failed:", e);
       return null;
+    }
+    })();
+    completeInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      completeInFlightRef.current = null;
     }
   }, [activeWorkout, createCompletedMutation, deleteScheduledWorkoutMutation]);
 

@@ -11,6 +11,7 @@ import {
   real,
   date,
   index,
+  uniqueIndex,
   primaryKey,
   pgSchema,
 } from "drizzle-orm/pg-core";
@@ -146,6 +147,13 @@ export const completedWorkouts = pgTable(
     index("completed_workouts_user_id_completed_at_idx").on(
       t.userId,
       t.completedAt.desc(),
+    ),
+    // Idempotency backstop for the save path: the same client-generated
+    // displayId can only be recorded once per user (see the POST route's
+    // duplicate handling). Applied to prod via scripts/apply-workout-display-unique.ts.
+    uniqueIndex("completed_workouts_user_display_unique").on(
+      t.userId,
+      t.displayId,
     ),
   ],
 );
