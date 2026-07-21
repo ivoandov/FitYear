@@ -939,19 +939,15 @@ export default function WorkoutsPage() {
           })()
         ) : (
           <div className="space-y-4">
-            {/* Empty hero: blank-start CTA + FitBot single-workout entry (→ /fit-bot/workout). */}
-            <div className="relative flex flex-col items-center overflow-hidden rounded-[20px] border border-dashed border-strong bg-card px-6 pb-7 pt-9 text-center">
+            {/* Empty hero, deliberately minimal (Ivo 2026-07-20): icon + blank-start
+                CTA + FitBot single-workout entry (→ /fit-bot/workout). No heading
+                or helper copy. */}
+            <div className="relative flex flex-col items-center overflow-hidden rounded-[20px] border border-dashed border-strong bg-card px-6 pb-6 pt-8 text-center">
               <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-[radial-gradient(120%_80%_at_50%_0%,rgba(229,255,0,0.06),transparent_60%)]" />
               <div className="relative z-10 flex w-full flex-col items-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-dim">
+                <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-primary-dim">
                   <Dumbbell className="h-8 w-8 text-primary" />
                 </div>
-                <h3 className="mb-1.5 text-[20px] font-bold tracking-[-0.01em] text-foreground">
-                  No workout scheduled
-                </h3>
-                <p className="mb-5 max-w-[260px] text-sm leading-relaxed text-muted-foreground">
-                  Start a blank session, or let FitBot build one for you.
-                </p>
                 <button
                   type="button"
                   onClick={() => { startEmptyWorkout(); router.push("/track"); }}
@@ -961,18 +957,11 @@ export default function WorkoutsPage() {
                   <Play className="h-[19px] w-[19px] fill-current" />
                   Start Workout
                 </button>
-                <div className="my-3.5 flex w-full items-center gap-2">
-                  <div className="h-px flex-1 bg-divider" />
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-tertiary-foreground">
-                    Or
-                  </span>
-                  <div className="h-px flex-1 bg-divider" />
-                </div>
                 <button
                   type="button"
                   onClick={() => router.push("/fit-bot/workout")}
                   data-testid="button-fitbot-entry"
-                  className="flex h-[52px] w-full items-center gap-2.5 rounded-[14px] border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
+                  className="mt-3 flex h-[52px] w-full items-center gap-2.5 rounded-[14px] border-[1.5px] border-yellow bg-primary-dim px-4 text-left"
                 >
                   <Sparkles className="h-[18px] w-[18px] shrink-0 text-primary" />
                   <span className="flex-1 text-sm text-muted-foreground">Describe your workout…</span>
