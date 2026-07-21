@@ -438,8 +438,8 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const updateCompletedMutation = useMutation({
-    mutationFn: async ({ id, name, exercises, completedAt }: { id: string; name: string; exercises?: any[]; completedAt?: string }) => {
-      return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt });
+    mutationFn: async ({ id, name, exercises, completedAt, localDate }: { id: string; name: string; exercises?: any[]; completedAt?: string; localDate?: string }) => {
+      return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt, localDate });
     },
     onSuccess: (_, variables) => {
       queryClient.setQueryData(["/api/completed-workouts"], (oldData: any[] | undefined) => {
@@ -656,7 +656,10 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: any[], completedAt?: Date): Promise<boolean> => {
     try {
       const completedAtStr = completedAt ? completedAt.toISOString() : undefined;
-      await updateCompletedMutation.mutateAsync({ id, name, exercises, completedAt: completedAtStr });
+      // Local calendar day alongside the UTC timestamp, so the server moves the
+      // all-day Google Calendar event to the day the user actually picked.
+      const localDate = completedAt ? localDateKey(completedAt) : undefined;
+      await updateCompletedMutation.mutateAsync({ id, name, exercises, completedAt: completedAtStr, localDate });
       return true;
     } catch (error) {
       console.error("Failed to update completed workout:", error);
