@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
@@ -10,6 +10,14 @@ import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
+import {
+  COARSE_MUSCLE_GROUPS,
+  SPECIFICS_BY_COARSE,
+  expandMuscleLabel,
+  resolveMuscle,
+  type CoarseGroup,
+} from "@/lib/muscle-groups";
+import { cn } from "@/lib/utils";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
@@ -43,7 +51,7 @@ function isWithinRange(date: Date, start: Date, end: Date): boolean {
 
 export default function HistoryPage() {
   const { completedWorkouts } = useWorkout();
-  const { weekStart: weekStartDay, muscleGroups } = useSettings();
+  const { weekStart: weekStartDay } = useSettings();
   const { enrichExercise } = useExerciseDetails();
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<ExerciseGoal | null>(null);
@@ -149,29 +157,65 @@ export default function HistoryPage() {
   const totalVolume = historyData.reduce((sum, w) => sum + w.totalVolume, 0);
   const totalSetsCompleted = historyData.reduce((sum, w) => sum + w.totalSets, 0);
 
+  // Sets this week rolled up to the COARSE taxonomy (the main groups are the
+  // default view; a persisted Detailed toggle expands each group into its
+  // observed specifics - mirrors the exercise-picker MuscleFilterChips model).
+  // Unmatched muscle strings quarantine (dropped), per the taxonomy rules.
   const weeklySetsByMuscleGroup = useMemo(() => {
-    const setsByMuscle: { [key: string]: number } = {};
+    const coarseSets = new Map<CoarseGroup, number>();
+    const specificSets = new Map<CoarseGroup, Map<string, number>>();
 
     historyData.forEach((workout) => {
-      if (isWithinRange(workout.date, last7DaysStart, todayEnd)) {
-        workout.exercises?.forEach((exercise) => {
-          const setCount = exercise.sets?.filter((s: any) =>
-            (s.weight != null && s.reps) || (s.distance && s.time) || s.completed
-          ).length || 0;
-          exercise.muscleGroups?.forEach((muscle: string) => {
-            setsByMuscle[muscle] = (setsByMuscle[muscle] || 0) + setCount;
+      if (!isWithinRange(workout.date, last7DaysStart, todayEnd)) return;
+      workout.exercises?.forEach((exercise) => {
+        const setCount = exercise.sets?.filter((s: any) =>
+          (s.weight != null && s.reps) || (s.distance && s.time) || s.completed
+        ).length || 0;
+        exercise.muscleGroups?.forEach((muscle: string) => {
+          // Expand nested tags first, then resolve; count each raw tag's
+          // coarse group ONCE even if it expands to several specifics.
+          const resolved = expandMuscleLabel(muscle)
+            .map(resolveMuscle)
+            .filter((r): r is NonNullable<ReturnType<typeof resolveMuscle>> => r !== null);
+          const touchedCoarse = new Set(resolved.map((r) => r.coarse));
+          touchedCoarse.forEach((c) => {
+            coarseSets.set(c, (coarseSets.get(c) || 0) + setCount);
+          });
+          resolved.forEach((r) => {
+            if (r.label === r.coarse) return;
+            if (!specificSets.has(r.coarse)) specificSets.set(r.coarse, new Map());
+            const m = specificSets.get(r.coarse)!;
+            m.set(r.label, (m.get(r.label) || 0) + setCount);
           });
         });
-      }
+      });
     });
 
-    const allMuscleGroups = new Set([...muscleGroups, ...Object.keys(setsByMuscle)]);
-    return Array.from(allMuscleGroups).map((muscle) => ({
-      muscleGroup: muscle,
-      sets: setsByMuscle[muscle] || 0,
+    return COARSE_MUSCLE_GROUPS.map((coarse) => ({
+      muscleGroup: coarse as string,
+      sets: coarseSets.get(coarse) || 0,
       maxSets: 20,
+      // Observed specifics in the taxonomy's canonical order.
+      specifics: SPECIFICS_BY_COARSE[coarse]
+        .filter((s) => specificSets.get(coarse)?.has(s))
+        .map((s) => ({ label: s, sets: specificSets.get(coarse)!.get(s)! })),
     }));
-  }, [historyData, last7DaysStart, todayEnd, muscleGroups]);
+  }, [historyData, last7DaysStart, todayEnd]);
+
+  // Persisted Groups/Detailed view for the by-muscle card (own key, same
+  // pattern as the picker's fy-picker-detailed).
+  const [muscleDetailed, setMuscleDetailed] = useState(false);
+  useEffect(() => {
+    setMuscleDetailed(localStorage.getItem("fy-history-muscle-detailed") === "1");
+  }, []);
+  const toggleMuscleDetailed = (d: boolean) => {
+    setMuscleDetailed(d);
+    try {
+      localStorage.setItem("fy-history-muscle-detailed", d ? "1" : "0");
+    } catch {
+      /* private mode - non-fatal */
+    }
+  };
 
   // Calculate rolling 7-day reps per exercise for goals (weekly progress)
   const goalProgress = useMemo(() => {
@@ -359,10 +403,32 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        {/* Sets this week · by muscle */}
+        {/* Sets this week · by muscle. Coarse groups by default; the Detailed
+            toggle (picker-style segmented control) expands each group's
+            observed specifics as compact sub-rows. */}
         <div className="card-elevated p-5">
-          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-            Sets this week · by muscle
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+              Sets this week · by muscle
+            </div>
+            <div className="inline-flex rounded-lg border p-0.5 font-mono text-[10px]">
+              <button
+                type="button"
+                onClick={() => toggleMuscleDetailed(false)}
+                className={cn("rounded-md px-2 py-1 transition-colors", !muscleDetailed ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground")}
+                data-testid="history-muscle-view-groups"
+              >
+                Groups
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleMuscleDetailed(true)}
+                className={cn("rounded-md px-2 py-1 transition-colors", muscleDetailed ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground")}
+                data-testid="history-muscle-view-detailed"
+              >
+                Detailed
+              </button>
+            </div>
           </div>
           <div className="space-y-3.5">
             {weeklySetsByMuscleGroup.map((group) => (
@@ -380,6 +446,18 @@ export default function HistoryPage() {
                   className={`${BAR_HEIGHT} ${BAR_TRACK}`}
                   data-testid={`progress-${group.muscleGroup.toLowerCase()}`}
                 />
+                {muscleDetailed && group.specifics.length > 0 && (
+                  <div className="ml-0.5 mt-1.5 space-y-1 border-l border-divider pl-3">
+                    {group.specifics.map((s) => (
+                      <div key={s.label} className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground" data-testid={`text-muscle-spec-${s.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>
+                          {s.label}
+                        </span>
+                        <span className="font-mono text-[11px] text-tertiary-foreground">{s.sets}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
