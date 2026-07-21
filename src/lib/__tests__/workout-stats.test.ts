@@ -4,6 +4,8 @@ import {
   detectPRs,
   summarizeWorkout,
   calcStreak,
+  isRepTotalExercise,
+  totalCompletedReps,
   type SetData,
   type ExerciseInWorkout,
 } from "@/lib/workout-stats";
@@ -155,5 +157,62 @@ describe("calcStreak", () => {
 
   it("dedupes multiple workouts on the same day", () => {
     expect(calcStreak([daysAgo(1), daysAgo(1), daysAgo(2)])).toBe(2);
+  });
+});
+
+describe("isRepTotalExercise", () => {
+  it("matches every pull-up / push-up naming variant in the catalog", () => {
+    for (const name of ["Pull-ups", "Pull Ups Assisted", "Pushups", "Knee Pushups", "pull up", "Push-Ups"]) {
+      expect(isRepTotalExercise(name), name).toBe(true);
+    }
+  });
+
+  it("does not match pulldowns, push downs, pull-aparts, or pull-throughs", () => {
+    for (const name of [
+      "Lat Pulldown",
+      "Cable lat pull down",
+      "Lat Pushdown",
+      "Bar Push Downs",
+      "Cable Push Down",
+      "Band Pull-Apart",
+      "Cable Pull-Through",
+      "Face Pulls",
+      "Bench Press",
+    ]) {
+      expect(isRepTotalExercise(name), name).toBe(false);
+    }
+  });
+
+  it("handles empty and missing names", () => {
+    expect(isRepTotalExercise("")).toBe(false);
+    expect(isRepTotalExercise(null)).toBe(false);
+    expect(isRepTotalExercise(undefined)).toBe(false);
+  });
+});
+
+describe("totalCompletedReps", () => {
+  it("sums reps of completed sets only, treating null reps as 0", () => {
+    const lists: SetData[][] = [
+      [
+        set({ reps: 10, completed: true }),
+        set({ reps: 8, completed: true }),
+        set({ reps: 12, completed: false }),
+        set({ reps: null, completed: true }),
+      ],
+    ];
+    expect(totalCompletedReps(lists)).toBe(18);
+  });
+
+  it("sums across multiple instances of the exercise", () => {
+    const lists: SetData[][] = [
+      [set({ reps: 10, completed: true })],
+      [set({ reps: 5, completed: true }), set({ reps: 6, completed: true })],
+    ];
+    expect(totalCompletedReps(lists)).toBe(21);
+  });
+
+  it("returns 0 for no lists or nothing completed", () => {
+    expect(totalCompletedReps([])).toBe(0);
+    expect(totalCompletedReps([[set({ reps: 12, completed: false })]])).toBe(0);
   });
 });

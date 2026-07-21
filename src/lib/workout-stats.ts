@@ -112,6 +112,33 @@ export function deriveWorkoutName(
   return top.join(" & ");
 }
 
+/**
+ * True when an exercise is a pull-up / push-up movement in any naming variant
+ * ("Pull-ups", "Pull Ups Assisted", "Pushups", "Knee Pushups") — the high-rep
+ * bodyweight lifts where a running session total is meaningful, so the Track
+ * screen shows a live total-reps counter for them. Deliberately does NOT match
+ * pulldowns, push downs, pull-aparts, or pull-throughs.
+ */
+export function isRepTotalExercise(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const norm = name.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  return /\bpull ?ups?\b|\bpush ?ups?\b/.test(norm);
+}
+
+/**
+ * Total reps across every COMPLETED set in the given set lists (one list per
+ * exercise instance). Uncompleted rows and null reps count 0.
+ */
+export function totalCompletedReps(setLists: SetData[][]): number {
+  let total = 0;
+  for (const sets of setLists) {
+    for (const s of sets) {
+      if (s.completed) total += s.reps ?? 0;
+    }
+  }
+  return total;
+}
+
 export function formatDuration(seconds: number | null): string {
   if (seconds == null) return "—";
   const h = Math.floor(seconds / 3600);

@@ -29,7 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Exercise } from "@/lib/db/schema";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { convertWeight, lbsToDisplay, displayToLbs } from "@/lib/units";
-import { type SetData } from "@/lib/workout-stats";
+import { type SetData, isRepTotalExercise, totalCompletedReps } from "@/lib/workout-stats";
 import {
   getLastRecordedValues as getLastRecordedValuesHelper,
   getDefaultSets as getDefaultSetsHelper,
@@ -382,6 +382,24 @@ export default function TrackPage() {
       prefillReps: last.reps,
       text: `target ${fromLbs(s.suggestedWeightLbs)}${assist} × ${s.suggestedReps}`,
     };
+  })();
+
+  // Live total-reps counter for pull-up / push-up movements: sums completed
+  // reps across EVERY instance of this exercise in the session (normally one),
+  // recomputed on each render so it climbs as sets are checked or edited.
+  // null = not a rep-total exercise, render nothing.
+  const repTotal = (() => {
+    const ex = currentExercise as any;
+    if (!ex || ex.exerciseType === "distance_time" || !isRepTotalExercise(ex.name)) return null;
+    const lists: SetData[][] = [];
+    for (const we of activeWorkout.exercises as any[]) {
+      if (we.id !== ex.id) continue;
+      // The current instance reads the live `sets` (fresher than the map before
+      // its first state write); other instances read their tracked state.
+      const list = we.instanceId === ex.instanceId ? sets : exerciseSets.get(we.instanceId);
+      if (list) lists.push(list);
+    }
+    return totalCompletedReps(lists);
   })();
 
   // Copy weight+reps from a completed set into the next uncompleted set (if still empty)
@@ -783,6 +801,17 @@ export default function TrackPage() {
                 groups={currentExercise.muscleGroups ?? []}
                 className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
               />
+              {repTotal !== null && (
+                <div
+                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
+                  data-testid="text-rep-total"
+                >
+                  Total reps{" "}
+                  <span className="font-semibold text-primary" data-testid="text-rep-total-value">
+                    {repTotal}
+                  </span>
+                </div>
+              )}
             </div>
             <Button
               variant="outline"
