@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { clientTimeZone } from "@/lib/date";
 import { TrendingUp, Dumbbell, Flame } from "lucide-react";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useSettings } from "@/components/SettingsProvider";
@@ -23,19 +24,22 @@ interface MuscleVolumeTrend {
 export default function InsightsPage() {
   const { weekStart } = useSettings();
 
+  // Day/week bucketing happens in SQL, so it needs the viewer's zone.
+  const tz = clientTimeZone();
+
   const { data: settings } = useQuery<{ weightUnit?: WeightUnit }>({
     queryKey: ["/api/user-settings"],
   });
   const weightUnit: WeightUnit = settings?.weightUnit ?? "lbs";
 
   const { data: e1rm, isPending: e1rmLoading } = useQuery<E1rmTrend>({
-    queryKey: ["/api/analytics/est-1rm-trend"],
+    queryKey: [`/api/analytics/est-1rm-trend?tz=${encodeURIComponent(tz)}`],
   });
   const { data: muscle, isPending: muscleLoading } = useQuery<MuscleVolumeTrend>({
-    queryKey: ["/api/analytics/muscle-volume-trend"],
+    queryKey: [`/api/analytics/muscle-volume-trend?tz=${encodeURIComponent(tz)}`],
   });
   const { data: consistency = [], isPending: consistencyLoading } = useQuery<DayCount[]>({
-    queryKey: ["/api/analytics/consistency"],
+    queryKey: [`/api/analytics/consistency?tz=${encodeURIComponent(tz)}`],
   });
 
   const lifts = e1rm?.lifts ?? [];

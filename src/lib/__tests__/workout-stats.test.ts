@@ -216,3 +216,29 @@ describe("totalCompletedReps", () => {
     expect(totalCompletedReps([[set({ reps: 12, completed: false })]])).toBe(0);
   });
 });
+
+describe("summarizeWorkout counting", () => {
+  it("counts only completed sets and only exercises that were trained", () => {
+    const summary = summarizeWorkout({
+      exercises: [
+        ex({
+          muscleGroups: ["Chest"],
+          setsData: [
+            set({ weight: 100, reps: 10, completed: true }),
+            // Abandoned row carrying prefilled values - must not count.
+            set({ weight: 100, reps: 10, completed: false }),
+          ],
+        }),
+        // Opened but never logged: not a trained exercise.
+        ex({ muscleGroups: ["Back"], setsData: [set({ weight: 50, reps: 5 })] }),
+      ],
+      completedAt: new Date(),
+      startedAt: null,
+      durationSeconds: 600,
+    });
+    expect(summary.totalSets).toBe(1);
+    expect(summary.totalVolumeLbs).toBe(1000);
+    expect(summary.exerciseCount).toBe(1);
+    expect(summary.muscleGroups.get("Back")).toBeUndefined();
+  });
+});

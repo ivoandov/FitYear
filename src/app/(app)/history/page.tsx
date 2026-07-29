@@ -22,7 +22,7 @@ import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { GoalDialog } from "@/components/GoalDialog";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { VolumeTrendChart, type VolumePoint } from "@/components/VolumeTrendChart";
-import { localDateKey } from "@/lib/date";
+import { clientTimeZone, localDateKey } from "@/lib/date";
 import { lbsToDisplay } from "@/lib/units";
 import type { ExerciseGoal } from "@/lib/db/schema";
 
@@ -81,7 +81,7 @@ export default function HistoryPage() {
   // Phase-4 analytics (SQL over the normalized tables): weekly volume trend +
   // all-time per-exercise records (server-side PR detection).
   const { data: volumeTrend = [] } = useQuery<VolumePoint[]>({
-    queryKey: ["/api/analytics/volume-trend"],
+    queryKey: [`/api/analytics/volume-trend?tz=${encodeURIComponent(clientTimeZone())}`],
   });
   const { data: records = [] } = useQuery<RecordRow[]>({
     queryKey: ["/api/analytics/records?limit=8"],
@@ -94,14 +94,18 @@ export default function HistoryPage() {
     const exercises = workout.exercises.map((ex: any) => {
       const enrichedEx = enrichExercise({ ...ex, id: ex.id || "" });
       const sets = ex.setsData || [];
+      // COMPLETED sets only. The old `hasData || completed` predicate also
+      // counted abandoned rows, which are rarely empty: row 0 is prefilled from
+      // history and completing a set copies its weight/reps into the next row.
+      // That inflated History's sets and volume well above what the
+      // workout-complete screen and the analytics endpoints report for the
+      // same session (both of which gate on `completed`).
       sets.forEach((set: any) => {
-        const hasData = (set.weight != null && set.reps) || (set.distance && set.time);
-        if (hasData || set.completed) {
-          if (set.weight != null && set.reps) {
-            workoutVolume += set.weight * set.reps;
-          }
-          totalSets++;
+        if (!set.completed) return;
+        if (set.weight != null && set.reps) {
+          workoutVolume += set.weight * set.reps;
         }
+        totalSets++;
       });
       return {
         id: enrichedEx.id,
@@ -118,7 +122,10 @@ export default function HistoryPage() {
       workoutName: workout.name,
       date: workout.completedAt,
       duration: 0,
-      exerciseCount: workout.exercises.length,
+      // Trained exercises only, to match the set/volume totals beside it.
+      exerciseCount: exercises.filter((ex) =>
+        (ex.sets ?? []).some((s: any) => s.completed),
+      ).length,
       totalVolume: workoutVolume,
       totalSets,
       exercises,
@@ -168,25 +175,34 @@ export default function HistoryPage() {
     historyData.forEach((workout) => {
       if (!isWithinRange(workout.date, last7DaysStart, todayEnd)) return;
       workout.exercises?.forEach((exercise) => {
-        const setCount = exercise.sets?.filter((s: any) =>
-          (s.weight != null && s.reps) || (s.distance && s.time) || s.completed
-        ).length || 0;
-        exercise.muscleGroups?.forEach((muscle: string) => {
-          // Expand nested tags first, then resolve; count each raw tag's
-          // coarse group ONCE even if it expands to several specifics.
-          const resolved = expandMuscleLabel(muscle)
-            .map(resolveMuscle)
-            .filter((r): r is NonNullable<ReturnType<typeof resolveMuscle>> => r !== null);
-          const touchedCoarse = new Set(resolved.map((r) => r.coarse));
-          touchedCoarse.forEach((c) => {
-            coarseSets.set(c, (coarseSets.get(c) || 0) + setCount);
-          });
-          resolved.forEach((r) => {
-            if (r.label === r.coarse) return;
-            if (!specificSets.has(r.coarse)) specificSets.set(r.coarse, new Map());
-            const m = specificSets.get(r.coarse)!;
-            m.set(r.label, (m.get(r.label) || 0) + setCount);
-          });
+        const setCount = exercise.sets?.filter((s: any) => s.completed).length || 0;
+        if (setCount === 0) return;
+
+        // Resolve ALL of the exercise's tags first, then credit each distinct
+        // coarse group once. Deduping per-tag (as this did) still triple-counted
+        // a lunge tagged Quads + Glutes + Hamstrings, since all three roll up to
+        // Legs: 3 sets read as 9.
+        const resolved: { label: string; coarse: CoarseGroup }[] = [];
+        for (const muscle of (exercise.muscleGroups ?? []) as string[]) {
+          for (const part of expandMuscleLabel(muscle)) {
+            const r = resolveMuscle(part);
+            if (r) resolved.push(r);
+          }
+        }
+
+        new Set(resolved.map((r) => r.coarse)).forEach((c) => {
+          coarseSets.set(c, (coarseSets.get(c) || 0) + setCount);
+        });
+        // Specifics are distinct muscles, so each still counts once.
+        const seenSpecifics = new Set<string>();
+        resolved.forEach((r) => {
+          if (r.label === r.coarse) return;
+          const key = `${r.coarse}|${r.label}`;
+          if (seenSpecifics.has(key)) return;
+          seenSpecifics.add(key);
+          if (!specificSets.has(r.coarse)) specificSets.set(r.coarse, new Map());
+          const m = specificSets.get(r.coarse)!;
+          m.set(r.label, (m.get(r.label) || 0) + setCount);
         });
       });
     });

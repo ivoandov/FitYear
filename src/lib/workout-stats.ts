@@ -76,7 +76,12 @@ export function summarizeWorkout(
     durationSeconds,
     totalSets,
     totalVolumeLbs: totalVolume,
-    exerciseCount: exercises.length,
+    // Exercises actually TRAINED. Counting every row meant a workout where you
+    // opened 9 exercises but logged 5 reported "Exercises 9" next to a set
+    // count that only included the 5.
+    exerciseCount: exercises.filter((ex) =>
+      (ex.setsData ?? []).some((s) => s.completed),
+    ).length,
     muscleGroups,
   };
 }

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { parseTimeZone } from "@/lib/api/timezone";
 
 // Weekly total training volume (sum of weight_lbs * reps over COMPLETED sets)
 // for the last N weeks, aggregated in SQL from the normalized workout tables
@@ -13,6 +14,8 @@ import { handle } from "@/lib/api/handler";
 // Volume is returned in lbs (DB units); the client converts to the user's unit.
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
+  // Bucket days/weeks in the VIEWER's zone, not UTC (see lib/api/timezone).
+  const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
   const weeks = Math.min(
     26,
     Math.max(4, Number(request.nextUrl.searchParams.get("weeks") ?? "12")),
@@ -20,7 +23,7 @@ export const GET = handle(async (request: NextRequest) => {
 
   const result = await db.execute(sql`
     with anchor as (
-      select date_trunc('week', now()::timestamp) as this_week
+      select date_trunc('week', (now() at time zone ${tz})) as this_week
     ),
     weeks as (
       select generate_series(
@@ -31,7 +34,7 @@ export const GET = handle(async (request: NextRequest) => {
     ),
     vol as (
       select
-        date_trunc('week', cw.completed_at)::timestamp as week_start,
+        date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp as week_start,
         sum(ws.weight_lbs * ws.reps) as volume_lbs,
         count(ws.id) as sets,
         count(distinct cw.id) as workouts

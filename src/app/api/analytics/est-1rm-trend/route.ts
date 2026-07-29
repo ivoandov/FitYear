@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { parseTimeZone } from "@/lib/api/timezone";
 
 // Cross-lift estimated-1RM trend: for the user's most-trained lifts, the weekly
 // best Epley 1RM (weight_lbs * (1 + reps/30)) over the last N weeks, aggregated
@@ -13,6 +14,8 @@ import { handle } from "@/lib/api/handler";
 // gap). Weights returned in lbs (DB units); the client converts.
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
+  // Bucket days/weeks in the VIEWER's zone, not UTC (see lib/api/timezone).
+  const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
   const weeks = Math.min(
     26,
     Math.max(4, Number(request.nextUrl.searchParams.get("weeks") ?? "12")),
@@ -24,7 +27,7 @@ export const GET = handle(async (request: NextRequest) => {
 
   // 1. Canonical Monday-start week axis (matches date_trunc('week')).
   const axisResult = await db.execute(sql`
-    with anchor as (select date_trunc('week', now()::timestamp) as this_week)
+    with anchor as (select date_trunc('week', (now() at time zone ${tz})) as this_week)
     select to_char(gs::timestamp, 'YYYY-MM-DD') as week_start
     from generate_series(
       (select this_week from anchor) - ((${weeks}::int - 1) * interval '1 week'),
@@ -42,7 +45,7 @@ export const GET = handle(async (request: NextRequest) => {
       select
         we.exercise_id as exercise_id,
         we.name_snapshot as name,
-        date_trunc('week', cw.completed_at)::timestamp as week_start,
+        date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp as week_start,
         cw.completed_at as completed_at,
         ws.weight_lbs * (1 + ws.reps::float8 / 30) as e1rm
       from completed_workouts cw
@@ -53,7 +56,7 @@ export const GET = handle(async (request: NextRequest) => {
         and ws.completed = true
         and ws.weight_lbs > 0
         and ws.reps > 0
-        and cw.completed_at >= date_trunc('week', now()::timestamp) - ((${weeks}::int - 1) * interval '1 week')
+        and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= date_trunc('week', (now() at time zone ${tz})) - ((${weeks}::int - 1) * interval '1 week')
     ),
     top_lifts as (
       select exercise_id

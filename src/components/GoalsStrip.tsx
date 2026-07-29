@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { localDateKey } from "@/lib/date";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { startOfWeek, isAfter, isSameDay, addDays, format } from "date-fns";
 import { Check } from "lucide-react";
@@ -59,9 +60,15 @@ export function GoalsStrip() {
   const weekStartDate = startOfWeek(new Date(), {
     weekStartsOn: weekStart === "monday" ? 1 : 0,
   });
-  const completedThisWeek = completedWorkouts.filter((w) =>
-    isAfter(w.completedAt, weekStartDate),
-  ).length;
+  // Distinct DAYS trained, not sessions: the label reads "N / M days" and the
+  // day cells below count days, so two sessions on one Tuesday used to render
+  // "2 / 4 days" with a single cell filled - and a 4-day goal could be "hit" in
+  // two days.
+  const completedThisWeek = new Set(
+    completedWorkouts
+      .filter((w) => isAfter(w.completedAt, weekStartDate))
+      .map((w) => localDateKey(new Date(w.completedAt))),
+  ).size;
 
   const today = new Date();
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -75,7 +82,12 @@ export function GoalsStrip() {
     };
   });
 
-  const totalDays = activeRoutine?.durationDays ?? programLength ?? 0;
+  // Progress is workouts-done over workouts-PLANNED. It used to divide by
+  // durationDays (calendar length), so a 30-day / 18-workout program showed
+  // "18 / 30" at 60% when every session was done and could never reach 100%.
+  // `totalWorkouts` is written at routine start from the non-rest entries.
+  const totalDays =
+    activeRoutine?.totalWorkouts || activeRoutine?.durationDays || programLength || 0;
   const dayNumber = activeRoutine
     ? activeRoutine.completedWorkouts + 1
     : null;

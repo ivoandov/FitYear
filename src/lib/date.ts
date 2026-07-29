@@ -31,6 +31,20 @@ export function parseServerDate(iso: string | Date): Date {
  * "YYYY-MM-DD" from LOCAL getters — the app-wide day key. Accepts a Date or a
  * server timestamp string (parsed via parseServerDate first).
  */
+/**
+ * The viewer's IANA zone, for analytics endpoints that bucket by day/week. The
+ * server stores completed_at as UTC wall clock, so without this the SQL buckets
+ * on UTC days while every client-side date calc uses local days - which put
+ * roughly half of an evening trainer's sessions on the wrong heatmap day.
+ */
+export function clientTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 export function localDateKey(d: Date | string): string {
   const date = typeof d === "string" ? parseServerDate(d) : d;
   const y = date.getFullYear();
