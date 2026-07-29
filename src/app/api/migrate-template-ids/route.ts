@@ -8,6 +8,11 @@ import {
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
+// One sequential UPDATE per unmatched workout, so a large history needs more
+// than the default budget; without this it timed out mid-loop and left the
+// backfill half-applied (it is re-runnable, but silently partial).
+export const maxDuration = 60;
+
 // Backfills templateId on existing scheduled & completed workouts by matching
 // on (lowercased, trimmed) name to the user's templates. Mirrors the Replit
 // "Sync Template History" action used for legacy users whose workouts were

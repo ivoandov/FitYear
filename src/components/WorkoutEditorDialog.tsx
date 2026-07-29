@@ -85,7 +85,13 @@ export function WorkoutEditorDialog({
     setActiveTab("details");
     setShowCalendar(false);
     setMuscleFilter("All");
-  }, [initialData, isOpen]);
+    // Keyed on OPEN, not on `initialData`. Callers pass an inline object
+    // literal (Track builds one containing `new Date()`), so a new identity
+    // arrives on every parent render - and while a rest timer is ticking the
+    // Track page re-renders about once a second. That re-ran this effect and
+    // wiped whatever the user was typing or reordering mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleSave = () => {
     onSave({

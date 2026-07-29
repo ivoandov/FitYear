@@ -15,6 +15,13 @@ const USER_DATA_KEYS = [
   "restTimerOnManualComplete",
   "showKgConversion",
   "weekStart",
+  // Rest-timer state + view prefs: a restored rest (and its scheduled push id)
+  // must not survive a logout into the next account on a shared device.
+  "rest_timer_state_v1",
+  "rest_timer_end_time",
+  "rest_timer_paused_remaining",
+  "fy-picker-detailed",
+  "fy-history-muscle-detailed",
 ];
 
 /**

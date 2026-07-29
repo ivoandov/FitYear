@@ -16,7 +16,7 @@ export const GET = handle(async (request: NextRequest) => {
   const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
   const days = Math.min(
     140,
-    Math.max(28, Number(request.nextUrl.searchParams.get("days") ?? "84")),
+    Math.max(28, Number(request.nextUrl.searchParams.get("days")) || 84),
   );
 
   const result = await db.execute(sql`

@@ -25,34 +25,27 @@ export const PUT = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PutSchema.parse(await request.json());
 
-  const [existing] = await db
-    .select()
-    .from(activeWorkouts)
-    .where(eq(activeWorkouts.userId, user.id))
-    .limit(1);
-
-  if (existing) {
-    const [updated] = await db
-      .update(activeWorkouts)
-      .set({
-        workoutData: body.workoutData,
-        trackingProgress: body.trackingProgress ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(activeWorkouts.userId, user.id))
-      .returning();
-    return updated;
-  }
-
-  const [created] = await db
+  // Single upsert on the unique user_id. The old SELECT-then-INSERT raced
+  // itself: the debounced autosave and the visibilitychange/beforeunload
+  // keepalive save can both find no row on a workout's FIRST save, and the
+  // loser hit the unique index -> 500, swallowed by the client's .catch().
+  const [saved] = await db
     .insert(activeWorkouts)
     .values({
       userId: user.id,
       workoutData: body.workoutData,
       trackingProgress: body.trackingProgress ?? null,
     })
+    .onConflictDoUpdate({
+      target: activeWorkouts.userId,
+      set: {
+        workoutData: body.workoutData,
+        trackingProgress: body.trackingProgress ?? null,
+        updatedAt: new Date(),
+      },
+    })
     .returning();
-  return created;
+  return saved;
 });
 
 export const DELETE = handle(async () => {

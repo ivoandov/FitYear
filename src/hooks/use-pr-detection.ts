@@ -104,9 +104,16 @@ export function usePrDetection(
       const fmt = (lbs: number) => `${lbsToDisplay(lbs, weightUnit)} ${weightUnit}`;
 
       let isPr = false;
+      // Tolerance, because lbs -> kg -> lbs is not exactly idempotent: both
+      // conversions round to 1 decimal, so re-logging an unchanged prefilled
+      // 100 lb set as a kg user comes back as 100.1 and used to fire a phantom
+      // "new PR" (and the inverse on assisted lifts, where lower is better).
+      // A real plate change is at least 1 lb / 0.5 kg.
+      const PR_EPSILON_LBS = 0.25;
       const isWeightPr = assisted
-        ? runningBestWeight === Number.POSITIVE_INFINITY || setWeightLbs < runningBestWeight
-        : setWeightLbs > runningBestWeight;
+        ? runningBestWeight === Number.POSITIVE_INFINITY ||
+          setWeightLbs < runningBestWeight - PR_EPSILON_LBS
+        : setWeightLbs > runningBestWeight + PR_EPSILON_LBS;
       if (isWeightPr) {
         isPr = true;
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
@@ -120,7 +127,7 @@ export function usePrDetection(
         });
       }
       // Volume PR only meaningful for non-assisted exercises
-      if (!assisted && volume > runningMaxVolume) {
+      if (!assisted && volume > runningMaxVolume + PR_EPSILON_LBS) {
         isPr = true;
         toast({
           title: `⭐ ${exerciseName} — new volume PR!`,

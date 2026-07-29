@@ -26,6 +26,17 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   }
   const objectName = segments.join("/");
 
+  // This route is deliberately UNAUTHENTICATED: exercise thumbnails go through
+  // next/image, whose optimizer fetches the source server-side with no session
+  // cookie, so requiring auth here would break every image in the app. Instead,
+  // constrain WHAT it can hand out: only the exercise-image prefix, and no path
+  // traversal. Without this it would mint a signed read URL for any object name
+  // in the bucket - harmless while the bucket holds only exercise images, but a
+  // real leak the moment anything else lands there.
+  if (!objectName.startsWith("exercises/") || objectName.includes("..")) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
   try {
     const url = await getSignedReadUrl(objectName, 3600);
     if (!url) {

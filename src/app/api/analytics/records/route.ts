@@ -16,7 +16,7 @@ export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const limit = Math.min(
     24,
-    Math.max(1, Number(request.nextUrl.searchParams.get("limit") ?? "8")),
+    Math.max(1, Number(request.nextUrl.searchParams.get("limit")) || 8),
   );
 
   const result = await db.execute(sql`

@@ -9,7 +9,7 @@ import { handle } from "@/lib/api/handler";
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const limit = Math.min(
-    Number(request.nextUrl.searchParams.get("limit") ?? "5"),
+    Number(request.nextUrl.searchParams.get("limit")) || 5,
     50,
   );
 

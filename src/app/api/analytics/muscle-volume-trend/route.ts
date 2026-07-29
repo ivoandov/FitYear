@@ -24,7 +24,7 @@ export const GET = handle(async (request: NextRequest) => {
   const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
   const weeks = Math.min(
     26,
-    Math.max(4, Number(request.nextUrl.searchParams.get("weeks") ?? "12")),
+    Math.max(4, Number(request.nextUrl.searchParams.get("weeks")) || 12),
   );
 
   const axisResult = await db.execute(sql`
