@@ -39,7 +39,11 @@ const CreateOptionsSchema = z.object({
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const json = await request.json();
-  const parsed = insertExerciseSchema.parse(json);
+  // `name` derives from a text column, so it was unbounded - and it lands in
+  // the SHARED catalog that is pasted into every user's FitBot prompt.
+  const parsed = insertExerciseSchema
+    .extend({ name: z.string().trim().min(1).max(60) })
+    .parse(json);
   const { force } = CreateOptionsSchema.parse(json);
 
   // Duplicate guard: a name that confidently matches an existing catalog row is

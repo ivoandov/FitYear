@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { isUniqueViolation } from "@/lib/api/pg-errors";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -76,7 +77,10 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   // One transaction: the instance and its scheduled workouts must land
   // together. Separately, a failed bulk insert left an ACTIVE instance
   // claiming N workouts with nothing on the calendar.
-  const { instance, createdWorkouts } = await db.transaction(async (tx) => {
+  let instance: typeof routineInstances.$inferSelect;
+  let createdWorkouts: (typeof scheduledWorkouts.$inferSelect)[];
+  try {
+    ({ instance, createdWorkouts } = await db.transaction(async (tx) => {
     const [inst] = await tx
       .insert(routineInstances)
       .values({
@@ -111,8 +115,33 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
       )
       .returning();
 
-    return { instance: inst, createdWorkouts: created };
-  });
+      return { instance: inst, createdWorkouts: created };
+    }));
+  } catch (e) {
+    // The partial unique index (one ACTIVE instance per user+routine) rejected
+    // this one, i.e. a double-tap on Start where both requests cleared the
+    // date-conflict pre-check. Return the instance that won instead of a 500,
+    // so the second tap is a no-op rather than a double-booked program.
+    if (isUniqueViolation(e)) {
+      const [winner] = await db
+        .select()
+        .from(routineInstances)
+        .where(
+          and(
+            eq(routineInstances.userId, user.id),
+            eq(routineInstances.routineId, id),
+            eq(routineInstances.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (winner) {
+        throw new ApiError(409, "This routine is already running", {
+          routineInstanceId: winner.id,
+        });
+      }
+    }
+    throw e;
+  }
 
   // NOTE: Google Calendar event creation deferred to Phase 5b
   return new Response(

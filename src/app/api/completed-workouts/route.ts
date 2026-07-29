@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { isUniqueViolation } from "@/lib/api/pg-errors";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -54,16 +55,6 @@ const PostSchema = z.object({
   templateId: z.string().nullable().optional(),
   localDate: z.string().optional(), // accepted but unused server-side; calendar sync deferred to Phase 5b
 });
-
-// True when the error (or its cause chain) is a Postgres unique violation.
-function isUniqueViolation(e: unknown): boolean {
-  let cur = e as { code?: string; cause?: unknown } | undefined;
-  for (let i = 0; cur && i < 4; i++) {
-    if (cur.code === "23505") return true;
-    cur = cur.cause as { code?: string; cause?: unknown } | undefined;
-  }
-  return false;
-}
 
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();

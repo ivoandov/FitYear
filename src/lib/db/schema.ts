@@ -243,7 +243,16 @@ export const routineInstances = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     completedAt: timestamp("completed_at"),
   },
-  (t) => [index("routine_instances_user_id_idx").on(t.userId)],
+  (t) => [
+    index("routine_instances_user_id_idx").on(t.userId),
+    // One ACTIVE instance per (user, routine): a double-tap on Start used to
+    // pass the date-conflict pre-check twice and double-book the program.
+    // Partial (active only) so re-running a finished routine stays legal.
+    // Applied to prod via scripts/apply-active-routine-unique.ts.
+    uniqueIndex("routine_instances_active_unique")
+      .on(t.userId, t.routineId)
+      .where(sql`status = 'active'`),
+],
 );
 
 export const exerciseGoals = pgTable(

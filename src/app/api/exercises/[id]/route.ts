@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { exercises, insertExerciseSchema } from "@/lib/db/schema";
@@ -18,6 +19,7 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   // handed the row to them.
   const body = insertExerciseSchema
     .omit({ userId: true, isPublic: true })
+    .extend({ name: z.string().trim().min(1).max(60) })
     .partial()
     .parse(await request.json());
   // Same write-path canonicalization as POST (this route was missed when the
