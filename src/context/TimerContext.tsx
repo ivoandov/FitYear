@@ -101,6 +101,10 @@ function scheduleRestPush(restId: string, delaySeconds: number, exerciseName: st
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ restId, delaySeconds: Math.round(delaySeconds), exerciseName }),
+    // The whole point of this request is to arm an alert for a phone that is
+    // about to be locked. Without keepalive, backgrounding the app right after
+    // the tap tears the request down and no alert is ever scheduled.
+    keepalive: true,
   }).catch(() => {});
 }
 
@@ -122,13 +126,31 @@ function requestNotificationPermission() {
 }
 
 function sendTimerCompleteNotification(exerciseName: string) {
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification("Rest Complete", {
-      body: `Time to start your next ${exerciseName} set!`,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      tag: "rest-timer",
-    });
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const options: NotificationOptions = {
+    body: `Time to start your next ${exerciseName} set!`,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: "rest-timer",
+  };
+  // `new Notification()` is an illegal constructor on Android Chrome and in
+  // installed iOS PWAs - the only supported path there is the service worker's
+  // showNotification. Try that first and fall back for desktop browsers that
+  // have no registration.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .getRegistration()
+      .then((registration) => {
+        if (registration) return registration.showNotification("Rest Complete", options);
+        new Notification("Rest Complete", options);
+      })
+      .catch(() => {});
+    return;
+  }
+  try {
+    new Notification("Rest Complete", options);
+  } catch {
+    /* unsupported - the vibrate + on-screen timer are the fallback */
   }
 }
 
@@ -152,6 +174,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Identifies the currently scheduled closed-app push, so it can be cancelled
   // when the rest ends early or finishes while the app is open.
   const restIdRef = useRef<string | null>(null);
+  // Mirrors `isOpen` for the openTimer guard below (state is a render behind).
+  const isOpenRef = useRef(false);
 
   const setMeta = useCallback(
     (opts: { initialSeconds: number; exerciseName: string; nextExerciseName?: string }) => {
@@ -206,10 +230,15 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       hasCompletedRef.current = false;
       const endTime = Date.now() + remainingSecs * 1000;
       endTimeRef.current = endTime;
-      // One id per rest period, reused across pause/resume so re-arming
-      // replaces the pending alert instead of stacking a second one.
-      const restId = restIdRef.current ?? crypto.randomUUID();
+      // A NEW id per arming, not per rest period. Re-arming after a pause
+      // leaves the first workflow sleeping, and it would otherwise wake to find
+      // the shared row back at `pending` and fire early (mid-rest) while the
+      // real end-of-rest alert is skipped. Retiring the previous id makes that
+      // stale workflow a no-op.
+      const previousRestId = restIdRef.current;
+      const restId = crypto.randomUUID();
       restIdRef.current = restId;
+      if (previousRestId) cancelRestPush(previousRestId);
       writeState({
         endTime,
         pausedRemaining: null,
@@ -251,6 +280,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     hasCompletedRef.current = false;
     setSeconds(remaining);
     setIsMinimized(true);
+    isOpenRef.current = true;
     setIsOpen(true);
     if (decision.status === "paused") {
       endTimeRef.current = null;
@@ -272,6 +302,15 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       nextExerciseName?: string;
       onClose: () => void;
     }) => {
+      // A rest that already finished is still on screen (the user minimized it
+      // and it ran out). Re-entering /track re-invokes openTimer, and starting
+      // a fresh countdown here would silently begin a rest the user never asked
+      // for AND advance the set pointer when it is dismissed. Keep the finished
+      // timer; just adopt the new close callback.
+      if (isOpenRef.current && hasCompletedRef.current) {
+        onCloseRef.current = opts.onClose;
+        return;
+      }
       clearInterval_();
       hasCompletedRef.current = false;
       endTimeRef.current = null;
@@ -326,6 +365,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         startCounting(opts.initialSeconds);
       }
 
+      isOpenRef.current = true;
+
       setIsOpen(true);
     },
     [clearInterval_, tick, startCounting, setMeta],
@@ -340,6 +381,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     // it doesn't buzz mid-set.
     cancelRestPush(restIdRef.current);
     restIdRef.current = null;
+    isOpenRef.current = false;
     setIsOpen(false);
     setIsMinimized(false);
     setIsPaused(false);
@@ -383,8 +425,18 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (remaining > 0) {
           intervalRef.current = setInterval(tick, 500);
         } else if (endTimeRef.current) {
+          // How long ago the rest actually ended. Returning within the grace
+          // window means the user is still in the set and the alert is useful;
+          // coming back much later (locked the phone, came back 15 minutes
+          // on) must NOT buzz - the closed-app push already covered it, and a
+          // stale "rest complete" is pure noise. Same rule as the mount
+          // rehydrate, which drops an expired rest silently.
+          const endedSecondsAgo = (Date.now() - endTimeRef.current) / 1000;
           clearState();
-          complete();
+          cancelRestPush(restIdRef.current);
+          restIdRef.current = null;
+          if (endedSecondsAgo <= 60) complete();
+          else hasCompletedRef.current = true;
         }
       }
     };
