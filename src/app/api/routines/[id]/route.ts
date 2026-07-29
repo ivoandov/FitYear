@@ -64,26 +64,31 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     update.defaultDurationDays = body.defaultDurationDays;
   if (body.isPublic !== undefined) update.isPublic = body.isPublic;
 
-  const [updated] = await db
-    .update(routines)
-    .set(update)
-    .where(eq(routines.id, id))
-    .returning();
+  // One transaction: the entries are replaced with a delete-then-insert, so a
+  // failure between them (a dropped pooler connection, an oversized program)
+  // used to leave the routine with ZERO entries, unrecoverably.
+  const updated = await db.transaction(async (tx) => {
+    const [row] =
+      Object.keys(update).length > 0
+        ? await tx.update(routines).set(update).where(eq(routines.id, id)).returning()
+        : await tx.select().from(routines).where(eq(routines.id, id)).limit(1);
 
-  if (body.entries) {
-    await db.delete(routineEntries).where(eq(routineEntries.routineId, id));
-    if (body.entries.length) {
-      await db.insert(routineEntries).values(
-        body.entries.map((e) => ({
-          routineId: id,
-          dayIndex: e.dayIndex,
-          workoutTemplateId: e.workoutTemplateId ?? null,
-          workoutName: e.workoutName ?? null,
-          exercises: e.exercises ?? null,
-        })),
-      );
+    if (body.entries) {
+      await tx.delete(routineEntries).where(eq(routineEntries.routineId, id));
+      if (body.entries.length) {
+        await tx.insert(routineEntries).values(
+          body.entries.map((e) => ({
+            routineId: id,
+            dayIndex: e.dayIndex,
+            workoutTemplateId: e.workoutTemplateId ?? null,
+            workoutName: e.workoutName ?? null,
+            exercises: e.exercises ?? null,
+          })),
+        );
+      }
     }
-  }
+    return row;
+  });
 
   const entries = await db
     .select()

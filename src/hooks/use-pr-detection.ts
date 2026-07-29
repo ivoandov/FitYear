@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "@/hooks/use-toast";
-import { displayToLbs, type WeightUnit } from "@/lib/units";
+import { displayToLbs, lbsToDisplay, type WeightUnit } from "@/lib/units";
 import type { SetData } from "@/lib/workout-stats";
 
 interface ExerciseLite {
@@ -99,6 +99,10 @@ export function usePrDetection(
         }
       }
 
+      // PR bests are tracked in lbs (DB units); show them in the user's unit,
+      // otherwise a kg user read "132.3 lbs" next to kg everywhere else.
+      const fmt = (lbs: number) => `${lbsToDisplay(lbs, weightUnit)} ${weightUnit}`;
+
       let isPr = false;
       const isWeightPr = assisted
         ? runningBestWeight === Number.POSITIVE_INFINITY || setWeightLbs < runningBestWeight
@@ -107,12 +111,12 @@ export function usePrDetection(
         isPr = true;
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
           ? "—"
-          : `${runningBestWeight} lbs`;
+          : fmt(runningBestWeight);
         toast({
           title: `🏆 ${exerciseName} — new weight PR!`,
           description: assisted
-            ? `${setWeightLbs} lbs assist (was ${prevLabel}) — less help = harder`
-            : `${setWeightLbs} lbs (was ${prevLabel})`,
+            ? `${fmt(setWeightLbs)} assist (was ${prevLabel}) — less help = harder`
+            : `${fmt(setWeightLbs)} (was ${prevLabel})`,
         });
       }
       // Volume PR only meaningful for non-assisted exercises
@@ -120,7 +124,7 @@ export function usePrDetection(
         isPr = true;
         toast({
           title: `⭐ ${exerciseName} — new volume PR!`,
-          description: `${setWeightLbs} × ${setReps} = ${volume} lbs (was ${runningMaxVolume || "—"})`,
+          description: `${fmt(setWeightLbs)} × ${setReps} = ${fmt(volume)} (was ${runningMaxVolume ? fmt(runningMaxVolume) : "—"})`,
         });
       }
 

@@ -214,7 +214,17 @@ export const POST = handle(async (request: NextRequest) => {
     );
   }
 
-  await Promise.all(sideEffects);
+  // The workout is already committed. A failing side effect (routine counter,
+  // calendar) must NOT turn a successful save into a 500: the client would tell
+  // the user it failed, and the retry hits the idempotency guard and returns
+  // early, so the side effects would never run at all. Log and report instead.
+  const results = await Promise.allSettled(sideEffects);
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.error("[completed-workouts] side effect failed:", r.reason);
+      Sentry.captureException(r.reason);
+    }
+  }
 
   return new Response(JSON.stringify(created), {
     status: 201,

@@ -143,6 +143,17 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     userRef.current = user;
   }, [user]);
 
+  // How much work a saved progress blob actually represents, used to decide
+  // which copy wins when the same workout exists on two devices.
+  const countTrackedSets = (progress: TrackingProgress | null): number => {
+    if (!progress?.exerciseSets) return 0;
+    let n = 0;
+    for (const [, sets] of progress.exerciseSets) {
+      for (const s of sets ?? []) if (s?.completed) n++;
+    }
+    return n;
+  };
+
   // Read the active workout + matching tracking progress from localStorage
   // WITHOUT touching state. localStorage is written synchronously on every
   // change, so it is the freshest copy on this device. Used for the guest path
@@ -204,9 +215,19 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           // lagging/failed server save can never lose the latest sets on reload.
           // Use the server only when local is empty (a fresh device/install) or
           // holds a different workout (one started on another device).
+          // ...EXCEPT when this device has no progress for that workout but the
+          // server does. That is the cross-device case: start on the phone, log
+          // sets on the laptop, reopen the phone. Blindly preferring local then
+          // showed an empty tracker and the next autosave overwrote the
+          // server's sets with nothing.
+          const localSetCount = countTrackedSets(localProgress);
+          const serverSetCount = countTrackedSets(serverProgress);
+          const sameWorkout =
+            !!localWorkout && !!serverWorkout && serverWorkout.displayId === localWorkout.displayId;
           const preferLocal =
             !!localWorkout &&
-            (!serverWorkout || serverWorkout.displayId === localWorkout.displayId);
+            (!serverWorkout || sameWorkout) &&
+            !(sameWorkout && serverSetCount > localSetCount);
 
           if (preferLocal && localWorkout) {
             console.log("[WorkoutContext] Restored from localStorage (freshest copy)");
@@ -244,14 +265,22 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   // Save to localStorage (synchronous, always works)
   const saveToLocalStorage = useCallback((workout: ActiveWorkout | null, progress: TrackingProgress | null) => {
     console.log("[WorkoutContext] Saving to localStorage:", workout?.name || "null");
-    if (workout) {
-      localStorage.setItem(ACTIVE_WORKOUT_STORAGE_KEY, JSON.stringify(workout));
-      if (progress) {
-        localStorage.setItem(TRACKING_STORAGE_KEY, JSON.stringify(progress));
+    // Guarded: this runs inside a render effect, and the React Query cache is
+    // persisted into the same origin bucket, so a quota-exceeded (or disabled
+    // storage) throw here used to escape into the error boundary and kill the
+    // tracking page mid-workout. The server save is the durable copy.
+    try {
+      if (workout) {
+        localStorage.setItem(ACTIVE_WORKOUT_STORAGE_KEY, JSON.stringify(workout));
+        if (progress) {
+          localStorage.setItem(TRACKING_STORAGE_KEY, JSON.stringify(progress));
+        }
+      } else {
+        localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
+        localStorage.removeItem(TRACKING_STORAGE_KEY);
       }
-    } else {
-      localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
-      localStorage.removeItem(TRACKING_STORAGE_KEY);
+    } catch (e) {
+      console.error("[WorkoutContext] localStorage save failed:", e);
     }
   }, []);
 
@@ -469,6 +498,19 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const startWorkout = useCallback((workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => {
+    // Already mid-session on this exact workout (the card stays on Home until
+    // it's completed, so tapping back into it is easy): CONTINUE it. Re-minting
+    // instanceIds here used to strand every logged set - the saved progress is
+    // keyed by instanceId, and for a scheduled workout the displayId is stable,
+    // so the old progress restored against dead keys and the sets vanished from
+    // the UI and saved as zero.
+    if (activeWorkoutRef.current?.displayId === workout.displayId) return;
+
+    // A different workout: the previous session's progress must not leak into
+    // it (same reason - the keys belong to the old instanceIds).
+    trackingProgressRef.current = null;
+    setTrackingProgress(null);
+
     const workoutWithSets: ActiveWorkout = {
       id: workout.id,
       displayId: workout.displayId,

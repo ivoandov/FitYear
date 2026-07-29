@@ -40,6 +40,9 @@ interface ExerciseDetail {
   name: string;
   muscleGroups?: string[];
   exerciseType?: string;
+  // Preserved through an edit so assisted-lift records keep their inverted
+  // (lower weight = better) semantics.
+  isAssisted?: boolean;
   sets: SetDetail[];
   setsData?: SetDetail[];
 }
@@ -139,6 +142,11 @@ export function WorkoutHistoryCard({
       name: ex.name,
       muscleGroups: ex.muscleGroups || [],
       exerciseType: ex.exerciseType || 'weight_reps',
+      // Carry the assisted flag through: the edit rewrites the normalized rows
+      // wholesale, so omitting it stored null and the all-time record for an
+      // assisted lift flipped from lowest-assistance to highest - reporting the
+      // user's worst set as their PR.
+      isAssisted: ex.isAssisted ?? false,
       // Coerce any left-empty inputs to 0 on save (they were kept empty during
       // editing so the fields are clearable), preserving each set's field shape.
       setsData: ex.sets.map(set => {
