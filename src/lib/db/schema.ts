@@ -314,6 +314,43 @@ export const aiUsage = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.day, t.kind] })],
 );
 
+// --- Rest-timer push notifications (2026-07-21) ---
+// A closed app cannot fire its own alert (iOS suspends JS), so rest completion
+// is delivered as a Web Push sent by a Vercel Workflow that sleeps for the rest
+// duration. One row per browser/device subscription; endpoint is the identity.
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("push_subscriptions_user_id_idx").on(t.userId)],
+);
+
+// One row per scheduled rest alert. The workflow re-reads it after sleeping and
+// only sends while it is still `pending`, so skipping a rest early (or finishing
+// it with the app open) silently cancels the push instead of buzzing late.
+export const restNotifications = pgTable(
+  "rest_notifications",
+  {
+    id: varchar("id").primaryKey(), // client-generated rest id
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"), // pending | cancelled | sent
+    exerciseName: text("exercise_name"),
+    fireAt: timestamp("fire_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("rest_notifications_user_id_idx").on(t.userId)],
+);
+
 // --- Phase 4: sets-as-rows (normalized storage) ---
 // These sit ALONGSIDE completed_workouts.exercises (jsonb) during the
 // migration. The jsonb stays the source of truth until reads are switched over

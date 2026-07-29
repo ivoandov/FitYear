@@ -7,6 +7,15 @@ const PUBLIC_PATHS = [
   "/_next",
   "/favicon.ico",
   "/manifest.json",
+  // The service worker script must stay fetchable even when the session cookie
+  // has expired: the browser re-fetches /sw.js on its own schedule, and a 307
+  // to the login HTML would replace the worker with a broken one.
+  "/sw.js",
+  // Workflow's internal callbacks (the rest-timer push sleeps in a workflow and
+  // POSTs itself back here to resume). They carry no session cookie, so the
+  // auth gate would redirect them to /login and the workflow would never
+  // resume; the Workflow runtime authenticates these requests itself.
+  "/.well-known/workflow",
 ];
 
 const ONBOARDED_COOKIE = "fy_onboarded";
@@ -93,7 +102,10 @@ export const config = {
   // (and any other public asset) loads for unauthenticated visitors. Image
   // formats were already excluded; video + audio added 2026-06-01 after the
   // intro mp4 was getting 307'd to /login.
+  // `.well-known/workflow/` is excluded here too (not just via PUBLIC_PATHS):
+  // the Workflow docs call this out for Next 16 specifically, since anything
+  // intercepting its internal POST /flow request breaks workflow resumption.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4|webm|ogg|mp3|wav|m4a)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|\\.well-known/workflow/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4|webm|ogg|mp3|wav|m4a)$).*)",
   ],
 };

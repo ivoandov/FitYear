@@ -19,6 +19,11 @@ export interface RestTimerState {
   initialSeconds: number;
   exerciseName: string;
   nextExerciseName?: string;
+  /**
+   * Id of the scheduled closed-app push for this rest, so a restored timer can
+   * still cancel the right alert when the user skips ahead.
+   */
+  restId?: string;
 }
 
 export type RestoreDecision =
@@ -50,11 +55,12 @@ export function parseRestTimerState(
       const initialSeconds = isPositiveInt(p.initialSeconds) ? p.initialSeconds : 1;
       const exerciseName = typeof p.exerciseName === "string" && p.exerciseName ? p.exerciseName : "Rest";
       const nextExerciseName = typeof p.nextExerciseName === "string" ? p.nextExerciseName : undefined;
+      const restId = typeof p.restId === "string" ? p.restId : undefined;
       if (isPositiveInt(p.pausedRemaining)) {
-        return { endTime: null, pausedRemaining: p.pausedRemaining, initialSeconds, exerciseName, nextExerciseName };
+        return { endTime: null, pausedRemaining: p.pausedRemaining, initialSeconds, exerciseName, nextExerciseName, restId };
       }
       if (isPositiveInt(p.endTime)) {
-        return { endTime: p.endTime, pausedRemaining: null, initialSeconds, exerciseName, nextExerciseName };
+        return { endTime: p.endTime, pausedRemaining: null, initialSeconds, exerciseName, nextExerciseName, restId };
       }
       return null;
     } catch {

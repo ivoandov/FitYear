@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
+// Enables the "use workflow" / "use step" directives that drive the delayed
+// rest-timer push (a Web Push cannot be scheduled; a workflow sleeps instead).
+import { withWorkflow } from "workflow/next";
 
 // Content-Security-Policy. Permissive-but-real starting point (tighten later).
 // - default 'self'; scripts/styles allow 'unsafe-inline' because Next injects
@@ -90,7 +93,7 @@ const nextConfig: NextConfig = {
 // Wrap with Sentry. Source maps upload only when SENTRY_AUTH_TOKEN is present
 // in the build env (Vercel production), giving readable stack traces there;
 // local + CI builds have no token, so upload is skipped (no noise, no failure).
-export default withSentryConfig(nextConfig, {
+export default withSentryConfig(withWorkflow(nextConfig), {
   org: "flyhiai",
   project: "javascript-nextjs",
   silent: !process.env.CI,

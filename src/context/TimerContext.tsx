@@ -80,6 +80,41 @@ export function useTimer() {
   return ctx;
 }
 
+/**
+ * The closed-app half of the alert: a Vercel Workflow sleeps for the rest and
+ * pushes when it wakes, because a suspended page cannot fire its own
+ * notification. Only armed when the user has granted permission (otherwise
+ * there is no subscription to deliver to). All fire-and-forget - the local
+ * countdown must never wait on, or fail because of, the network.
+ */
+function restPushEnabled(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    Notification.permission === "granted"
+  );
+}
+
+function scheduleRestPush(restId: string, delaySeconds: number, exerciseName: string) {
+  if (!restPushEnabled() || delaySeconds < 5) return;
+  fetch("/api/push/schedule", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ restId, delaySeconds: Math.round(delaySeconds), exerciseName }),
+  }).catch(() => {});
+}
+
+function cancelRestPush(restId: string | null) {
+  if (!restId || !restPushEnabled()) return;
+  fetch("/api/push/cancel", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ restId }),
+    // Survives the page being torn down mid-request (skip -> navigate away).
+    keepalive: true,
+  }).catch(() => {});
+}
+
 function requestNotificationPermission() {
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
@@ -114,6 +149,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const initialSecondsRef = useRef(90);
   const exerciseNameRef = useRef("Rest");
   const nextExerciseNameRef = useRef<string | undefined>(undefined);
+  // Identifies the currently scheduled closed-app push, so it can be cancelled
+  // when the rest ends early or finishes while the app is open.
+  const restIdRef = useRef<string | null>(null);
 
   const setMeta = useCallback(
     (opts: { initialSeconds: number; exerciseName: string; nextExerciseName?: string }) => {
@@ -154,6 +192,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     if (remaining <= 0) {
       clearInterval_();
       clearState();
+      // The app is open, so the local notification above is the alert - drop
+      // the scheduled push rather than buzzing the user twice.
+      cancelRestPush(restIdRef.current);
+      restIdRef.current = null;
       complete();
     }
   }, [computeRemaining, clearInterval_, complete]);
@@ -164,13 +206,19 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       hasCompletedRef.current = false;
       const endTime = Date.now() + remainingSecs * 1000;
       endTimeRef.current = endTime;
+      // One id per rest period, reused across pause/resume so re-arming
+      // replaces the pending alert instead of stacking a second one.
+      const restId = restIdRef.current ?? crypto.randomUUID();
+      restIdRef.current = restId;
       writeState({
         endTime,
         pausedRemaining: null,
         initialSeconds: initialSecondsRef.current,
         exerciseName: exerciseNameRef.current,
         nextExerciseName: nextExerciseNameRef.current,
+        restId,
       });
+      scheduleRestPush(restId, remainingSecs, exerciseNameRef.current);
       intervalRef.current = setInterval(tick, 500);
       tick();
     },
@@ -197,6 +245,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       exerciseName: state.exerciseName,
       nextExerciseName: state.nextExerciseName,
     });
+    // Adopt the rest's existing push id: the workflow scheduled before the app
+    // died is still sleeping, so this timer must be able to cancel it.
+    restIdRef.current = state.restId ?? null;
     hasCompletedRef.current = false;
     setSeconds(remaining);
     setIsMinimized(true);
@@ -238,6 +289,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       // continue it. Anything expired or absent starts a fresh countdown -
       // an expired rest must never resurrect as an instantly-done timer.
       const decision = decideRestore(readState(Date.now()), Date.now());
+      // Continuing a rest keeps its scheduled alert; a fresh rest gets a new id
+      // from startCounting.
+      restIdRef.current =
+        decision.status === "paused" || decision.status === "running"
+          ? (decision.state.restId ?? null)
+          : null;
       if (decision.status === "paused") {
         endTimeRef.current = null;
         setSeconds(decision.remaining);
@@ -248,6 +305,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           initialSeconds: initialSecondsRef.current,
           exerciseName: exerciseNameRef.current,
           nextExerciseName: nextExerciseNameRef.current,
+          restId: restIdRef.current ?? undefined,
         });
       } else if (decision.status === "running") {
         endTimeRef.current = decision.state.endTime;
@@ -259,6 +317,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           initialSeconds: initialSecondsRef.current,
           exerciseName: exerciseNameRef.current,
           nextExerciseName: nextExerciseNameRef.current,
+          restId: restIdRef.current ?? undefined,
         });
         intervalRef.current = setInterval(tick, 500);
         tick();
@@ -277,6 +336,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     endTimeRef.current = null;
     hasCompletedRef.current = false;
     clearState();
+    // Skipping to the next set ends the rest early - drop the pending alert so
+    // it doesn't buzz mid-set.
+    cancelRestPush(restIdRef.current);
+    restIdRef.current = null;
     setIsOpen(false);
     setIsMinimized(false);
     setIsPaused(false);
@@ -299,7 +362,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         initialSeconds: initialSecondsRef.current,
         exerciseName: exerciseNameRef.current,
         nextExerciseName: nextExerciseNameRef.current,
+        restId: restIdRef.current ?? undefined,
       });
+      // A paused rest has no end time, so retire the pending alert; resuming
+      // re-arms it with the remaining seconds.
+      cancelRestPush(restIdRef.current);
       setIsPaused(true);
     }
   }, [isPaused, seconds, startCounting, clearInterval_]);

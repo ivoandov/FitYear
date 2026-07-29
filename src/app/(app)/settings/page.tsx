@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useRouter, useSearchParams } from "next/navigation";
+import { enableRestPush, hasRestPush, pushSupported } from "@/lib/push-client";
 
 interface CalendarInfo {
   id: string;
@@ -88,9 +89,51 @@ export default function SettingsPage() {
   const { weekStart, setWeekStart, muscleGroups, addMuscleGroup, removeMuscleGroup, reorderMuscleGroups, setMuscleGroups, restTimerOnManualComplete, setRestTimerOnManualComplete, showKgConversion, setShowKgConversion } = useSettings();
   const [newMuscleGroup, setNewMuscleGroup] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+  // Closed-app rest alerts: "unsupported" covers a plain iOS Safari tab, where
+  // Web Push only works once the PWA is installed to the Home Screen.
+  const [pushState, setPushState] = useState<"off" | "on" | "denied" | "unsupported">("off");
+  const [pushBusy, setPushBusy] = useState(false);
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  // Reflect the browser's current push state on load.
+  useEffect(() => {
+    if (!pushSupported()) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushState("denied");
+      return;
+    }
+    hasRestPush().then((on) => setPushState(on ? "on" : "off"));
+  }, []);
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    const result = await enableRestPush();
+    setPushBusy(false);
+    if (result.ok) {
+      setPushState("on");
+      toast({
+        title: "Rest alerts on",
+        description: "You'll get a notification when rest ends, even if you leave the app.",
+      });
+      return;
+    }
+    setPushState(result.reason === "denied" ? "denied" : result.reason === "unsupported" ? "unsupported" : "off");
+    toast({
+      title: "Couldn't enable rest alerts",
+      description:
+        result.reason === "denied"
+          ? "Notifications are blocked. Allow them for FitYear in your browser settings."
+          : result.reason === "unsupported"
+            ? "On iPhone, add FitYear to your Home Screen first, then try again."
+            : "Something went wrong. Please try again.",
+      variant: "destructive",
+    });
+  };
 
   // Check for calendar connection callback params
   useEffect(() => {
@@ -404,6 +447,42 @@ export default function SettingsPage() {
               onCheckedChange={setShowKgConversion}
               data-testid="switch-show-kg-conversion"
             />
+          </div>
+
+          {/* Closed-app rest alerts. Permission must be requested from a user
+              gesture, so this is a button rather than an auto-prompt. */}
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-divider pt-4">
+            <div className="min-w-0">
+              <div className={ROW_TITLE}>Rest alerts when the app is closed</div>
+              <div className={ROW_HELP}>
+                {pushState === "on"
+                  ? "On for this device"
+                  : pushState === "unsupported"
+                    ? "Add FitYear to your Home Screen to enable this on iPhone"
+                    : pushState === "denied"
+                      ? "Blocked - re-allow notifications in your browser settings"
+                      : "Get notified when rest ends, even if you leave the app"}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={pushState === "on" || pushState === "unsupported" || pushBusy}
+              onClick={handleEnablePush}
+              data-testid="button-enable-rest-push"
+            >
+              {pushState === "on" ? (
+                <>
+                  <Check className="mr-1.5 h-4 w-4" />
+                  Enabled
+                </>
+              ) : pushBusy ? (
+                "Enabling…"
+              ) : (
+                "Enable"
+              )}
+            </Button>
           </div>
         </div>
 
