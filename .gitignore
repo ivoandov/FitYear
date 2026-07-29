@@ -65,3 +65,6 @@ next-env.d.ts
 # Pre-mutation backups from scripts/fix-duplicate-workout-2026-07-14.ts
 /migration/duplicate-workout-backups/
 /.swc
+
+# Pre-mutation backups from scripts/retag-calf-raises.ts
+/migration/calf-retag-backups/
