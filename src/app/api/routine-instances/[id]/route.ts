@@ -53,11 +53,15 @@ export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
   if (status === "cancelled") {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    // userId-scoped: routineInstanceId is unvalidated client input on
+    // scheduled workouts (no FK), so without it another user's rows pointing
+    // at this instance id would be deleted too.
     await db
       .delete(scheduledWorkouts)
       .where(
         and(
           eq(scheduledWorkouts.routineInstanceId, id),
+          eq(scheduledWorkouts.userId, user.id),
           gte(scheduledWorkouts.date, todayStart),
         ),
       );
@@ -88,7 +92,12 @@ export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
 
   await db
     .delete(scheduledWorkouts)
-    .where(eq(scheduledWorkouts.routineInstanceId, id));
+    .where(
+      and(
+        eq(scheduledWorkouts.routineInstanceId, id),
+        eq(scheduledWorkouts.userId, user.id),
+      ),
+    );
   await db.delete(routineInstances).where(eq(routineInstances.id, id));
 
   return { success: true };

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { ZodError } from "zod";
 import { ApiError } from "./auth";
 
 /**
@@ -19,6 +20,22 @@ export function handle<T extends (...args: never[]) => Promise<Response | unknow
         return NextResponse.json(
           { error: e.message, ...(e.details ? { details: e.details } : {}) },
           { status: e.status },
+        );
+      }
+      // A schema violation is the CALLER's mistake, not a server fault. These
+      // were falling through to the 500 branch below: the client got a generic
+      // "Something went wrong" for a fixable bad field, and every one was filed
+      // in Sentry as a real error, burying genuine failures.
+      if (e instanceof ZodError) {
+        return NextResponse.json(
+          {
+            error: "Invalid request",
+            details: e.issues.map((i) => ({
+              field: i.path.join(".") || "(body)",
+              message: i.message,
+            })),
+          },
+          { status: 400 },
         );
       }
       // Log the real error server-side, but never return it: Drizzle/postgres

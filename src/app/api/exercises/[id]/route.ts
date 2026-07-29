@@ -11,7 +11,15 @@ type Ctx = { params: Promise<{ id: string }> };
 export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
-  const body = insertExerciseSchema.partial().parse(await request.json());
+  // `userId` and `isPublic` are ownership fields, never client input. Without
+  // the omit they were spread straight into .set(): posting `userId: null`
+  // turned your own exercise into a global seed row that NOBODY can then edit
+  // or delete (both guards below reject it), and posting another user's id
+  // handed the row to them.
+  const body = insertExerciseSchema
+    .omit({ userId: true, isPublic: true })
+    .partial()
+    .parse(await request.json());
   // Same write-path canonicalization as POST (this route was missed when the
   // taxonomy landed, so edits could reintroduce freeform/nested tags).
   if (body.muscleGroups !== undefined) {
@@ -34,6 +42,10 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   if (existing.userId !== user.id) {
     throw new ApiError(403, "Not authorized to edit this exercise");
   }
+
+  // Nothing updatable left (e.g. the body carried only ownership fields, which
+  // are stripped above). Drizzle throws "No values to set" on an empty .set().
+  if (Object.keys(body).length === 0) return existing;
 
   const [updated] = await db
     .update(exercises)

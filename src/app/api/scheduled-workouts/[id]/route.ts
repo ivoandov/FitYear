@@ -93,11 +93,15 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     }
   }
 
-  const [updated] = await db
-    .update(scheduledWorkouts)
-    .set(update)
-    .where(eq(scheduledWorkouts.id, id))
-    .returning();
+  // An empty body would reach drizzle as .set({}) -> "No values to set" -> 500.
+  const [updated] =
+    Object.keys(update).length === 0
+      ? [existing]
+      : await db
+          .update(scheduledWorkouts)
+          .set(update)
+          .where(eq(scheduledWorkouts.id, id))
+          .returning();
 
   // Calendar sync on date change
   if (update.date && (await isCalendarConnected(user.id))) {

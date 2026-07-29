@@ -27,7 +27,17 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
   await ownTemplate(id, user.id);
-  const body = insertWorkoutTemplateSchema.partial().parse(await request.json());
+  // Never let the client set `userId`: spreading it into .set() moved the
+  // template out of the caller's library and into the victim's, where it
+  // rendered as their own workout.
+  const body = insertWorkoutTemplateSchema
+    .omit({ userId: true })
+    .partial()
+    .parse(await request.json());
+  if (Object.keys(body).length === 0) {
+    return await ownTemplate(id, user.id); // nothing to change
+  }
+
   const [updated] = await db
     .update(workoutTemplates)
     .set(body)

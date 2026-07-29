@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   scheduledWorkouts,
@@ -37,10 +37,18 @@ export const POST = handle(async (_request: NextRequest, ctx: Ctx) => {
     await deleteCalendarEvent(user.id, existing.calendarEventId, s?.id ?? undefined);
   }
 
+  // Scoped to the caller: `routineInstanceId` is written from client input with
+  // no FK, so an unscoped update let a crafted scheduled workout bump ANOTHER
+  // user's skipped counter.
   await db
     .update(routineInstances)
     .set({ skippedWorkouts: sql`${routineInstances.skippedWorkouts} + 1` })
-    .where(eq(routineInstances.id, existing.routineInstanceId));
+    .where(
+      and(
+        eq(routineInstances.id, existing.routineInstanceId),
+        eq(routineInstances.userId, user.id),
+      ),
+    );
 
   await db.delete(scheduledWorkouts).where(eq(scheduledWorkouts.id, id));
 
