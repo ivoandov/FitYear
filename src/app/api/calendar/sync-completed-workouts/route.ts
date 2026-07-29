@@ -44,7 +44,14 @@ export const POST = handle(async () => {
   let created = 0;
   let alreadySynced = 0;
   let failed = 0;
+  let remaining = 0;
   const workouts: SyncedWorkout[] = [];
+
+  // One Google API call per unsynced workout, so a large history cannot finish
+  // inside maxDuration - it used to time out mid-loop with no signal, leaving a
+  // silently partial sync. Cap the batch and report what is left; the route is
+  // re-runnable (already-synced rows are skipped), so the client can call again.
+  const CREATE_BUDGET = 40;
 
   for (const w of rows) {
     const date = w.completedAt instanceof Date ? w.completedAt : new Date(w.completedAt);
@@ -53,6 +60,11 @@ export const POST = handle(async () => {
     if (w.calendarEventId) {
       alreadySynced++;
       workouts.push({ name: w.name, date: dateStr, status: "already_synced", eventId: w.calendarEventId });
+      continue;
+    }
+
+    if (created + failed >= CREATE_BUDGET) {
+      remaining++;
       continue;
     }
 
@@ -87,6 +99,8 @@ export const POST = handle(async () => {
     created,
     alreadySynced,
     failed,
+    // >0 means the batch cap was hit: call again to continue.
+    remaining,
     total: rows.length,
     workouts,
   };

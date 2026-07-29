@@ -73,39 +73,46 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   const endDate = new Date(startDate);
   endDate.setDate(startDate.getDate() + maxDays - 1);
 
-  const [instance] = await db
-    .insert(routineInstances)
-    .values({
-      routineId: id,
-      userId: user.id,
-      routineName: routine.name,
-      startDate,
-      endDate,
-      durationDays: maxDays,
-      totalWorkouts: filtered.length,
-      completedWorkouts: 0,
-      status: "active",
-    })
-    .returning();
+  // One transaction: the instance and its scheduled workouts must land
+  // together. Separately, a failed bulk insert left an ACTIVE instance
+  // claiming N workouts with nothing on the calendar.
+  const { instance, createdWorkouts } = await db.transaction(async (tx) => {
+    const [inst] = await tx
+      .insert(routineInstances)
+      .values({
+        routineId: id,
+        userId: user.id,
+        routineName: routine.name,
+        startDate,
+        endDate,
+        durationDays: maxDays,
+        totalWorkouts: filtered.length,
+        completedWorkouts: 0,
+        status: "active",
+      })
+      .returning();
 
-  const createdWorkouts = await db
-    .insert(scheduledWorkouts)
-    .values(
-      filtered.map((entry) => {
-        const d = new Date(startDate);
-        d.setDate(startDate.getDate() + entry.dayIndex - 1);
-        return {
-          userId: user.id,
-          name: entry.workoutName || `Day ${entry.dayIndex}`,
-          date: d,
-          exercises: entry.exercises ?? [],
-          templateId: entry.workoutTemplateId ?? null,
-          routineInstanceId: instance.id,
-          routineDayIndex: entry.dayIndex,
-        };
-      }),
-    )
-    .returning();
+    const created = await tx
+      .insert(scheduledWorkouts)
+      .values(
+        filtered.map((entry) => {
+          const d = new Date(startDate);
+          d.setDate(startDate.getDate() + entry.dayIndex - 1);
+          return {
+            userId: user.id,
+            name: entry.workoutName || `Day ${entry.dayIndex}`,
+            date: d,
+            exercises: entry.exercises ?? [],
+            templateId: entry.workoutTemplateId ?? null,
+            routineInstanceId: inst.id,
+            routineDayIndex: entry.dayIndex,
+          };
+        }),
+      )
+      .returning();
+
+    return { instance: inst, createdWorkouts: created };
+  });
 
   // NOTE: Google Calendar event creation deferred to Phase 5b
   return new Response(

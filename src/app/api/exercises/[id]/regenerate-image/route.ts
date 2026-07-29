@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { exercises } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
+import { canRegenerateImage } from "@/lib/photo-admin";
 import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { regenerateExerciseImage } from "@/lib/imagen";
@@ -24,11 +25,13 @@ export const POST = handle(async (_req: NextRequest, ctx: Ctx) => {
     .limit(1);
 
   if (!existing) throw new ApiError(404, "Exercise not found");
-  // Owner-only. Regenerating a seed library image from the app was both
-  // shared-resource vandalism (it changes the image for every user) and a paid
-  // Imagen cost anyone could run up. Seed-image regen stays a CLI job
-  // (scripts/regenerate-exercise-images.ts).
-  if (existing.userId !== user.id) {
+  // Owner, or an allowlisted photo admin. Regenerating a shared image is both
+  // shared-resource vandalism (it changes the image for EVERY user) and a paid
+  // Imagen call, so this stays closed to the general user; the allowlist exists
+  // because the 2026-07-17 dedupe left most merged survivors owned by the
+  // global library or the other user. Renames, re-tags and deletes remain
+  // strictly owner-only. Daily quota below still applies.
+  if (!canRegenerateImage(user.id, existing.userId)) {
     throw new ApiError(403, "Not authorized to regenerate this exercise");
   }
 

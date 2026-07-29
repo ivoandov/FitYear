@@ -27,19 +27,6 @@ export const POST = handle(async (request: NextRequest) => {
   const { program, focus, experience, programLength, distinctWorkouts } =
     InputSchema.parse(await request.json());
 
-  const [routine] = await db
-    .insert(routines)
-    .values({
-      userId: user.id,
-      name: program.name,
-      description: `Built by Fit Bot · ${focus.join(" + ")} · ${experience}`,
-      defaultDurationDays: programLength,
-      // Persist the rotation period so the Routines card can render the true
-      // cycle (workout/rest rotation) instead of the weekday-collapse strip.
-      cycleLength: program.cycleLength,
-      isPublic: false,
-    })
-    .returning();
 
   // Reconcile each generated exercise name against the shared catalog so the
   // program reuses an existing exercise (its identity, history, image) instead
@@ -70,10 +57,9 @@ export const POST = handle(async (request: NextRequest) => {
     return raw;
   };
 
-  const entries = program.days
+  const days = program.days
     .filter((day) => !day.isRest)
     .map((day) => ({
-      routineId: routine.id,
       dayIndex: day.dayIndex,
       workoutName: day.workoutName,
       exercises: day.exercises.map((ex) => ({
@@ -81,9 +67,32 @@ export const POST = handle(async (request: NextRequest) => {
         name: reconcileName(ex.name),
       })) as unknown,
     }));
-  if (entries.length) {
-    await db.insert(routineEntries).values(entries);
-  }
+
+  // Routine + its days in ONE transaction. Previously the parent was inserted
+  // first and a failed entries insert (a 180-day program is ~120 jsonb rows)
+  // left an EMPTY routine behind - after a multi-call paid AI build whose
+  // output exists nowhere else and whose quota unit is already spent.
+  const routine = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(routines)
+      .values({
+        userId: user.id,
+        name: program.name,
+        description: `Built by Fit Bot · ${focus.join(" + ")} · ${experience}`,
+        defaultDurationDays: programLength,
+        // Persist the rotation period so the Routines card can render the true
+        // cycle (workout/rest rotation) instead of the weekday-collapse strip.
+        cycleLength: program.cycleLength,
+        isPublic: false,
+      })
+      .returning();
+    if (days.length) {
+      await tx
+        .insert(routineEntries)
+        .values(days.map((d) => ({ ...d, routineId: row.id })));
+    }
+    return row;
+  });
 
   return {
     routineId: routine.id,
@@ -91,7 +100,7 @@ export const POST = handle(async (request: NextRequest) => {
     cycleLength: program.cycleLength,
     distinctWorkouts: distinctWorkouts ?? null,
     weeksGenerated: Math.ceil(programLength / 7),
-    daysGenerated: entries.length,
+    daysGenerated: days.length,
     exercisesReconciled,
   };
 });

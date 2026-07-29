@@ -11,6 +11,7 @@ import { type Exercise } from "@/data/exercises";
 import { COARSE_MUSCLE_GROUPS, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { canRegenerateImage } from "@/lib/photo-admin";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import {
@@ -352,6 +353,7 @@ export default function ExercisesPage() {
               key={exercise.id}
               {...exercise}
               isOwner={!!user?.id && exercise.userId === user.id}
+              canRegenerate={canRegenerateImage(user?.id, exercise.userId)}
               isRegenerating={regeneratingIds.has(exercise.id)}
               onAdd={handleAddExercise}
               onEdit={handleEditExercise}

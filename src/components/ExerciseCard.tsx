@@ -30,6 +30,9 @@ interface ExerciseCardProps {
   // controls (Edit / Delete / Regenerate). Non-owned + default-library
   // exercises are view-only (Add to Workout + Progress still available).
   isOwner?: boolean;
+  // Separate from ownership: an allowlisted photo admin may refresh the IMAGE
+  // of a shared/other-owned exercise, but still cannot rename or delete it.
+  canRegenerate?: boolean;
   isRegenerating?: boolean;
   onAdd?: (id: string) => void;
   onEdit?: (id: string) => void;
@@ -44,6 +47,7 @@ function ExerciseCardImpl({
   description,
   imageUrl,
   isOwner = false,
+  canRegenerate = false,
   isRegenerating = false,
   onEdit,
   onAdd,
@@ -90,7 +94,7 @@ function ExerciseCardImpl({
                 <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             )}
-            {isOwner && onRegenerateImage && (
+            {(isOwner || canRegenerate) && onRegenerateImage && (
               <button
                 className="absolute bottom-2 left-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-60"
                 onClick={(e) => {
@@ -121,7 +125,7 @@ function ExerciseCardImpl({
                 <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             )}
-            {isOwner && onRegenerateImage && (
+            {(isOwner || canRegenerate) && onRegenerateImage && (
               <button
                 className="absolute bottom-2 left-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-60"
                 onClick={(e) => {
