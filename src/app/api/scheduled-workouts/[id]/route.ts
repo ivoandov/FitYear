@@ -66,6 +66,10 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
 
   // If name changed, propagate to sibling rows in the same routine/template
   // (preserves the original "rename future occurrences" behavior).
+  // Both branches are userId-scoped: `routineInstanceId` and `templateId` are
+  // client-settable on this very route with no ownership check, so without the
+  // scope a caller could point their row at a victim's id, match the name, and
+  // rename the victim's scheduled workouts.
   if (body.name && body.name !== existing.name) {
     if (existing.routineInstanceId) {
       await db
@@ -73,6 +77,7 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
         .set({ name: body.name })
         .where(
           and(
+            eq(scheduledWorkouts.userId, user.id),
             eq(scheduledWorkouts.routineInstanceId, existing.routineInstanceId),
             eq(scheduledWorkouts.name, existing.name),
             ne(scheduledWorkouts.id, id),
@@ -84,6 +89,7 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
         .set({ name: body.name })
         .where(
           and(
+            eq(scheduledWorkouts.userId, user.id),
             eq(scheduledWorkouts.templateId, existing.templateId),
             eq(scheduledWorkouts.name, existing.name),
             sql`${scheduledWorkouts.date} >= NOW()`,

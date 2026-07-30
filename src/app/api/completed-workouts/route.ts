@@ -170,7 +170,15 @@ export const POST = handle(async (request: NextRequest) => {
         .set({
           completedWorkouts: sql`${routineInstances.completedWorkouts} + 1`,
         })
-        .where(eq(routineInstances.id, scheduledRoutineInstanceId)),
+        // userId-scoped, like the skip route: `routineInstanceId` is written
+        // from client input with no FK, so an unscoped update let a crafted
+        // scheduled workout bump ANOTHER user's progress counter.
+        .where(
+          and(
+            eq(routineInstances.id, scheduledRoutineInstanceId),
+            eq(routineInstances.userId, user.id),
+          ),
+        ),
     );
   }
 
