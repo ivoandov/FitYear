@@ -1,4 +1,4 @@
-import { localDateKey } from "@/lib/date";
+import { localDateKey, localDateKeyInZone } from "@/lib/date";
 
 // These operate on the ASSEMBLED workout shape (exercises[] built from the
 // normalized tables), not a raw DB row — so they're typed locally rather than
@@ -154,17 +154,22 @@ export function formatDuration(seconds: number | null): string {
   return `${s}s`;
 }
 
-export function calcStreak(completedAtList: Date[]): number {
+export function calcStreak(completedAtList: Date[], timeZone?: string): number {
   if (!completedAtList.length) return 0;
-  // Bucket completed_at into local-date keys
-  const days = new Set(completedAtList.map((d) => localDateKey(new Date(d))));
+  // Bucket completed_at into local-date keys. `timeZone` is REQUIRED from
+  // server components: without it the keys come from the runtime clock, which
+  // is UTC on Vercel, so evening workouts landed on the next day and an
+  // evening + next-morning pair collapsed into one, undercounting the streak.
+  const key = (d: Date) =>
+    timeZone ? localDateKeyInZone(d, timeZone) : localDateKey(d);
+  const days = new Set(completedAtList.map((d) => key(new Date(d))));
   const today = new Date();
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const cursor = new Date(today);
     cursor.setDate(today.getDate() - i);
-    const key = localDateKey(cursor);
-    if (days.has(key)) {
+    const cursorKey = key(cursor);
+    if (days.has(cursorKey)) {
       streak++;
     } else if (i === 0) {
       // Today doesn't count yet — keep checking yesterday
@@ -235,6 +240,7 @@ export function detectPRs(
     const assisted = isAssistedById.get(ex.id) === true;
     let bestWt = assisted ? Number.POSITIVE_INFINITY : 0;
     let bestVol = 0;
+    let bestVolReps = 0;
     let anyWeighted = false;
     for (const s of ex.setsData ?? []) {
       if (!s.completed) continue;
@@ -246,15 +252,22 @@ export function detectPRs(
       } else {
         if (wt > bestWt) bestWt = wt;
         const vol = wt * (s.reps || 0);
-        if (vol > bestVol) bestVol = vol;
+        if (vol > bestVol) {
+          bestVol = vol;
+          bestVolReps = s.reps || 0;
+        }
       }
     }
     if (!anyWeighted) continue;
     const prev = histBestWeight.get(ex.id);
     const prevWt = prev ?? null;
+    // Epsilon-guarded, matching the in-workout toast (use-pr-detection). A kg
+    // user's lbs -> kg -> lbs round trip drifts up to ~0.11 lb, so a strict
+    // comparison persisted a phantom "100.1 was 100" PR to pr_history and put
+    // it on the complete screen even where the toast was correctly suppressed.
     const isWeightPr = assisted
-      ? prev === undefined || bestWt < prev
-      : prev === undefined || bestWt > prev;
+      ? prev === undefined || bestWt < prev - PR_EPSILON_LBS
+      : prev === undefined || bestWt > prev + PR_EPSILON_LBS;
     if (isWeightPr) {
       hits.push({
         exerciseId: ex.id,
@@ -267,7 +280,11 @@ export function detectPRs(
     // Volume PR only meaningful for non-assisted exercises
     if (!assisted) {
       const prevVol = histMaxVolume.get(ex.id) ?? null;
-      if (bestVol > 0 && (prevVol === null || bestVol > prevVol)) {
+      // Volume drift is the weight drift times the rep count, so a flat epsilon
+      // is too small at anything above ~3 reps; scale it by the reps behind the
+      // best set.
+      const volEpsilon = PR_EPSILON_LBS * Math.max(1, bestVolReps);
+      if (bestVol > 0 && (prevVol === null || bestVol > prevVol + volEpsilon)) {
         hits.push({
           exerciseId: ex.id,
           exerciseName: ex.name,
@@ -279,4 +296,25 @@ export function detectPRs(
     }
   }
   return hits;
+}
+
+/**
+ * lbs -> kg -> lbs rounds each way, so an unchanged weight can come back up to
+ * ~0.11 lb heavier for a kg user. Comparisons are guarded by this margin so a
+ * re-logged prefill never reads as a new record.
+ */
+export const PR_EPSILON_LBS = 0.25;
+
+/**
+ * Epley is only meaningful in the low-rep range, so reps are clamped before the
+ * estimate. Without a clamp a 95 lb x 40-rep accessory set reported a 221 lb
+ * "1RM" on the exercise page, the records card, and the strength trend.
+ */
+export const EPLEY_MAX_REPS = 12;
+
+/** Epley one-rep-max estimate: weight x (1 + reps/30), reps clamped. */
+export function epley1RM(weight: number, reps: number): number {
+  if (weight <= 0 || reps <= 0) return 0;
+  if (reps === 1) return weight;
+  return weight * (1 + Math.min(reps, EPLEY_MAX_REPS) / 30);
 }

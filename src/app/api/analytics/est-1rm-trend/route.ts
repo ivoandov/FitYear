@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { parseTimeZone } from "@/lib/api/timezone";
+import { EPLEY_MAX_REPS } from "@/lib/workout-stats";
 
 // Cross-lift estimated-1RM trend: for the user's most-trained lifts, the weekly
 // best Epley 1RM (weight_lbs * (1 + reps/30)) over the last N weeks, aggregated
@@ -47,12 +48,18 @@ export const GET = handle(async (request: NextRequest) => {
         we.name_snapshot as name,
         date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp as week_start,
         cw.completed_at as completed_at,
-        ws.weight_lbs * (1 + ws.reps::float8 / 30) as e1rm
+        -- Reps clamped: Epley is only meaningful in the low-rep range.
+        ws.weight_lbs * (1 + least(ws.reps, ${EPLEY_MAX_REPS})::float8 / 30) as e1rm
       from completed_workouts cw
       join workout_exercises we on we.completed_workout_id = cw.id
       join workout_sets ws on ws.workout_exercise_id = we.id
+      left join exercises e on e.id = we.exercise_id
       where cw.user_id = ${user.id}
-        and coalesce(we.is_assisted, false) = false
+        -- Catalog first: the snapshot is null/false on every historical row, so
+        -- this filter used to exclude nothing and assisted lifts (whose weight
+        -- is counter-assistance) polluted the strength trend.
+        and coalesce(e.is_assisted, we.is_assisted, false) = false
+        and we.exercise_id <> ''
         and ws.completed = true
         and ws.weight_lbs > 0
         and ws.reps > 0

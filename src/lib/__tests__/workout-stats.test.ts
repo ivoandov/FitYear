@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   deriveWorkoutName,
   detectPRs,
+  epley1RM,
+  EPLEY_MAX_REPS,
   summarizeWorkout,
   calcStreak,
   isRepTotalExercise,
@@ -240,5 +242,51 @@ describe("summarizeWorkout counting", () => {
     expect(summary.totalVolumeLbs).toBe(1000);
     expect(summary.exerciseCount).toBe(1);
     expect(summary.muscleGroups.get("Back")).toBeUndefined();
+  });
+});
+
+describe("epley1RM", () => {
+  it("returns the weight itself at one rep", () => {
+    expect(epley1RM(300, 1)).toBe(300);
+  });
+
+  it("clamps reps so a high-rep set cannot fabricate a huge 1RM", () => {
+    // 95 x 40 read 221.7 lb before the clamp; it now matches 95 x 12.
+    expect(epley1RM(95, 40)).toBeCloseTo(epley1RM(95, EPLEY_MAX_REPS), 6);
+    expect(epley1RM(95, 40)).toBeLessThan(140);
+  });
+
+  it("is zero for non-positive input", () => {
+    expect(epley1RM(0, 5)).toBe(0);
+    expect(epley1RM(100, 0)).toBe(0);
+  });
+});
+
+describe("detectPRs epsilon", () => {
+  const ex = (weight: number, reps: number) => ({
+    exercises: [
+      {
+        id: "e1",
+        name: "Bench",
+        setsData: [{ weight, reps, completed: true }],
+      },
+    ],
+  });
+
+  it("ignores a kg round-trip drift instead of firing a phantom weight PR", () => {
+    // 100 lb -> 45.4 kg -> 100.1 lb: unchanged work, not a record.
+    const hits = detectPRs(ex(100.1, 10), [ex(100, 10)], new Map([["e1", false]]));
+    expect(hits.filter((h) => h.type === "weight")).toHaveLength(0);
+  });
+
+  it("scales the volume epsilon by reps so drift x reps is not a PR", () => {
+    // 100.1 x 10 = 1001 vs 1000 exceeds a flat 0.25 margin but is still drift.
+    const hits = detectPRs(ex(100.1, 10), [ex(100, 10)], new Map([["e1", false]]));
+    expect(hits.filter((h) => h.type === "volume")).toHaveLength(0);
+  });
+
+  it("still reports a genuine improvement", () => {
+    const hits = detectPRs(ex(105, 10), [ex(100, 10)], new Map([["e1", false]]));
+    expect(hits.some((h) => h.type === "weight")).toBe(true);
   });
 });

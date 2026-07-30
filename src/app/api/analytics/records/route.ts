@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { EPLEY_MAX_REPS } from "@/lib/workout-stats";
 
 // All-time records per exercise, computed in SQL from the normalized tables
 // (server-side PR detection over the source of truth, so it stays correct even
@@ -23,19 +24,29 @@ export const GET = handle(async (request: NextRequest) => {
     select
       we.exercise_id as exercise_id,
       (array_agg(we.name_snapshot order by cw.completed_at desc))[1] as name,
-      bool_or(coalesce(we.is_assisted, false)) as is_assisted,
+      -- The CATALOG is authoritative for assistedness (detectPRs reads it from
+      -- there too). The snapshot was written null/false for every historical
+      -- row, so relying on it reported the heaviest counterweight - the easiest
+      -- set - as the all-time best on every assisted lift.
+      bool_or(coalesce(e.is_assisted, we.is_assisted, false)) as is_assisted,
       max(ws.weight_lbs)::float8 as max_weight_lbs,
       min(ws.weight_lbs)::float8 as min_weight_lbs,
       max(ws.weight_lbs * ws.reps)::float8 as best_volume_lbs,
-      max(ws.weight_lbs * (1 + ws.reps::float8 / 30))::float8 as best_1rm_lbs,
+      -- Epley is only meaningful in the low-rep range; reps are clamped so a
+      -- 40-rep accessory set cannot report a monster "1RM".
+      max(ws.weight_lbs * (1 + least(ws.reps, ${EPLEY_MAX_REPS})::float8 / 30))::float8 as best_1rm_lbs,
       to_char(max(cw.completed_at), 'YYYY-MM-DD') as last_performed
     from workout_exercises we
     join workout_sets ws on ws.workout_exercise_id = we.id
     join completed_workouts cw on cw.id = we.completed_workout_id
+    left join exercises e on e.id = we.exercise_id
     where cw.user_id = ${user.id}
       and ws.completed = true
       and ws.weight_lbs > 0
       and ws.reps > 0
+      -- Legacy rows with no catalog link would all collapse into one synthetic
+      -- "exercise" whose best is the max across unrelated lifts.
+      and we.exercise_id <> ''
     group by we.exercise_id
     order by max(cw.completed_at) desc
     limit ${limit}

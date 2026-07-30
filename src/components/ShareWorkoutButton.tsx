@@ -10,6 +10,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { lbsToDisplay } from "@/lib/units";
 
 interface Props {
   workoutName: string;
@@ -17,6 +18,8 @@ interface Props {
   durationLabel: string;
   totalSets: number;
   totalVolumeLbs: number;
+  /** Viewer's display unit; the card renders converted values, not raw lbs. */
+  weightUnit: "lbs" | "kg";
   exerciseCount: number;
   muscleGroups: Array<[string, number]>;
   prCount: number;
@@ -71,13 +74,19 @@ export function ShareWorkoutButton(props: Props) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Volume is stored in lbs; the card must speak the viewer's unit like every
+  // other surface (it used to print "lb" unconditionally).
+  const volumeDisplay = Math.round(
+    lbsToDisplay(props.totalVolumeLbs, props.weightUnit) ?? 0,
+  );
+
   const summary = [
     `💪 ${props.workoutName}`,
     `${props.date}`,
     "",
     `Duration: ${props.durationLabel}`,
     `Sets: ${props.totalSets}`,
-    `Volume: ${props.totalVolumeLbs.toLocaleString()} lbs`,
+    `Volume: ${volumeDisplay.toLocaleString()} ${props.weightUnit}`,
     `Exercises: ${props.exerciseCount}`,
     props.prCount > 0 ? `🏆 ${props.prCount} new PR${props.prCount !== 1 ? "s" : ""}` : null,
     props.streakDays > 0 ? `🔥 ${props.streakDays} day streak` : null,
@@ -290,7 +299,7 @@ export function ShareWorkoutButton(props: Props) {
               <StatBox label="Duration" value={props.durationLabel} />
               <StatBox
                 label="Volume"
-                value={`${props.totalVolumeLbs.toLocaleString()} lb`}
+                value={`${volumeDisplay.toLocaleString()} ${props.weightUnit}`}
                 accent
               />
               <StatBox label="Sets" value={String(props.totalSets)} />
@@ -320,7 +329,7 @@ export function ShareWorkoutButton(props: Props) {
                       </span>
                       <span style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.3, fontWeight: 700, color: C.onPrimary, whiteSpace: "nowrap", flexShrink: 0 }}>
                         {pr.type === "weight"
-                          ? `${pr.newValue} lb`
+                          ? `${lbsToDisplay(pr.newValue, props.weightUnit)} ${props.weightUnit}`
                           : `${pr.newValue.toLocaleString()} vol`}
                       </span>
                     </div>

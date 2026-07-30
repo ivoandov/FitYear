@@ -1,6 +1,11 @@
 import { eq, inArray, asc } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { workoutExercises, workoutSets } from "@/lib/db/schema";
+// Aliased: the `exercises` name is taken by this module's function parameter.
+import {
+  workoutExercises,
+  workoutSets,
+  exercises as exercisesTable,
+} from "@/lib/db/schema";
 
 type SetLike = {
   setNumber?: number;
@@ -47,6 +52,24 @@ export async function writeNormalizedRows(
     .delete(workoutExercises)
     .where(eq(workoutExercises.completedWorkoutId, completedWorkoutId));
 
+  // The catalog is the source of truth for assistedness (PR detection reads it
+  // from there), and the client did not reliably send it: every historical row
+  // stored null or false, so "best" for an assisted lift resolved to the
+  // HEAVIEST counterweight - the easiest set - and the est-1RM trend's
+  // `coalesce(is_assisted,false) = false` filter excluded nothing. Fall back to
+  // the catalog row so the snapshot always agrees with it.
+  const catalogIds = exs
+    .map((e) => e.id)
+    .filter((id): id is string => !!id && id.length > 0);
+  const assistedById = new Map<string, boolean>();
+  if (catalogIds.length > 0) {
+    const rows = await tx
+      .select({ id: exercisesTable.id, isAssisted: exercisesTable.isAssisted })
+      .from(exercisesTable)
+      .where(inArray(exercisesTable.id, catalogIds));
+    for (const r of rows) assistedById.set(r.id, !!r.isAssisted);
+  }
+
   for (let position = 0; position < exs.length; position++) {
     const ex = exs[position];
     const [we] = await tx
@@ -58,7 +81,7 @@ export async function writeNormalizedRows(
         nameSnapshot: ex.name ?? null,
         muscleGroupsSnapshot: (ex.muscleGroups ?? null) as never,
         exerciseType: ex.exerciseType ?? null,
-        isAssisted: ex.isAssisted ?? null,
+        isAssisted: ex.isAssisted ?? (ex.id ? assistedById.get(ex.id) : undefined) ?? false,
       })
       .returning({ id: workoutExercises.id });
 

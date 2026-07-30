@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "@/hooks/use-toast";
 import { displayToLbs, lbsToDisplay, type WeightUnit } from "@/lib/units";
-import type { SetData } from "@/lib/workout-stats";
+import { PR_EPSILON_LBS, type SetData } from "@/lib/workout-stats";
 
 interface ExerciseLite {
   id: string;
@@ -109,7 +109,8 @@ export function usePrDetection(
       // 100 lb set as a kg user comes back as 100.1 and used to fire a phantom
       // "new PR" (and the inverse on assisted lifts, where lower is better).
       // A real plate change is at least 1 lb / 0.5 kg.
-      const PR_EPSILON_LBS = 0.25;
+      // Shared with detectPRs so the in-workout toast and the complete screen
+      // agree on what counts as a record.
       const isWeightPr = assisted
         ? runningBestWeight === Number.POSITIVE_INFINITY ||
           setWeightLbs < runningBestWeight - PR_EPSILON_LBS
@@ -127,7 +128,9 @@ export function usePrDetection(
         });
       }
       // Volume PR only meaningful for non-assisted exercises
-      if (!assisted && volume > runningMaxVolume + PR_EPSILON_LBS) {
+      // Volume drift scales with reps, so the flat margin was too small above
+      // ~3 reps and a re-logged prefill fired a phantom volume PR.
+      if (!assisted && volume > runningMaxVolume + PR_EPSILON_LBS * Math.max(1, setReps)) {
         isPr = true;
         toast({
           title: `⭐ ${exerciseName} — new volume PR!`,

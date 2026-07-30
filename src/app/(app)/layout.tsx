@@ -2,6 +2,7 @@ import { Providers } from "@/components/Providers";
 import { BottomNav } from "@/components/BottomNav";
 import { AppSidebar } from "@/components/AppSidebar";
 import { FloatingTimerPill } from "@/components/FloatingTimerPill";
+import { TimeZoneCookie } from "@/components/TimeZoneCookie";
 
 // Auth gating + onboarding redirect happen in src/proxy.ts using cookies, so
 // this layout is intentionally cheap: no getUser(), no DB query, no headers().
@@ -28,6 +29,7 @@ export default function AppLayout({
           {children}
         </main>
         <BottomNav />
+        <TimeZoneCookie />
         <FloatingTimerPill />
       </div>
     </Providers>

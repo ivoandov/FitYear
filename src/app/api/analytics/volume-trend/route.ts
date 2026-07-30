@@ -45,7 +45,10 @@ export const GET = handle(async (request: NextRequest) => {
         and ws.completed = true
         and ws.weight_lbs is not null
         and ws.reps is not null
-        and cw.completed_at >= (select this_week from anchor) - ((${weeks}::int - 1) * interval '1 week')
+        -- Converted like the bucket above (and like the three sibling routes):
+      -- comparing the raw UTC column against a local-zone anchor dropped early
+      -- Monday workouts from the oldest bar for viewers east of UTC.
+      and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= (select this_week from anchor) - ((${weeks}::int - 1) * interval '1 week')
       group by 1
     )
     select

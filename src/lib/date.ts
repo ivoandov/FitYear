@@ -45,6 +45,30 @@ export function clientTimeZone(): string {
   }
 }
 
+/**
+ * Local-day key in an EXPLICIT IANA zone.
+ *
+ * `localDateKey` uses the runtime's own clock, which is correct in the browser
+ * and wrong in a server component: on Vercel the server is UTC, so an evening
+ * workout bucketed into the next day and the server-rendered streak and
+ * progress chart disagreed with every client surface. Server code must pass the
+ * viewer's zone (see `viewerTimeZone` in lib/server-timezone.ts).
+ */
+export function localDateKeyInZone(d: Date | string, timeZone: string): string {
+  const date = typeof d === "string" ? parseServerDate(d) : d;
+  try {
+    // en-CA renders as YYYY-MM-DD, which is exactly the key format.
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return localDateKey(date);
+  }
+}
+
 export function localDateKey(d: Date | string): string {
   const date = typeof d === "string" ? parseServerDate(d) : d;
   const y = date.getFullYear();

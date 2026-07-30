@@ -6,7 +6,7 @@ import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
 import { WorkoutNameEditor } from "@/components/WorkoutNameEditor";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { completedWorkouts, prHistory, exercises } from "@/lib/db/schema";
+import { completedWorkouts, prHistory, exercises, userSettings } from "@/lib/db/schema";
 import {
   summarizeWorkout,
   formatDuration,
@@ -14,6 +14,8 @@ import {
   detectPRs,
 } from "@/lib/workout-stats";
 import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
+import { viewerTimeZone } from "@/lib/server-timezone";
+import { lbsToDisplay } from "@/lib/units";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,6 +38,16 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
     )
     .limit(1);
   if (!workout) notFound();
+
+  // This screen and the share card rendered every weight with a hardcoded "lb",
+  // so a kg user saw lb here while the adjacent records card and exercise pages
+  // showed kg. The 2026-07-21 unit fix covered the in-workout toasts only.
+  const [settings] = await db
+    .select({ weightUnit: userSettings.weightUnit })
+    .from(userSettings)
+    .where(eq(userSettings.userId, user.id))
+    .limit(1);
+  const weightUnit = (settings?.weightUnit ?? "lbs") as "lbs" | "kg";
 
   // Prior completed workouts (excluding this one) - for streak + PR detection
   const prior = await db
@@ -66,10 +78,11 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
   }));
 
   const summary = summarizeWorkout(workoutForStats);
-  const streakDays = calcStreak([
-    workout.completedAt,
-    ...prior.map((p) => p.completedAt),
-  ]);
+  const timeZone = await viewerTimeZone();
+  const streakDays = calcStreak(
+    [workout.completedAt, ...prior.map((p) => p.completedAt)],
+    timeZone,
+  );
 
   // PR detection needs isAssisted per exercise so assisted-machine exercises
   // invert the weight comparison (less counterweight = harder = PR).
@@ -186,7 +199,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
           <Stat label="Sets" value={summary.totalSets.toString()} />
           <Stat
             label="Volume"
-            value={`${summary.totalVolumeLbs.toLocaleString()} lb`}
+            value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
           />
           <Stat label="Exercises" value={summary.exerciseCount.toString()} />
         </div>
@@ -249,8 +262,8 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
                   </span>
                   <span className="whitespace-nowrap font-mono text-[13px] text-foreground">
                     {h.type === "weight"
-                      ? `${h.newValue} lb`
-                      : `${h.newValue.toLocaleString()} vol`}
+                      ? `${lbsToDisplay(h.newValue, weightUnit)} ${weightUnit}`
+                      : `${Math.round(lbsToDisplay(h.newValue, weightUnit) ?? 0).toLocaleString()} vol`}
                     {h.previousValue != null ? (
                       <span className="ml-1.5 text-[11px] text-tertiary-foreground">
                         was{" "}
@@ -276,6 +289,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
             durationLabel={formatDuration(summary.durationSeconds)}
             totalSets={summary.totalSets}
             totalVolumeLbs={summary.totalVolumeLbs}
+            weightUnit={weightUnit}
             exerciseCount={summary.exerciseCount}
             muscleGroups={muscleEntries}
             prCount={prHits.length}

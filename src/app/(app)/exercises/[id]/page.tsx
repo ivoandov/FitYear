@@ -13,21 +13,19 @@ import {
 import { rewriteImageUrl } from "@/lib/image-url";
 import { lbsToDisplay } from "@/lib/units";
 import { overloadSuggestion } from "@/lib/analytics";
+import { epley1RM } from "@/lib/workout-stats";
+import { viewerTimeZone } from "@/lib/server-timezone";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
-import { localDateKey } from "@/lib/date";
+import { localDateKeyInZone } from "@/lib/date";
 import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const dynamic = "force-dynamic";
 
-// Epley one-rep-max estimate. weight × (1 + reps/30) — standard, simple,
-// and reasonable across 1-15 rep ranges where most strength training lives.
-function epley1RM(weight: number, reps: number): number {
-  if (weight <= 0 || reps <= 0) return 0;
-  if (reps === 1) return weight;
-  return weight * (1 + reps / 30);
-}
+// Epley lives in lib/workout-stats so this page, the records card and the
+// strength-trend SQL cannot drift apart (they previously disagreed at reps=1
+// and above the clamp).
 
 type ExerciseInWorkoutJson = {
   id: string;
@@ -84,6 +82,10 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
   // the fix-set-weight endpoint expects as setIdx.
   const normalized = await assembleNormalizedExercises(workouts.map((w) => w.id));
 
+  const isAssisted = !!exercise.isAssisted;
+  // Viewer's zone, not the server's: on Vercel the server is UTC, which pushed
+  // evening workouts onto the next chart day and disagreed with the streak.
+  const timeZone = await viewerTimeZone();
   const points: ProgressPoint[] = [];
   for (const w of workouts) {
     const exs = (normalized.get(w.id) ?? []) as ExerciseInWorkoutJson[];
@@ -98,20 +100,29 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
       }))
       .filter((s) => s.completed && s.weight > 0 && s.reps > 0);
     if (completedSets.length === 0) continue;
-    let bestWeight = 0;
+    // On an assisted lift "weight" is counter-assistance, so LOWER is stronger:
+    // the best set is the lightest assist, and volume / est-1RM are meaningless
+    // (same rule detectPRs and the records card already follow). Taking the max
+    // here reported the user's easiest set as their heaviest.
+    let bestWeight = isAssisted ? Number.POSITIVE_INFINITY : 0;
     let bestVolume = 0;
     let best1RM = 0;
     for (const s of completedSets) {
-      if (s.weight > bestWeight) bestWeight = s.weight;
-      const v = s.weight * s.reps;
-      if (v > bestVolume) bestVolume = v;
-      const e = epley1RM(s.weight, s.reps);
-      if (e > best1RM) best1RM = e;
+      if (isAssisted ? s.weight < bestWeight : s.weight > bestWeight) {
+        bestWeight = s.weight;
+      }
+      if (!isAssisted) {
+        const v = s.weight * s.reps;
+        if (v > bestVolume) bestVolume = v;
+        const e = epley1RM(s.weight, s.reps);
+        if (e > best1RM) best1RM = e;
+      }
     }
+    if (!Number.isFinite(bestWeight)) bestWeight = 0;
     // Bucket by local calendar day (the app-wide convention, matching
     // calcStreak) instead of a UTC slice, which shifted late-evening workouts
     // into the next day and made the chart disagree with the streak.
-    const dateStr = localDateKey(w.completedAt);
+    const dateStr = localDateKeyInZone(w.completedAt, timeZone);
     points.push({
       workoutId: w.id,
       workoutName: w.name,
@@ -146,10 +157,13 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
   }
 
   const totalVolumeLbs = points.reduce((acc, p) => acc + p.bestVolumeLbs, 0);
-  const heaviestLbs = points.reduce(
-    (acc, p) => Math.max(acc, p.bestWeightLbs),
-    0,
-  );
+  // Assisted: the best all-time set is the LIGHTEST assist across sessions.
+  const heaviestLbs = isAssisted
+    ? points.reduce(
+        (acc, p) => (p.bestWeightLbs > 0 && (acc === 0 || p.bestWeightLbs < acc) ? p.bestWeightLbs : acc),
+        0,
+      )
+    : points.reduce((acc, p) => Math.max(acc, p.bestWeightLbs), 0);
   const max1RMLbs = points.reduce((acc, p) => Math.max(acc, p.best1RMLbs), 0);
 
   // Progressive-overload suggestion for the next session, from the most recent
@@ -158,8 +172,12 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
   const overload =
     recent && recent.sets.length
       ? (() => {
+          // The "top" set on an assisted lift is the one with the LEAST
+          // assistance. Picking the max fed the easiest set into
+          // overloadSuggestion, which then proposed MORE assistance than the
+          // user had already worked with that day.
           const top = recent.sets.reduce((best, s) =>
-            s.weightLbs > best.weightLbs ||
+            (isAssisted ? s.weightLbs < best.weightLbs : s.weightLbs > best.weightLbs) ||
             (s.weightLbs === best.weightLbs && s.reps > best.reps)
               ? s
               : best,

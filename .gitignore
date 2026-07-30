@@ -68,3 +68,6 @@ next-env.d.ts
 
 # Pre-mutation backups from scripts/retag-calf-raises.ts
 /migration/calf-retag-backups/
+
+# Assisted-flag backfill backups (2026-07-29 audit fix)
+/migration/assisted-backfill-backups/
