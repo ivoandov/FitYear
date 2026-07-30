@@ -33,10 +33,10 @@ export default function InsightsPage() {
   const weightUnit: WeightUnit = settings?.weightUnit ?? "lbs";
 
   const { data: e1rm, isPending: e1rmLoading } = useQuery<E1rmTrend>({
-    queryKey: [`/api/analytics/est-1rm-trend?tz=${encodeURIComponent(tz)}`],
+    queryKey: [`/api/analytics/est-1rm-trend?tz=${encodeURIComponent(tz)}&weekStart=${weekStart}`],
   });
   const { data: muscle, isPending: muscleLoading } = useQuery<MuscleVolumeTrend>({
-    queryKey: [`/api/analytics/muscle-volume-trend?tz=${encodeURIComponent(tz)}`],
+    queryKey: [`/api/analytics/muscle-volume-trend?tz=${encodeURIComponent(tz)}&weekStart=${weekStart}`],
   });
   const { data: consistency = [], isPending: consistencyLoading } = useQuery<DayCount[]>({
     queryKey: [`/api/analytics/consistency?tz=${encodeURIComponent(tz)}`],

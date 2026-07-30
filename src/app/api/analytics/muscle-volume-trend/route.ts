@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { parseTimeZone } from "@/lib/api/timezone";
+import { parseWeekStart, weekBucket } from "@/lib/api/week";
 import { expandMuscleLabel, resolveMuscle } from "@/lib/muscle-groups";
 
 // Volume-by-muscle over time: weekly training volume (sum of weight_lbs * reps
@@ -22,13 +23,16 @@ export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   // Bucket days/weeks in the VIEWER's zone, not UTC (see lib/api/timezone).
   const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
+  // Honours the user's week-start setting; Postgres date_trunc is always
+  // ISO-Monday, which disagreed with the client-side "this week" tiles.
+  const weekStart = parseWeekStart(request.nextUrl.searchParams.get("weekStart"));
   const weeks = Math.min(
     26,
     Math.max(4, Number(request.nextUrl.searchParams.get("weeks")) || 12),
   );
 
   const axisResult = await db.execute(sql`
-    with anchor as (select date_trunc('week', (now() at time zone ${tz})) as this_week)
+    with anchor as (select ${weekBucket(sql`(now() at time zone ${tz})`, weekStart)} as this_week)
     select to_char(gs::timestamp, 'YYYY-MM-DD') as week_start
     from generate_series(
       (select this_week from anchor) - ((${weeks}::int - 1) * interval '1 week'),
@@ -45,7 +49,7 @@ export const GET = handle(async (request: NextRequest) => {
   // tagged Quads + Glutes + Hamstrings reported 3x its real Legs volume.
   const dataResult = await db.execute(sql`
     select
-      to_char(date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp, 'YYYY-MM-DD') as week_start,
+      to_char(${weekBucket(sql`(cw.completed_at at time zone 'UTC' at time zone ${tz})`, weekStart)}::timestamp, 'YYYY-MM-DD') as week_start,
       we.id as exercise_row_id,
       case when jsonb_typeof(we.muscle_groups_snapshot) = 'array'
            then we.muscle_groups_snapshot else '[]'::jsonb end as muscles,
@@ -57,7 +61,7 @@ export const GET = handle(async (request: NextRequest) => {
       and ws.completed = true
       and ws.weight_lbs is not null
       and ws.reps is not null
-      and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= date_trunc('week', (now() at time zone ${tz})) - ((${weeks}::int - 1) * interval '1 week')
+      and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= ${weekBucket(sql`(now() at time zone ${tz})`, weekStart)} - ((${weeks}::int - 1) * interval '1 week')
     group by 1, 2, 3
     order by 1
   `);

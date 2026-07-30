@@ -4,18 +4,22 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { parseTimeZone } from "@/lib/api/timezone";
+import { parseWeekStart, weekBucket } from "@/lib/api/week";
 
 // Weekly total training volume (sum of weight_lbs * reps over COMPLETED sets)
 // for the last N weeks, aggregated in SQL from the normalized workout tables
 // (workout_exercises / workout_sets) and zero-filled via generate_series so an
-// empty week renders a gap bar rather than vanishing. Monday-start weeks
-// (Postgres date_trunc('week')). Everything is cast to plain `timestamp` to match
+// empty week renders a gap bar rather than vanishing. Weeks honour the user's
+// week-start setting (see lib/api/week). Everything is cast to plain `timestamp` to match
 // how completed_at is stored (no tz), so the week buckets line up with the join.
 // Volume is returned in lbs (DB units); the client converts to the user's unit.
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   // Bucket days/weeks in the VIEWER's zone, not UTC (see lib/api/timezone).
   const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
+  // Honours the user's week-start setting; Postgres date_trunc is always
+  // ISO-Monday, which disagreed with the client-side "this week" tiles.
+  const weekStart = parseWeekStart(request.nextUrl.searchParams.get("weekStart"));
   const weeks = Math.min(
     26,
     Math.max(4, Number(request.nextUrl.searchParams.get("weeks")) || 12),
@@ -23,7 +27,7 @@ export const GET = handle(async (request: NextRequest) => {
 
   const result = await db.execute(sql`
     with anchor as (
-      select date_trunc('week', (now() at time zone ${tz})) as this_week
+      select ${weekBucket(sql`(now() at time zone ${tz})`, weekStart)} as this_week
     ),
     weeks as (
       select generate_series(
@@ -34,7 +38,7 @@ export const GET = handle(async (request: NextRequest) => {
     ),
     vol as (
       select
-        date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp as week_start,
+        ${weekBucket(sql`(cw.completed_at at time zone 'UTC' at time zone ${tz})`, weekStart)}::timestamp as week_start,
         sum(ws.weight_lbs * ws.reps) as volume_lbs,
         count(ws.id) as sets,
         count(distinct cw.id) as workouts

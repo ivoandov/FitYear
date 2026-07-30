@@ -81,7 +81,7 @@ export default function HistoryPage() {
   // Phase-4 analytics (SQL over the normalized tables): weekly volume trend +
   // all-time per-exercise records (server-side PR detection).
   const { data: volumeTrend = [] } = useQuery<VolumePoint[]>({
-    queryKey: [`/api/analytics/volume-trend?tz=${encodeURIComponent(clientTimeZone())}`],
+    queryKey: [`/api/analytics/volume-trend?tz=${encodeURIComponent(clientTimeZone())}&weekStart=${weekStartDay}`],
   });
   const { data: records = [] } = useQuery<RecordRow[]>({
     queryKey: ["/api/analytics/records?limit=8"],

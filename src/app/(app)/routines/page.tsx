@@ -214,9 +214,14 @@ export default function RoutinesPage() {
       setIsApplyModalOpen(false);
       setApplyingRoutine(null);
     },
-    onError: (error: any) => {
-      const message = error?.message || "Failed to start routine";
-      toast({ title: "Failed to start routine", description: message, variant: "destructive" });
+    onError: (error: unknown) => {
+      // describeApiError unwraps the "409: {json}" shape apiRequest throws; the
+      // raw message showed the user the JSON body verbatim.
+      toast({
+        title: "Failed to start routine",
+        description: describeApiError(error),
+        variant: "destructive",
+      });
     },
   });
 
@@ -277,6 +282,9 @@ export default function RoutinesPage() {
   const openEditRoutine = async (routine: Routine) => {
     try {
       const response = await fetch(`/api/routines/${routine.id}`, { credentials: 'include' });
+      // An error body is still valid JSON, so without this the {error} object
+      // was stored AS the routine and the dialog opened with undefined fields.
+      if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
       const fullRoutine: RoutineWithEntries = await response.json();
 
       setEditingRoutine(fullRoutine);
@@ -300,6 +308,7 @@ export default function RoutinesPage() {
   const openApplyRoutine = async (routine: Routine) => {
     try {
       const response = await fetch(`/api/routines/${routine.id}`, { credentials: 'include' });
+      if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
       const fullRoutine: RoutineWithEntries = await response.json();
 
       setApplyingRoutine(fullRoutine);

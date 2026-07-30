@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { parseTimeZone } from "@/lib/api/timezone";
+import { parseWeekStart, weekBucket } from "@/lib/api/week";
 import { EPLEY_MAX_REPS } from "@/lib/workout-stats";
 
 // Cross-lift estimated-1RM trend: for the user's most-trained lifts, the weekly
@@ -17,6 +18,9 @@ export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   // Bucket days/weeks in the VIEWER's zone, not UTC (see lib/api/timezone).
   const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
+  // Honours the user's week-start setting; Postgres date_trunc is always
+  // ISO-Monday, which disagreed with the client-side "this week" tiles.
+  const weekStart = parseWeekStart(request.nextUrl.searchParams.get("weekStart"));
   const weeks = Math.min(
     26,
     Math.max(4, Number(request.nextUrl.searchParams.get("weeks")) || 12),
@@ -26,9 +30,9 @@ export const GET = handle(async (request: NextRequest) => {
     Math.max(1, Number(request.nextUrl.searchParams.get("limit")) || 5),
   );
 
-  // 1. Canonical Monday-start week axis (matches date_trunc('week')).
+  // 1. Canonical week axis, honouring the user's week-start setting.
   const axisResult = await db.execute(sql`
-    with anchor as (select date_trunc('week', (now() at time zone ${tz})) as this_week)
+    with anchor as (select ${weekBucket(sql`(now() at time zone ${tz})`, weekStart)} as this_week)
     select to_char(gs::timestamp, 'YYYY-MM-DD') as week_start
     from generate_series(
       (select this_week from anchor) - ((${weeks}::int - 1) * interval '1 week'),
@@ -46,7 +50,7 @@ export const GET = handle(async (request: NextRequest) => {
       select
         we.exercise_id as exercise_id,
         we.name_snapshot as name,
-        date_trunc('week', (cw.completed_at at time zone 'UTC' at time zone ${tz}))::timestamp as week_start,
+        ${weekBucket(sql`(cw.completed_at at time zone 'UTC' at time zone ${tz})`, weekStart)}::timestamp as week_start,
         cw.completed_at as completed_at,
         -- Reps clamped: Epley is only meaningful in the low-rep range.
         ws.weight_lbs * (1 + least(ws.reps, ${EPLEY_MAX_REPS})::float8 / 30) as e1rm
@@ -63,7 +67,7 @@ export const GET = handle(async (request: NextRequest) => {
         and ws.completed = true
         and ws.weight_lbs > 0
         and ws.reps > 0
-        and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= date_trunc('week', (now() at time zone ${tz})) - ((${weeks}::int - 1) * interval '1 week')
+        and (cw.completed_at at time zone 'UTC' at time zone ${tz}) >= ${weekBucket(sql`(now() at time zone ${tz})`, weekStart)} - ((${weeks}::int - 1) * interval '1 week')
     ),
     top_lifts as (
       select exercise_id
