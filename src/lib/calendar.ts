@@ -1,4 +1,5 @@
 import { google, type calendar_v3 } from "googleapis";
+import * as Sentry from "@sentry/nextjs";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleCalendarTokens } from "@/lib/db/schema";
@@ -100,7 +101,14 @@ async function getClientForUser(userId: string): Promise<calendar_v3.Calendar> {
           accessToken: accessToken ? encryptToken(accessToken) : row.accessToken,
         })
         .where(eq(googleCalendarTokens.userId, userId)),
-    ).catch(() => {});
+    ).catch((e) => {
+      // Reported, not swallowed: silently dropping a freshly refreshed Google
+      // token means the user is quietly re-prompted to re-auth later with no
+      // trace of why. Best-effort by design (the request itself still works),
+      // but a repeated failure here is a real signal.
+      console.error("[calendar] failed to persist refreshed token:", e);
+      Sentry.captureException(e);
+    });
   }
 
   oauth2.on("tokens", async (newTokens) => {

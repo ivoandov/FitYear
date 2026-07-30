@@ -1,5 +1,5 @@
 import { sleep } from "workflow";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { restNotifications } from "@/lib/db/schema";
 import { sendPushToUser } from "@/lib/push-server";
@@ -41,6 +41,15 @@ async function deliverIfStillPending(restId: string): Promise<{ sent: number; sk
     .update(restNotifications)
     .set({ status: "sent" })
     .where(and(eq(restNotifications.id, restId), eq(restNotifications.status, "pending")));
+
+  // Prune as we go. Every armed rest writes a row and nothing ever deleted one:
+  // sent rows accumulate, and the cancel TOMBSTONE deliberately has to persist,
+  // so status alone can never reclaim them. At ~20 rests per session that is
+  // thousands of dead rows per user per year on a table only indexed by user.
+  // A day is far longer than any rest, so nothing live is ever in range.
+  await db
+    .delete(restNotifications)
+    .where(lt(restNotifications.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000)));
 
   return { sent, skipped: false };
 }

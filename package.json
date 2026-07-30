@@ -7,15 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
-    "db:push": "drizzle-kit push",
-    "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
-    "db:migrate": "drizzle-kit migrate"
+    "db:check": "tsx scripts/guard-prod-db.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.93.0",
@@ -36,7 +34,6 @@
     "date-fns": "^4.1.0",
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
-    "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.14.0",
