@@ -87,6 +87,11 @@ export interface TrackingProgress {
   // backwards compatibility with progress saved before this field existed
   // (those rows are treated as lbs).
   weightUnit?: 'lbs' | 'kg';
+  // Epoch ms of the last local write. Used as the primary signal when the same
+  // workout exists on two devices: set count alone cannot tell a stale copy
+  // from a deliberate un-check, so the older copy would resurrect the removed
+  // sets. Optional for progress saved before this field existed.
+  savedAt?: number;
 }
 
 interface WorkoutContextType {
@@ -122,6 +127,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
   const [lastCompletedWorkoutId, setLastCompletedWorkoutId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // True once this session has held a real active workout, so a subsequent null
+  // state means "the workout ended" and not "we loaded nothing".
+  const hadWorkoutRef = useRef(false);
   
   // Refs to track current state for immediate saves (visibility change, beforeunload)
   const activeWorkoutRef = useRef<ActiveWorkout | null>(null);
@@ -202,7 +210,15 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       // Authenticated user: reconcile the server copy with localStorage so a
       // reload / app restart can never lose progress.
       fetch("/api/active-workout", { credentials: "include" })
-        .then(res => (res.ok ? res.json() : null))
+        .then(res => {
+          // An HTTP error is a LOAD FAILURE, not "you have no workout". Treating
+          // a transient 500 as an empty result meant a device with no local copy
+          // restored nothing and then deleted the real server row (see the
+          // hadWorkoutRef guard in saveToServer). Throw so the catch below falls
+          // back to localStorage instead.
+          if (!res.ok) throw new Error(`active-workout load failed: ${res.status}`);
+          return res.json();
+        })
         .then(data => {
           const serverWorkout = (data?.workoutData ?? null) as ActiveWorkout | null;
           const serverProgress = (data?.trackingProgress ?? null) as TrackingProgress | null;
@@ -224,10 +240,21 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           const serverSetCount = countTrackedSets(serverProgress);
           const sameWorkout =
             !!localWorkout && !!serverWorkout && serverWorkout.displayId === localWorkout.displayId;
+
+          // For the SAME workout on two devices, recency decides. Set count is
+          // only a fallback for progress saved before `savedAt` existed: it
+          // cannot distinguish a stale copy from a deliberate un-check, so
+          // "more sets wins" silently reverted corrections made elsewhere.
+          const localSavedAt = localProgress?.savedAt;
+          const serverSavedAt = serverProgress?.savedAt;
+          const serverIsFresher =
+            sameWorkout &&
+            (localSavedAt != null && serverSavedAt != null
+              ? serverSavedAt > localSavedAt
+              : serverSetCount > localSetCount);
+
           const preferLocal =
-            !!localWorkout &&
-            (!serverWorkout || sameWorkout) &&
-            !(sameWorkout && serverSetCount > localSetCount);
+            !!localWorkout && (!serverWorkout || sameWorkout) && !serverIsFresher;
 
           if (preferLocal && localWorkout) {
             console.log("[WorkoutContext] Restored from localStorage (freshest copy)");
@@ -273,7 +300,12 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       if (workout) {
         localStorage.setItem(ACTIVE_WORKOUT_STORAGE_KEY, JSON.stringify(workout));
         if (progress) {
-          localStorage.setItem(TRACKING_STORAGE_KEY, JSON.stringify(progress));
+          // Stamped here (the single write path for both the local copy and,
+          // via saveToServer, the server one) so both carry the same clock.
+          localStorage.setItem(
+            TRACKING_STORAGE_KEY,
+            JSON.stringify({ ...progress, savedAt: Date.now() }),
+          );
         }
       } else {
         localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
@@ -337,7 +369,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           console.error("Failed to save to server:", err);
           // Local backup already saved, so data is safe
         });
-      } else {
+      } else if (hadWorkoutRef.current) {
+        // Only after a workout actually ended this session (completed or
+        // discarded). Without the guard, merely LOADING nothing issued a DELETE
+        // - harmless on a normal empty open, but destructive when the load had
+        // failed and the server still held a live workout.
         apiRequest("DELETE", "/api/active-workout")
           .catch(err => console.error("Failed to delete from server:", err));
       }
@@ -374,6 +410,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   // Save whenever activeWorkout changes (after initial load)
   useEffect(() => {
     if (hasLoadedFromServer) {
+      // Marks that this session has held a real workout, which is what makes a
+      // later null state mean "it ended" rather than "we never had one".
+      if (activeWorkout) hadWorkoutRef.current = true;
       saveToServer(activeWorkout, trackingProgress);
     }
   }, [activeWorkout, hasLoadedFromServer, saveToServer, trackingProgress]);

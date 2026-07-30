@@ -136,7 +136,6 @@ export function WorkoutHistoryCard({
     if (!workoutId) return;
     
     // Convert display-unit weights back to lbs before persisting (DB always stores lbs).
-    // Ensure all sets are marked as completed when saving a completed workout edit.
     const updatedExercises = editedExercises.map(ex => ({
       id: ex.id,
       name: ex.name,
@@ -153,7 +152,13 @@ export function WorkoutHistoryCard({
         const isCardio = (ex.exerciseType || 'weight_reps') === 'distance_time';
         return {
           ...set,
-          completed: true,
+          // Each row keeps the flag it was stored with. Forcing `true` here
+          // turned every abandoned prefilled row into a logged set on save, so
+          // fixing one typo permanently inflated that workout's sets and volume
+          // everywhere - undoing the completed-sets-only correction in the
+          // durable store. Rows the user adds in the editor are already created
+          // with completed:true (see addSet).
+          completed: set.completed ?? false,
           ...(isCardio
             ? { distance: set.distance ?? 0, time: set.time ?? 0 }
             : { weight: displayToLbs(set.weight, weightUnit) ?? 0, reps: set.reps ?? 0 }),
@@ -310,15 +315,15 @@ export function WorkoutHistoryCard({
             </div>
             <div className="space-y-3 sm:space-y-4">
               {displayExercises.map((exercise, exIdx) => {
-                // For completed workouts, show all sets (they're all considered completed)
-                // In edit mode, show all sets for editing
-                // In view mode, show all sets with data (weight/reps or distance/time)
-                const setsWithData = exercise.sets.filter(s => 
-                  (s.weight != null && s.reps) || (s.distance && s.time) || s.completed
-                );
-                if (setsWithData.length === 0 && !isEditing) return null;
-                
-                const setsToDisplay = isEditing ? exercise.sets : setsWithData;
+                // View mode lists exactly what the header counts: COMPLETED sets.
+                // It used to include any data-bearing row, so an abandoned
+                // prefilled set showed in the list but not in the "N sets" stat
+                // beside it. Edit mode still shows every row so nothing is
+                // hidden from (or silently dropped by) an edit.
+                const completedSets = exercise.sets.filter(s => s.completed);
+                if (completedSets.length === 0 && !isEditing) return null;
+
+                const setsToDisplay = isEditing ? exercise.sets : completedSets;
                 const isCardioStyle = exercise.exerciseType === 'distance_time';
                 
                 return (
