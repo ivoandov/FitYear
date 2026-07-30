@@ -780,11 +780,13 @@ export default function WorkoutsPage() {
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="end">
+                {/* `initialFocus` was removed in react-day-picker v10; the
+                    popover already moves focus into its content on open. */}
                 <Calendar
                   mode="single"
                   selected={selectedDate}
                   onSelect={(date) => date && setSelectedDate(date)}
-                  initialFocus
+                  autoFocus
                 />
               </PopoverContent>
             </Popover>
