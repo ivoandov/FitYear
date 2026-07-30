@@ -8,9 +8,11 @@ import { handle } from "@/lib/api/handler";
 
 export const GET = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
+  // Floored as well as capped: a negative or fractional `?limit=` reached
+  // Postgres as `LIMIT -1` and came back a generic 500 plus a Sentry error.
   const limit = Math.min(
-    Number(request.nextUrl.searchParams.get("limit")) || 5,
     50,
+    Math.max(1, Math.floor(Number(request.nextUrl.searchParams.get("limit"))) || 5),
   );
 
   const rows = await db

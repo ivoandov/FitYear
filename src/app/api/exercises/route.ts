@@ -41,8 +41,18 @@ export const POST = handle(async (request: NextRequest) => {
   const json = await request.json();
   // `name` derives from a text column, so it was unbounded - and it lands in
   // the SHARED catalog that is pasted into every user's FitBot prompt.
+  // `imageUrl` is omitted because only the Imagen pipeline writes it: a
+  // client-supplied external URL reaches every user (the catalog is shared) and
+  // next/image has no remotePatterns, so one crafted row error-boundaries
+  // /exercises for the whole user base. `userId`/`isPublic` are overridden
+  // below, but omitting them here keeps the contract explicit.
   const parsed = insertExerciseSchema
-    .extend({ name: z.string().trim().min(1).max(60) })
+    .omit({ userId: true, isPublic: true, imageUrl: true })
+    .extend({
+      name: z.string().trim().min(1).max(60),
+      description: z.string().max(2000),
+      exerciseType: z.enum(["weight_reps", "distance_time"]).optional(),
+    })
     .parse(json);
   const { force } = CreateOptionsSchema.parse(json);
 

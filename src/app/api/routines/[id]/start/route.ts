@@ -15,8 +15,12 @@ import { isUniqueViolation } from "@/lib/api/pg-errors";
 type Ctx = { params: Promise<{ id: string }> };
 
 const Schema = z.object({
-  startDate: z.string(),
-  durationDays: z.number().int().positive().optional(),
+  // Must be a real date: an unparseable string became `Invalid Date`, and the
+  // conflict loop's `d.toISOString()` then threw a RangeError as a generic 500.
+  startDate: z
+    .string()
+    .refine((s) => !Number.isNaN(Date.parse(s)), "startDate must be a valid date"),
+  durationDays: z.number().int().positive().max(366).optional(),
 });
 
 export const POST = handle(async (request: NextRequest, ctx: Ctx) => {

@@ -17,9 +17,18 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   // turned your own exercise into a global seed row that NOBODY can then edit
   // or delete (both guards below reject it), and posting another user's id
   // handed the row to them.
+  // `imageUrl` is omitted for a different reason: it is written ONLY by the
+  // Imagen pipeline. A client-supplied external URL lands in the SHARED catalog
+  // that every user reads, and next/image has no remotePatterns configured, so
+  // one crafted row throws during render and error-boundaries /exercises for
+  // everybody.
   const body = insertExerciseSchema
-    .omit({ userId: true, isPublic: true })
-    .extend({ name: z.string().trim().min(1).max(60) })
+    .omit({ userId: true, isPublic: true, imageUrl: true })
+    .extend({
+      name: z.string().trim().min(1).max(60),
+      description: z.string().max(2000),
+      exerciseType: z.enum(["weight_reps", "distance_time"]),
+    })
     .partial()
     .parse(await request.json());
   // Same write-path canonicalization as POST (this route was missed when the

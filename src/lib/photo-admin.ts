@@ -24,7 +24,14 @@ export function isPhotoAdmin(userId: string | null | undefined): boolean {
   return photoAdminIds().includes(userId);
 }
 
-/** Owner, or an allowlisted user acting on the shared library. */
+/**
+ * Owner, or an allowlisted user acting on ANY row they don't own - including
+ * one owned by the other named user, not just the global (userId null) seeds.
+ * That breadth is deliberate: of the 9 dedupe survivors that lost the button,
+ * 5 are global and 3 are Cori's, so a global-only rule would not restore the
+ * case this exists for. Revisit if the app ever gains users beyond the
+ * allowlist, since it grants image writes across personal libraries.
+ */
 export function canRegenerateImage(
   userId: string | null | undefined,
   exerciseUserId: string | null | undefined,
