@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { enforceDailyQuota } from "@/lib/api/rate-limit";
+import { verifyBuildToken } from "@/lib/api/build-token";
+import { PHASE_CALL_DAILY_LIMIT } from "@/lib/api/ai-limits";
 import { SkeletonSchema, PhaseVarietySchema } from "@/lib/program-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
@@ -12,21 +15,29 @@ import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 // name + accessory exercises per workout — layered on top of the anchor lifts
 // (whose per-week loads are already computed deterministically). One phase's
 // worth of output is small, so this stays well under the 60s Hobby budget.
-// Deliberately does NOT charge the daily quota: the whole build was already
-// counted once at the skeleton call, so a segmented build costs one unit
-// (FITBOT_TECH_SPEC 2.5). requireUser still gates it to authenticated callers.
+//
+// A build costs ONE quota unit, charged at the skeleton call (FITBOT_TECH_SPEC
+// 2.5), so this route deliberately does not re-charge it. It is not, however,
+// free to call: `buildToken` proves a metered skeleton call happened, names the
+// caller, and bounds `phaseIndex`, so a phase call cannot exist without a
+// charged build behind it. The daily ceiling below is a second line of defence
+// sized so a legitimate builder can never reach it (see the invariant test in
+// src/lib/api/__tests__/build-quota.test.ts).
 export const maxDuration = 60;
 
 const InputSchema = z.object({
   skeleton: SkeletonSchema,
   phaseIndex: z.number().int().min(0),
-  equipment: z.array(z.string()).min(1),
+  buildToken: z.string().min(1).max(500),
+  equipment: z.array(z.string().max(100)).min(1).max(50),
   experience: z.enum(["Beginner", "Intermediate", "Advanced", "Competitive"]),
-  extras: z.array(z.string()).default([]),
-  imbalanceMuscles: z.array(z.string()).default([]),
-  imbalanceNotes: z.string().default(""),
-  injuryDetails: z.array(z.string()).default([]),
-  injuryNotes: z.string().default(""),
+  // Every free-text field is capped: the quota counts CALLS, not tokens, so an
+  // uncapped field let one quota unit buy an arbitrarily large prompt.
+  extras: z.array(z.string().max(200)).max(50).default([]),
+  imbalanceMuscles: z.array(z.string().max(100)).max(50).default([]),
+  imbalanceNotes: z.string().max(1000).default(""),
+  injuryDetails: z.array(z.string().max(200)).max(50).default([]),
+  injuryNotes: z.string().max(1000).default(""),
 });
 
 function extractJson(raw: string): unknown {
@@ -43,8 +54,15 @@ function extractJson(raw: string): unknown {
 }
 
 export const POST = handle(async (request: NextRequest) => {
-  await requireUser();
+  const { user } = await requireUser();
   const input = InputSchema.parse(await request.json());
+
+  // Proves a metered skeleton call issued this build, for THIS user, recently.
+  const tokenPhaseCount = verifyBuildToken(input.buildToken, user.id);
+  if (input.phaseIndex >= tokenPhaseCount) {
+    throw new ApiError(400, "That program phase does not exist.");
+  }
+  await enforceDailyQuota(user.id, "generate-program-phase", PHASE_CALL_DAILY_LIMIT);
 
   const phase = input.skeleton.phases[input.phaseIndex];
   if (!phase) {

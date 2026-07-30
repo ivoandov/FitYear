@@ -94,6 +94,9 @@ export default function FitBotProgramPage() {
 
   // Segmented build state.
   const skeletonRef = useRef<Skeleton | null>(null);
+  // Issued by the (metered) skeleton call and required by every phase call, so
+  // the unmetered stage-2 endpoint can't be driven without a charged build.
+  const buildTokenRef = useRef<string | null>(null);
   const varietyRef = useRef<(PhaseVariety | null)[]>([]);
   const [structureStatus, setStructureStatus] = useState<StepStatus>("queued");
   const [structureError, setStructureError] = useState<string | null>(null);
@@ -171,6 +174,7 @@ export default function FitBotProgramPage() {
     const res = await apiRequest("POST", "/api/ai/generate-program-phase", {
       skeleton: sk,
       phaseIndex: i,
+      buildToken: buildTokenRef.current ?? "",
       ...constraints(),
     });
     const data = (await res.json()) as { phaseIndex: number; variety: PhaseVariety };
@@ -235,6 +239,7 @@ export default function FitBotProgramPage() {
     setPhases([]);
     varietyRef.current = [];
     skeletonRef.current = null;
+    buildTokenRef.current = null;
     try {
       const res = await apiRequest("POST", "/api/ai/generate-program-skeleton", {
         focus,
@@ -243,7 +248,8 @@ export default function FitBotProgramPage() {
         structureNotes,
         ...constraints(),
       });
-      const sk = (await res.json()) as Skeleton;
+      const sk = (await res.json()) as Skeleton & { buildToken?: string };
+      buildTokenRef.current = sk.buildToken ?? null;
       skeletonRef.current = sk;
       varietyRef.current = sk.phases.map(() => null);
       setPhases(

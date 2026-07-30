@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
+import { signBuildToken } from "@/lib/api/build-token";
 import { SkeletonSchema } from "@/lib/program-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
@@ -19,18 +20,20 @@ import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 // per-phase calls do NOT re-charge, so a segmented build costs one unit.
 export const maxDuration = 60;
 
+// Every free-text field is capped: the quota counts CALLS, not tokens, so an
+// uncapped field let one quota unit buy an arbitrarily large prompt.
 const InputSchema = z.object({
-  focus: z.array(z.string()).min(1),
-  equipment: z.array(z.string()).min(1),
+  focus: z.array(z.string().max(100)).min(1).max(20),
+  equipment: z.array(z.string().max(100)).min(1).max(50),
   experience: z.enum(["Beginner", "Intermediate", "Advanced", "Competitive"]),
   distinctWorkouts: z.number().int().min(3).max(8),
   programLength: z.number().int().min(7).max(180),
   structureNotes: z.string().max(500).default(""),
-  extras: z.array(z.string()).default([]),
-  imbalanceMuscles: z.array(z.string()).default([]),
-  imbalanceNotes: z.string().default(""),
-  injuryDetails: z.array(z.string()).default([]),
-  injuryNotes: z.string().default(""),
+  extras: z.array(z.string().max(200)).max(50).default([]),
+  imbalanceMuscles: z.array(z.string().max(100)).max(50).default([]),
+  imbalanceNotes: z.string().max(1000).default(""),
+  injuryDetails: z.array(z.string().max(200)).max(50).default([]),
+  injuryNotes: z.string().max(1000).default(""),
 });
 
 function extractJson(raw: string): unknown {
@@ -104,5 +107,11 @@ Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shap
   }
   // The exact program length in days is authoritative from the wizard, not the
   // model; inject it so the assembler builds exactly this many days.
-  return { ...result.data, durationDays: input.programLength };
+  // `buildToken` binds the follow-up per-phase calls to this charged build (see
+  // lib/api/build-token.ts); the phase route refuses to run without it.
+  return {
+    ...result.data,
+    durationDays: input.programLength,
+    buildToken: signBuildToken(user.id, result.data.phases.length),
+  };
 });

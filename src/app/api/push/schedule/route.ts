@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { pushSubscriptions, restNotifications } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { restAlertWorkflow } from "@/workflows/rest-alert";
 
 const PostSchema = z.object({
@@ -18,6 +19,12 @@ const PostSchema = z.object({
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PostSchema.parse(await request.json());
+
+  // Each accepted call starts a durable workflow run that sleeps up to an hour,
+  // so this is a resource ceiling, not a cost one. Deliberately far above real
+  // use: a very heavy day is ~30 rests per session, and the limit allows ~16
+  // such sessions before it bites.
+  await enforceDailyQuota(user.id, "rest-push-schedule", 500);
 
   // No device to deliver to (permission granted but never subscribed, or the
   // subscription was pruned) - don't create a row or a sleeping workflow run

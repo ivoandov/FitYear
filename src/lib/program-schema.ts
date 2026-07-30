@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PROGRAM_PHASES } from "@/lib/api/ai-limits";
 
 // Shared Fit Bot program shape. The client (fit-bot/page.tsx) validates the
 // streamed LLM output against this before saving; the server (ai/save-program)
@@ -103,7 +104,10 @@ export const SkeletonSchema = z.object({
   // period in days (e.g. [0,1,2,-1] = Push, Pull, Legs, rest → a 4-day cycle).
   workouts: z.array(WorkoutDaySchema).min(1),
   cycle: z.array(z.number().int().min(-1)).min(1),
-  phases: z.array(PhaseSchema).min(1),
+  // Capped: each phase costs one Sonnet call at build time, so an unbounded
+  // count let the model decide how expensive a single build is. It also anchors
+  // the phase-quota invariant in lib/api/ai-limits.ts.
+  phases: z.array(PhaseSchema).min(1).max(MAX_PROGRAM_PHASES),
   deloadWeeks: z.array(z.number().int().min(1)).default([]), // 1-indexed weeks
   deloadLoadFactor: z.number().min(0.5).max(1).default(0.9),
 });

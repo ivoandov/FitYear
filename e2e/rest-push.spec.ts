@@ -69,6 +69,20 @@ function fakeSubscription(id: string) {
   };
 }
 
+/**
+ * Seed the subscription straight into the table rather than through
+ * `POST /api/push/subscribe`, which (correctly) rejects any endpoint outside
+ * the real push-service host allowlist. The delivery chain reads this row from
+ * the DB, so seeding exercises exactly the same path; the allowlist itself is
+ * covered by its own test below.
+ */
+async function seedSubscription(userId: string, id: string) {
+  const sub = fakeSubscription(id);
+  await sql`
+    insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+    values (${userId}::uuid, ${sub.endpoint}, ${sub.keys.p256dh}, ${sub.keys.auth})`;
+}
+
 async function restRow(restId: string) {
   const [row] = await sql`
     select status, user_id, exercise_name
@@ -83,20 +97,18 @@ async function restRow(restId: string) {
 // test 4 seeds a row owned by a second user the fixture does not manage.
 test.afterEach(async () => {
   await sql`delete from rest_notifications where id like ${`${MARKER}-%`}`;
-  await sql`delete from push_subscriptions where endpoint like ${`https://example.test/${MARKER}/%`}`;
+  await sql`delete from push_subscriptions where endpoint like ${`%${MARKER}%`}`;
 });
 
 test("the sleeping workflow wakes and delivers a scheduled rest alert", async ({
   page,
-  account: _account,
+  account,
 }) => {
   // The workflow really sleeps, so this test really waits.
   test.setTimeout(120_000);
   const restId = `${MARKER}-deliver-${Date.now()}`;
+  await seedSubscription(account.id, restId);
   await page.goto("/");
-
-  const subscribed = await apiPost(page, "/api/push/subscribe", fakeSubscription(restId));
-  expect(subscribed.status).toBe(200);
 
   const scheduled = await apiPost(page, "/api/push/schedule", {
     restId,
@@ -120,15 +132,13 @@ test("the sleeping workflow wakes and delivers a scheduled rest alert", async ({
 
 test("a cancel that arrives first wins - schedule cannot un-cancel it", async ({
   page,
-  account: _account,
+  account,
 }) => {
   const restId = `${MARKER}-tombstone-${Date.now()}`;
-  await page.goto("/");
-
   // Subscribed on purpose: without it, schedule short-circuits on "no device"
   // and a `scheduled: false` would prove nothing about the tombstone.
-  const subscribed = await apiPost(page, "/api/push/subscribe", fakeSubscription(restId));
-  expect(subscribed.status).toBe(200);
+  await seedSubscription(account.id, restId);
+  await page.goto("/");
 
   // Skipping a rest a second after starting it means the cancel can beat the
   // schedule request. A plain UPDATE matched zero rows here and silently left
@@ -149,6 +159,34 @@ test("a cancel that arrives first wins - schedule cannot un-cancel it", async ({
   // must still be cancelled rather than having flipped to sent.
   await page.waitForTimeout(8_000);
   expect((await restRow(restId))?.status).toBe("cancelled");
+});
+
+test("subscribe rejects endpoints outside the push-service allowlist", async ({
+  page,
+  account: _account,
+}) => {
+  await page.goto("/");
+
+  // The endpoint is a URL the SERVER later POSTs to, so an arbitrary host would
+  // make this a delayed request relay. Only real push services are accepted.
+  for (const endpoint of [
+    "https://example.test/e2e-push/nope",
+    "http://169.254.169.254/latest/meta-data",
+    "http://fcm.googleapis.com/insecure",
+  ]) {
+    const res = await apiPost(page, "/api/push/subscribe", {
+      endpoint,
+      keys: { p256dh: "x", auth: "y" },
+    });
+    expect(res.status, `should reject ${endpoint}`).toBe(400);
+  }
+
+  // A real push-service URL still works.
+  const ok = await apiPost(page, "/api/push/subscribe", {
+    endpoint: `https://fcm.googleapis.com/fcm/send/${MARKER}-allowlist-${Date.now()}`,
+    keys: { p256dh: "x", auth: "y" },
+  });
+  expect(ok.status).toBe(200);
 });
 
 test("no push subscription means no row and no sleeping workflow run", async ({
@@ -173,7 +211,7 @@ test("no push subscription means no row and no sleeping workflow run", async ({
 
 test("another user's rest alert cannot be cancelled or hijacked", async ({
   page,
-  account: _account,
+  account,
 }) => {
   const victim = await createTempUser(`${MARKER}-victim`);
   const restId = `${MARKER}-crossuser-${Date.now()}`;
@@ -182,9 +220,8 @@ test("another user's rest alert cannot be cancelled or hijacked", async ({
       insert into rest_notifications (id, user_id, status, exercise_name, fire_at)
       values (${restId}, ${victim.id}::uuid, 'pending', 'Victim Curls', now() + interval '1 hour')`;
 
+    await seedSubscription(account.id, restId);
     await page.goto("/");
-    const subscribed = await apiPost(page, "/api/push/subscribe", fakeSubscription(restId));
-    expect(subscribed.status).toBe(200);
 
     // `restId` is unvalidated client input with no FK, so both writes are
     // owner-scoped. Cancel answers ok either way and must change nothing.

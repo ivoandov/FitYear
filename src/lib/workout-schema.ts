@@ -14,23 +14,26 @@ import { z } from "zod";
  * client validates the streamed result against it before showing the preview, so
  * the two never drift. See FITBOT_TECH_SPEC.md section 1.6.
  */
+// Length caps throughout: `refine-workout` accepts a whole workout from the
+// client and stringifies it into the prompt, so an uncapped field let one quota
+// unit buy an arbitrarily large paid call. All limits sit far above real output.
 export const GeneratedExerciseSchema = z.object({
-  name: z.string().min(1),
-  muscleGroups: z.array(z.string()).default([]),
+  name: z.string().min(1).max(120),
+  muscleGroups: z.array(z.string().max(100)).max(20).default([]),
   exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
   isAssisted: z.boolean().default(false),
   sets: z.number().int().min(1).max(20),
-  reps: z.string(), // free-form: "8-12", "AMRAP", "30s"
+  reps: z.string().max(40), // free-form: "8-12", "AMRAP", "30s"
   rest: z.number().int().min(0).max(600), // seconds
-  notes: z.string().default(""),
+  notes: z.string().max(500).default(""),
 });
 
 export const GeneratedWorkoutSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(120),
   estimatedMinutes: z.number().int().min(1).max(240).optional(),
-  targetMuscles: z.array(z.string()).default([]),
-  equipment: z.array(z.string()).default([]),
-  exercises: z.array(GeneratedExerciseSchema).min(1),
+  targetMuscles: z.array(z.string().max(100)).max(30).default([]),
+  equipment: z.array(z.string().max(100)).max(30).default([]),
+  exercises: z.array(GeneratedExerciseSchema).min(1).max(30),
 });
 
 export type GeneratedExercise = z.infer<typeof GeneratedExerciseSchema>;
