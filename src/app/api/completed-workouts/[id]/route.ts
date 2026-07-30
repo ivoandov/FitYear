@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { completedWorkouts, userSettings } from "@/lib/db/schema";
+import { completedWorkouts, userSettings, routineInstances } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import {
@@ -43,7 +43,24 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;
-  if (body.completedAt !== undefined) update.completedAt = new Date(body.completedAt);
+  if (body.completedAt !== undefined) {
+    const nextCompletedAt = new Date(body.completedAt);
+    update.completedAt = nextCompletedAt;
+    // Move started_at by the same delta. Editing only completed_at left the
+    // start behind, producing rows that "started" days after they finished (5
+    // in prod before this fix) and a duration_seconds describing the old span.
+    // summarizeWorkout falls back to the timestamps when duration is null, so
+    // the skew is not purely cosmetic.
+    if (existing.startedAt) {
+      const delta = nextCompletedAt.getTime() - new Date(existing.completedAt).getTime();
+      const nextStartedAt = new Date(new Date(existing.startedAt).getTime() + delta);
+      update.startedAt = nextStartedAt;
+      update.durationSeconds = Math.max(
+        0,
+        Math.round((nextCompletedAt.getTime() - nextStartedAt.getTime()) / 1000),
+      );
+    }
+  }
 
   // Phase 4d: update the row and re-sync its normalized exercises/sets in ONE
   // transaction (the normalized tables are the sole store). A set-write failure
@@ -124,6 +141,25 @@ export const DELETE = handle(async (_request: NextRequest, ctx: Ctx) => {
     await deleteCalendarEvent(user.id, existing.calendarEventId, s?.id ?? undefined);
   }
 
-  await db.delete(completedWorkouts).where(eq(completedWorkouts.id, id));
+  await db.transaction(async (tx) => {
+    await tx.delete(completedWorkouts).where(eq(completedWorkouts.id, id));
+    // routine_instances.completed_workouts is a hand-maintained counter that
+    // only ever went UP: deleting a session left it claiming progress that no
+    // longer exists (prod had one reading 12 against 0 actual sessions), and
+    // the program-progress UI reads it directly.
+    if (existing.routineInstanceId) {
+      await tx
+        .update(routineInstances)
+        .set({
+          completedWorkouts: sql`greatest(${routineInstances.completedWorkouts} - 1, 0)`,
+        })
+        .where(
+          and(
+            eq(routineInstances.id, existing.routineInstanceId),
+            eq(routineInstances.userId, user.id),
+          ),
+        );
+    }
+  });
   return new Response(null, { status: 204 });
 });

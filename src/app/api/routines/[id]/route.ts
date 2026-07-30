@@ -1,8 +1,13 @@
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { routines, routineEntries } from "@/lib/db/schema";
+import {
+  routines,
+  routineEntries,
+  routineInstances,
+  scheduledWorkouts,
+} from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 
@@ -102,6 +107,51 @@ export const DELETE = handle(async (_req: NextRequest, ctx: Ctx) => {
   const { id } = await ctx.params;
   const existing = await ownRoutine(id, user.id);
   if (existing.userId !== user.id) throw new ApiError(403, "Access denied");
-  await db.delete(routines).where(eq(routines.id, id));
+
+  // routine_instances.routine_id is a plain varchar with NO foreign key, so the
+  // routine's cascade reaches routine_entries but never the instances. Deleting
+  // a routine mid-program used to leave an ACTIVE instance behind (prod had
+  // one) whose future scheduled workouts stayed on the calendar pointing at a
+  // routine that no longer exists. Wind the program down in the same
+  // transaction: cancel its instances and drop their not-yet-due sessions,
+  // keeping completed history exactly like the soft-cancel path does.
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  await db.transaction(async (tx) => {
+    const instances = await tx
+      .select({ id: routineInstances.id })
+      .from(routineInstances)
+      .where(
+        and(
+          eq(routineInstances.routineId, id),
+          eq(routineInstances.userId, user.id),
+        ),
+      );
+    if (instances.length > 0) {
+      const ids = instances.map((i) => i.id);
+      await tx
+        .delete(scheduledWorkouts)
+        .where(
+          and(
+            eq(scheduledWorkouts.userId, user.id),
+            inArray(scheduledWorkouts.routineInstanceId, ids),
+            gte(scheduledWorkouts.date, todayStart),
+          ),
+        );
+      await tx
+        .update(routineInstances)
+        .set({ status: "cancelled" })
+        .where(
+          and(
+            inArray(routineInstances.id, ids),
+            eq(routineInstances.userId, user.id),
+            eq(routineInstances.status, "active"),
+          ),
+        );
+    }
+    await tx.delete(routines).where(eq(routines.id, id));
+  });
+
   return { success: true };
 });

@@ -71,3 +71,6 @@ next-env.d.ts
 
 # Assisted-flag backfill backups (2026-07-29 audit fix)
 /migration/assisted-backfill-backups/
+
+# One-shot audit cleanup backups (2026-07-29)
+/migration/audit-cleanup-backups/
