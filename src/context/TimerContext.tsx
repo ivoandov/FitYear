@@ -14,6 +14,7 @@ import {
   parseRestTimerState,
   type RestTimerState,
 } from "@/lib/rest-timer-state";
+import { restOngoingContent, REST_NOTIFICATION_TAG } from "@/lib/rest-notification";
 
 const TIMER_STATE_KEY = "rest_timer_state_v1";
 // Pre-2026-07-21 keys, read once for migration then cleared.
@@ -125,6 +126,62 @@ function requestNotificationPermission() {
   }
 }
 
+/**
+ * Post (or replace) the persistent "resting until HH:MM" notification, so the
+ * rest stays visible after the user leaves the app. Shares the completion
+ * alert's tag so the "rest is over" push REPLACES this rather than stacking.
+ * Silent on purpose: this is a status line, not an alert - the buzz belongs to
+ * the finish notification.
+ */
+function showOngoingRestNotification(
+  endTimeMs: number,
+  exerciseName?: string | null,
+  nextExerciseName?: string | null,
+) {
+  if (typeof window === "undefined") return;
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!("serviceWorker" in navigator)) return;
+
+  const { title, body } = restOngoingContent({ endTimeMs, exerciseName, nextExerciseName });
+  navigator.serviceWorker
+    .getRegistration()
+    .then((registration) => {
+      if (!registration) return;
+      return registration.showNotification(title, {
+        body,
+        icon: "/icon-192.png",
+        badge: "/icon-192.png",
+        tag: REST_NOTIFICATION_TAG,
+        // Do not re-alert: replacing the status line must not buzz each time.
+        renotify: false,
+        silent: true,
+        // Android renders a timestamped notification as a live "since" line;
+        // `ongoing` (non-standard, ignored elsewhere) keeps it undismissable
+        // while the rest runs.
+        timestamp: endTimeMs,
+        ongoing: true,
+        data: { url: "/track", kind: "rest-ongoing" },
+      } as NotificationOptions);
+    })
+    .catch(() => {});
+}
+
+/** Remove the ongoing rest notification (user is back, or the rest ended). */
+function clearOngoingRestNotification() {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+  navigator.serviceWorker
+    .getRegistration()
+    .then(async (registration) => {
+      if (!registration) return;
+      const shown = await registration.getNotifications({ tag: REST_NOTIFICATION_TAG });
+      for (const n of shown) {
+        // Only clear our own status line, never a delivered "rest over" alert.
+        if ((n.data as { kind?: string } | undefined)?.kind === "rest-ongoing") n.close();
+      }
+    })
+    .catch(() => {});
+}
+
 function sendTimerCompleteNotification(exerciseName: string) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   const options: NotificationOptions = {
@@ -204,6 +261,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const complete = useCallback(() => {
     if (hasCompletedRef.current) return;
     hasCompletedRef.current = true;
+    // Drop the "resting until" status line before the completion alert, so the
+    // shade never shows a finished rest as still running.
+    clearOngoingRestNotification();
     if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
     sendTimerCompleteNotification(exerciseNameRef.current);
   }, []);
@@ -377,6 +437,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     endTimeRef.current = null;
     hasCompletedRef.current = false;
     clearState();
+    // The rest is over as far as the user is concerned, so the shade must not
+    // keep claiming one is running.
+    clearOngoingRestNotification();
     // Skipping to the next set ends the rest early - drop the pending alert so
     // it doesn't buzz mid-set.
     cancelRestPush(restIdRef.current);
@@ -418,6 +481,23 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isOpen) return;
     const handleVisibility = () => {
+      // Leaving the app mid-rest: post the status line into the notification
+      // shade so the rest stays visible without reopening FitYear. Done HERE,
+      // as the app is hidden, because a suspended page cannot post it later.
+      if (document.visibilityState === "hidden") {
+        if (!isPaused && endTimeRef.current && endTimeRef.current > Date.now()) {
+          showOngoingRestNotification(
+            endTimeRef.current,
+            exerciseNameRef.current,
+            nextExerciseNameRef.current,
+          );
+        }
+        return;
+      }
+      if (document.visibilityState === "visible") {
+        // Back in the app - the on-screen timer is the source of truth again.
+        clearOngoingRestNotification();
+      }
       if (document.visibilityState === "visible" && !isPaused) {
         clearInterval_();
         const remaining = computeRemaining();
