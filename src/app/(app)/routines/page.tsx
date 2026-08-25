@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Calendar as CalendarIcon, Trash2, Pencil, Play, Globe, Lock, MoreVertical, ChevronLeft, ChevronRight, CheckCircle, X, Copy, Sparkles } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Pencil, Play, Globe, Lock, MoreVertical, ChevronLeft, ChevronRight, CheckCircle, X, Copy, Sparkles, ClipboardPaste } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, addDays } from "date-fns";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
@@ -600,6 +600,15 @@ export default function RoutinesPage() {
       <DesktopTopBar title="Routines">
         <button
           type="button"
+          onClick={() => router.push("/import")}
+          className="flex h-11 items-center gap-1.5 rounded-xl border border-strong px-4 text-sm font-semibold"
+          data-testid="button-import-routine-desktop"
+        >
+          <ClipboardPaste className="h-4 w-4" />
+          Import
+        </button>
+        <button
+          type="button"
           onClick={() => router.push("/fit-bot")}
           className="flex h-11 items-center gap-1.5 rounded-xl border border-yellow bg-primary-dim px-4 text-sm font-semibold text-primary"
           data-testid="button-fitbot-routine-desktop"
@@ -624,6 +633,15 @@ export default function RoutinesPage() {
             <p className="mt-1 text-sm text-muted-foreground">Your programs &amp; library</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => router.push("/import")}
+              className="flex h-11 items-center justify-center rounded-xl border border-strong px-3 text-sm font-semibold"
+              aria-label="Import a plan"
+              data-testid="button-import-routine-mobile"
+            >
+              <ClipboardPaste className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => router.push("/fit-bot")}

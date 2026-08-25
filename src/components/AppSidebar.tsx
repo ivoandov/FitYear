@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Loader2, LineChart } from "lucide-react";
+import { LogOut, Settings, Loader2, LineChart, ClipboardPaste } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/components/nav-items";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -126,6 +126,40 @@ export function AppSidebar() {
                 )}
               >
                 Insights
+              </span>
+            </Link>
+          );
+        })()}
+
+        {/* Import is desktop-rail only for the same reason as Insights: adding a
+            6th NAV_ITEMS entry would break the 5-slot bottom nav. Mobile reaches
+            it from the Routines header. */}
+        {(() => {
+          const importActive = pathname === "/import";
+          return (
+            <Link
+              href="/import"
+              data-testid="side-import"
+              className={cn(
+                "flex w-[76px] flex-col items-center justify-center gap-1.5 rounded-[14px] px-2 py-2.5 transition-colors hover:bg-white/[0.03]",
+                importActive && "bg-white/[0.04]",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
+                  importActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                <ClipboardPaste className="h-[22px] w-[22px]" />
+              </div>
+              <span
+                className={cn(
+                  "font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.04em]",
+                  importActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                Import
               </span>
             </Link>
           );
