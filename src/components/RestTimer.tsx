@@ -2,11 +2,16 @@
 
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Pause, Play, SkipForward, Minimize2 } from "lucide-react";
+import { Pause, Play, SkipForward, Minimize2, RotateCcw, Plus } from "lucide-react";
 import { useTimer } from "@/context/TimerContext";
 
 export function RestTimer() {
-  const { isOpen, isMinimized, seconds, isPaused, initialSeconds, exerciseName, nextExerciseName, closeTimer, setIsMinimized, pauseResume } = useTimer();
+  const { isOpen, isMinimized, seconds, isPaused, initialSeconds, exerciseName, nextExerciseName, closeTimer, setIsMinimized, pauseResume, restartTimer } = useTimer();
+
+  // Once the countdown hits zero the pause control is meaningless, so the
+  // finished state swaps it for "rest again" - the user often wants more rest
+  // than the preset and previously had to skip and re-trigger a set to get it.
+  const isFinished = seconds === 0;
 
   const visible = isOpen && !isMinimized;
 
@@ -56,24 +61,36 @@ export function RestTimer() {
           </div>
 
           <div className="flex gap-4 w-full">
-            <Button
-              variant="outline"
-              className="flex-1 h-12"
-              onClick={pauseResume}
-              data-testid="button-pause-timer"
-            >
-              {isPaused ? (
-                <>
-                  <Play className="h-5 w-5 mr-2" />
-                  Resume
-                </>
-              ) : (
-                <>
-                  <Pause className="h-5 w-5 mr-2" />
-                  Pause
-                </>
-              )}
-            </Button>
+            {isFinished ? (
+              <Button
+                variant="outline"
+                className="flex-1 h-12"
+                onClick={() => restartTimer()}
+                data-testid="button-restart-timer"
+              >
+                <RotateCcw className="h-5 w-5 mr-2" />
+                Rest again
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="flex-1 h-12"
+                onClick={pauseResume}
+                data-testid="button-pause-timer"
+              >
+                {isPaused ? (
+                  <>
+                    <Play className="h-5 w-5 mr-2" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-5 w-5 mr-2" />
+                    Pause
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               className="flex-1 h-12"
               onClick={closeTimer}
@@ -81,6 +98,28 @@ export function RestTimer() {
             >
               <SkipForward className="h-5 w-5 mr-2" />
               Next Set
+            </Button>
+          </div>
+
+          {/* Add more rest, whether it already ended or is still running. */}
+          <div className="mt-3 flex w-full gap-3">
+            <Button
+              variant="ghost"
+              className="flex-1 h-11 border border-strong"
+              onClick={() => restartTimer(isFinished ? 30 : seconds + 30)}
+              data-testid="button-add-30s"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              30s
+            </Button>
+            <Button
+              variant="ghost"
+              className="flex-1 h-11 border border-strong"
+              onClick={() => restartTimer(isFinished ? 60 : seconds + 60)}
+              data-testid="button-add-60s"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              1 min
             </Button>
           </div>
 

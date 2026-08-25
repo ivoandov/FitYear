@@ -71,6 +71,12 @@ interface TimerContextType {
   closeTimer: () => void;
   setIsMinimized: (v: boolean) => void;
   pauseResume: () => void;
+  /**
+   * Start a fresh rest without leaving the timer. Called with no argument it
+   * repeats the current duration ("rest again" after it ended); with a number
+   * it adds that many seconds of NEW rest.
+   */
+  restartTimer: (seconds?: number) => void;
 }
 
 const TimerContext = createContext<TimerContextType | null>(null);
@@ -432,6 +438,34 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     [clearInterval_, tick, startCounting, setMeta],
   );
 
+  /**
+   * Re-arm the rest. Two uses: the countdown hit zero and the user wants more
+   * rest, or they want to extend one that is still running.
+   *
+   * Goes through startCounting, which is what mints a FRESH restId and retires
+   * the previous one - re-arming without that leaves the old workflow sleeping,
+   * and it wakes to find the row back at `pending` and buzzes mid-rest.
+   */
+  const restartTimer = useCallback(
+    (seconds?: number) => {
+      const duration = Math.max(1, Math.round(seconds ?? initialSecondsRef.current));
+      // This is a NEW rest, so the finished state and its shade line both go.
+      clearOngoingRestNotification();
+      hasCompletedRef.current = false;
+      if (seconds !== undefined) {
+        initialSecondsRef.current = duration;
+        setInitialSeconds(duration);
+      }
+      setIsPaused(false);
+      setIsMinimized(false);
+      setSeconds(duration);
+      isOpenRef.current = true;
+      setIsOpen(true);
+      startCounting(duration);
+    },
+    [startCounting],
+  );
+
   const closeTimer = useCallback(() => {
     clearInterval_();
     endTimeRef.current = null;
@@ -539,6 +573,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         closeTimer,
         setIsMinimized,
         pauseResume,
+        restartTimer,
       }}
     >
       {children}
