@@ -121,7 +121,21 @@ export default function HistoryPage() {
       workoutId: workout.id,
       workoutName: workout.name,
       date: workout.completedAt,
-      duration: 0,
+      // The stored training time. This was hardcoded to 0, so the duration was
+      // recorded on every workout and then never shown anywhere. Falls back to
+      // the timestamp span for legacy rows that predate duration_seconds.
+      duration:
+        workout.durationSeconds ??
+        (workout.startedAt
+          ? Math.max(
+              0,
+              Math.round(
+                (new Date(workout.completedAt).getTime() -
+                  new Date(workout.startedAt).getTime()) /
+                  1000,
+              ),
+            )
+          : 0),
       // Trained exercises only, to match the set/volume totals beside it.
       exerciseCount: exercises.filter((ex) =>
         (ex.sets ?? []).some((s: any) => s.completed),

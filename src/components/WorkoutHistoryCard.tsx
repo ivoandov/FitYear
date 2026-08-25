@@ -18,6 +18,7 @@ import {
 } from "@/lib/units";
 import { type SetData } from "@/lib/workout-stats";
 import { localDateKey } from "@/lib/date";
+import { formatDuration, parseDurationInput } from "@/lib/workout-duration";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
 // convert back to lbs before saving. These thin wrappers route through the
@@ -65,6 +66,7 @@ export function WorkoutHistoryCard({
   workoutId,
   workoutName,
   date,
+  duration,
   exerciseCount,
   totalVolume,
   totalSets = 0,
@@ -74,6 +76,10 @@ export function WorkoutHistoryCard({
   const [isOpen, setIsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedExercises, setEditedExercises] = useState<ExerciseDetail[]>([]);
+  // Duration is editable because forgetting to press Finish inflates it. The
+  // client now trims an obvious idle tail automatically, but only the user
+  // knows the real number when the trim cannot tell.
+  const [editedDuration, setEditedDuration] = useState("");
   const { updateCompletedWorkout } = useWorkout();
   const { toast } = useToast();
   const { enrichExercises } = useExerciseDetails();
@@ -122,12 +128,14 @@ export function WorkoutHistoryCard({
         sets,
       };
     }));
+    setEditedDuration(formatDuration(duration));
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setIsEditing(false);
     setEditedExercises([]);
+    setEditedDuration("");
   };
 
   const [isSaving, setIsSaving] = useState(false);
@@ -166,13 +174,27 @@ export function WorkoutHistoryCard({
       }),
     }));
     
+    // Only send a duration when the user actually changed it to something
+    // parseable, so an untouched (or unparseable) field never overwrites a
+    // good stored value with a guess.
+    const parsedDuration = parseDurationInput(editedDuration);
+    const durationChanged =
+      parsedDuration !== null && parsedDuration !== Math.round(duration ?? 0);
+
     setIsSaving(true);
-    const success = await updateCompletedWorkout(workoutId, workoutName, updatedExercises);
+    const success = await updateCompletedWorkout(
+      workoutId,
+      workoutName,
+      updatedExercises,
+      undefined,
+      durationChanged ? parsedDuration : undefined,
+    );
     setIsSaving(false);
     
     if (success) {
       setIsEditing(false);
       setEditedExercises([]);
+      setEditedDuration("");
       toast({
         title: "Saved",
         description: "Workout updated successfully",
@@ -276,10 +298,41 @@ export function WorkoutHistoryCard({
                 </div>
               </div>
             )}
+            {duration > 0 && (
+              <div>
+                <div className="font-mono text-[17px] font-bold" data-testid={`text-history-duration-${id}`}>
+                  {formatDuration(duration)}
+                </div>
+                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                  Time
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <CollapsibleContent>
           <div className="border-t border-divider px-4 py-4">
+            {isEditing && (
+              <div className="flex items-center gap-2 mb-3">
+                <label
+                  htmlFor={`duration-${id}`}
+                  className="font-mono text-[11px] uppercase tracking-wider text-tertiary-foreground"
+                >
+                  Duration
+                </label>
+                <Input
+                  id={`duration-${id}`}
+                  value={editedDuration}
+                  onChange={(e) => setEditedDuration(e.target.value)}
+                  placeholder="1h 5m"
+                  className="h-9 w-28 font-mono"
+                  data-testid={`input-duration-${id}`}
+                />
+                <span className="text-xs text-tertiary-foreground">
+                  e.g. 55, 1h 5m, 1:05
+                </span>
+              </div>
+            )}
             <div className="flex justify-end mb-3 gap-2">
               {isEditing ? (
                 <>

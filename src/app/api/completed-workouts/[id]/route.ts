@@ -22,6 +22,14 @@ const PutSchema = z.object({
   // The user's local calendar day for completedAt, so the all-day Google
   // Calendar event lands on the day the user picked (not the UTC day).
   localDate: z.string().optional(),
+  // Explicit duration correction, in seconds. Forgetting to press Finish
+  // records the idle tail as training time; the client trims that
+  // automatically now, but a user still needs to be able to say "that was 55
+  // minutes". Capped at 24h so a fat-fingered value cannot poison the
+  // averages. Applied AFTER any completedAt shift, so an edit that moves the
+  // date and fixes the length in one save ends with the length the user asked
+  // for rather than the date-shift's recomputed value.
+  durationSeconds: z.number().int().min(0).max(24 * 60 * 60).optional(),
 });
 
 async function ownCompleted(id: string, userId: string) {
@@ -60,6 +68,18 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
         Math.round((nextCompletedAt.getTime() - nextStartedAt.getTime()) / 1000),
       );
     }
+  }
+
+  if (body.durationSeconds !== undefined) {
+    // Deliberately last: an explicit duration wins over the value the
+    // completedAt shift above derived.
+    update.durationSeconds = body.durationSeconds;
+    // Keep started_at consistent with the duration the user just set, so the
+    // timestamps and duration_seconds never disagree (summarizeWorkout falls
+    // back to the timestamps when duration is null).
+    const end =
+      (update.completedAt as Date | undefined) ?? new Date(existing.completedAt);
+    update.startedAt = new Date(end.getTime() - body.durationSeconds * 1000);
   }
 
   // Phase 4d: update the row and re-sync its normalized exercises/sets in ONE

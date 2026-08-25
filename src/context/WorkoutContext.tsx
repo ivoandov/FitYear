@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useRef, useCal
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { deriveWorkoutName, type SetData } from "@/lib/workout-stats";
+import { resolveWorkoutDuration } from "@/lib/workout-duration";
 import { parseServerDate, localDateKey } from "@/lib/date";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
@@ -69,6 +70,11 @@ export interface CompletedWorkoutRecord {
   name: string;
   exercises: Exercise[];
   completedAt: Date;
+  // Training time in seconds. Null on legacy rows that predate the column, and
+  // on rows saved without a start time; History falls back to the timestamp
+  // span in that case.
+  durationSeconds?: number | null;
+  startedAt?: Date | string | null;
   calendarEventId?: string | null;
 }
 
@@ -107,7 +113,7 @@ interface WorkoutContextType {
   completeWorkout: (exerciseSets?: Map<string, SetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
-  updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date) => Promise<boolean>;
+  updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date, durationSeconds?: number) => Promise<boolean>;
   deleteCompletedWorkout: (id: string) => void;
   updateActiveWorkout: (name: string, exercises: Exercise[]) => void;
   saveTrackingProgress: (progress: TrackingProgress) => void;
@@ -180,6 +186,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         const trackingData = JSON.parse(trackingSaved);
         if (trackingData.workoutDisplayId === workout.displayId) {
           progress = trackingData;
+          // Seed from the PERSISTED stamp so reopening the app hours later is
+          // not mistaken for activity. Only a genuine content change advances
+          // it from here.
+          if (typeof trackingData.savedAt === "number") {
+            lastActivityAtRef.current = trackingData.savedAt;
+          }
+          lastProgressSigRef.current = progressSignature(progress);
         }
       }
       return { workout, progress };
@@ -289,6 +302,24 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     setHasLoadedFromServer(false);
   }, [user?.id]);
 
+  // --- last real interaction, for the duration correction -------------------
+  // "When did the user last actually do something in this workout", as opposed
+  // to "when was state last persisted". The two diverge in exactly the case
+  // that matters: training ends, the app sits idle for hours, the user reopens
+  // it and hits Finish. A plain persistence timestamp would be refreshed by
+  // that reopen and report a four-hour workout; this only advances when the
+  // progress CONTENT changes, and is seeded from the persisted stamp on
+  // restore so a restore alone never counts as activity.
+  const lastActivityAtRef = useRef<number | null>(null);
+  const lastProgressSigRef = useRef<string | null>(null);
+
+  const progressSignature = (progress: TrackingProgress | null): string => {
+    if (!progress) return "";
+    // savedAt is excluded: it is the stamp, not the content.
+    const { savedAt: _savedAt, ...content } = progress as TrackingProgress & { savedAt?: number };
+    return JSON.stringify(content);
+  };
+
   // Save to localStorage (synchronous, always works)
   const saveToLocalStorage = useCallback((workout: ActiveWorkout | null, progress: TrackingProgress | null) => {
     console.log("[WorkoutContext] Saving to localStorage:", workout?.name || "null");
@@ -302,9 +333,17 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         if (progress) {
           // Stamped here (the single write path for both the local copy and,
           // via saveToServer, the server one) so both carry the same clock.
+          // The stamp only ADVANCES when the content changed, so re-persisting
+          // an unchanged workout (a reopen, a re-render) does not make an idle
+          // session look active - see lastActivityAtRef above.
+          const sig = progressSignature(progress);
+          if (sig !== lastProgressSigRef.current) {
+            lastProgressSigRef.current = sig;
+            lastActivityAtRef.current = Date.now();
+          }
           localStorage.setItem(
             TRACKING_STORAGE_KEY,
-            JSON.stringify({ ...progress, savedAt: Date.now() }),
+            JSON.stringify({ ...progress, savedAt: lastActivityAtRef.current ?? Date.now() }),
           );
         }
       } else {
@@ -456,6 +495,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         setsData: ex.setsData || [],
       })) as Exercise[],
       completedAt,
+      // Carried through so History can show (and correct) the training time.
+      // These were dropped here, which is why duration_seconds was written on
+      // every workout and then never surfaced anywhere in the UI.
+      durationSeconds: typeof w.durationSeconds === "number" ? w.durationSeconds : null,
+      startedAt: w.startedAt ? parseServerDate(w.startedAt) : null,
       calendarEventId: w.calendarEventId,
     };
   });
@@ -506,8 +550,8 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const updateCompletedMutation = useMutation({
-    mutationFn: async ({ id, name, exercises, completedAt, localDate }: { id: string; name: string; exercises?: any[]; completedAt?: string; localDate?: string }) => {
-      return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt, localDate });
+    mutationFn: async ({ id, name, exercises, completedAt, localDate, durationSeconds }: { id: string; name: string; exercises?: any[]; completedAt?: string; localDate?: string; durationSeconds?: number }) => {
+      return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt, localDate, durationSeconds });
     },
     onSuccess: (_, variables) => {
       queryClient.setQueryData(["/api/completed-workouts"], (oldData: any[] | undefined) => {
@@ -679,9 +723,21 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       ? new Date(activeWorkout.startedAt)
       : null;
     const completedAt = new Date();
-    const durationSeconds = startedAt
-      ? Math.max(0, Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000))
-      : null;
+    // Forgetting to press Finish used to record the idle tail as training time
+    // (a one-hour session logged as four). The last real interaction is the
+    // honest end of the workout; resolveWorkoutDuration only trims when the
+    // idle gap is unambiguous, so genuine long rests are untouched.
+    const { durationSeconds, trimmed, rawSeconds } = resolveWorkoutDuration({
+      startedAt,
+      completedAt,
+      lastActivityAt: lastActivityAtRef.current,
+    });
+    if (trimmed) {
+      console.log(
+        `[WorkoutContext] duration trimmed: ${rawSeconds}s elapsed -> ${durationSeconds}s of training ` +
+          `(idle tail after the last logged set)`,
+      );
+    }
 
     try {
       const created = await createCompletedMutation.mutateAsync({
@@ -734,13 +790,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     });
   }, [startWorkout]);
 
-  const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: any[], completedAt?: Date): Promise<boolean> => {
+  const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: any[], completedAt?: Date, durationSeconds?: number): Promise<boolean> => {
     try {
       const completedAtStr = completedAt ? completedAt.toISOString() : undefined;
       // Local calendar day alongside the UTC timestamp, so the server moves the
       // all-day Google Calendar event to the day the user actually picked.
       const localDate = completedAt ? localDateKey(completedAt) : undefined;
-      await updateCompletedMutation.mutateAsync({ id, name, exercises, completedAt: completedAtStr, localDate });
+      await updateCompletedMutation.mutateAsync({ id, name, exercises, completedAt: completedAtStr, localDate, durationSeconds });
       return true;
     } catch (error) {
       console.error("Failed to update completed workout:", error);
