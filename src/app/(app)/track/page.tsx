@@ -110,6 +110,7 @@ export default function TrackPage() {
         imageUrl: ex.imageUrl ?? undefined,
         exerciseType: ex.exerciseType as "weight_reps" | "distance_time" | undefined,
         isAssisted: ex.isAssisted ?? undefined,
+        createdAt: (ex as { createdAt?: string | Date | null }).createdAt ?? null,
       })),
     [exercises],
   );

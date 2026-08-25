@@ -765,13 +765,35 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       }
       const poolConsumed = new Map<string, number>();
 
+      // Prior state by instanceId, so an edit can keep each exercise's own
+      // prescription instead of overwriting it.
+      const priorByInstance = new Map<string, any>();
+      for (const ex of activeWorkout.exercises) {
+        const iid = (ex as any).instanceId;
+        if (iid) priorByInstance.set(iid, ex);
+      }
+
+      // These used to be hardcoded to `sets: 3, defaultWeight: 135,
+      // defaultReps: 10` on EVERY exercise at EVERY save, so opening the editor
+      // and saving silently rewrote a programmed 5x5 into 3 sets and reset the
+      // rep default - a change the user never asked for and could not see until
+      // they were mid-set. Carry the exercise's own values through, fall back to
+      // whatever the instance already had, and only then to the old constants
+      // (which is what a genuinely new exercise from the picker still gets).
+      const carry = (ex: any, prior: any) => ({
+        sets: ex.sets ?? prior?.sets ?? 3,
+        defaultWeight: ex.defaultWeight ?? prior?.defaultWeight ?? 135,
+        defaultReps: ex.defaultReps ?? prior?.defaultReps ?? 10,
+      });
+
       const updatedExercises = exercises.map((ex, index) => {
         // The editor passes exercises straight from selectedExercises, which was
         // seeded from activeWorkout.exercises, so each already carries its instanceId.
         // Honour that first – this is the correct fix for the deletion-shift bug.
         const existingInstanceId = (ex as any).instanceId as string | undefined;
         if (existingInstanceId) {
-          return { ...ex, instanceId: existingInstanceId, sets: 3, defaultWeight: 135, defaultReps: 10 };
+          const prior = priorByInstance.get(existingInstanceId);
+          return { ...ex, instanceId: existingInstanceId, ...carry(ex, prior) };
         }
 
         // Fallback: match by exercise id in insertion order (handles newly added exercises
@@ -781,7 +803,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         const instanceId = pool[consumed] ?? `${activeWorkout.displayId}-${ex.id}-${index}-${Date.now()}`;
         poolConsumed.set(ex.id, consumed + 1);
 
-        return { ...ex, instanceId, sets: 3, defaultWeight: 135, defaultReps: 10 };
+        return { ...ex, instanceId, ...carry(ex, priorByInstance.get(instanceId)) };
       });
 
       setActiveWorkout({

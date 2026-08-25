@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
 import { matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
+import { isRecentlyAdded, sortForPicker } from "@/lib/recent-exercises";
 
 export interface PickerExercise {
   id: string;
@@ -23,6 +24,8 @@ export interface PickerExercise {
   imageUrl?: string;
   exerciseType?: "weight_reps" | "distance_time";
   isAssisted?: boolean;
+  /** NULL for every exercise predating the column; read as "not recent". */
+  createdAt?: string | Date | null;
 }
 
 /**
@@ -53,11 +56,14 @@ export function AddExercisesSheet({
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return exercises.filter((ex) => {
+    const matches = exercises.filter((ex) => {
       if (muscle !== "All" && !matchesCoarse(ex.muscleGroups ?? [], muscle as CoarseGroup)) return false;
       if (q && !ex.name.toLowerCase().includes(q)) return false;
       return true;
     });
+    // Recently created exercises float to the top so a just-added movement is
+    // not buried alphabetically in a 126-item catalog.
+    return sortForPicker(matches);
   }, [exercises, search, muscle]);
 
   const toggle = (id: string) => {
@@ -129,27 +135,34 @@ export function AddExercisesSheet({
                 <button
                   key={ex.id}
                   type="button"
-                  disabled={isAdded}
                   onClick={() => toggle(ex.id)}
                   className={cn(
                     "w-full flex items-center gap-3 rounded-lg border p-3 text-left transition-colors",
-                    isAdded
-                      ? "opacity-50 cursor-not-allowed"
-                      : isChecked
-                        ? "border-yellow bg-primary-dim"
-                        : "hover:bg-white/[0.03]",
+                    isChecked
+                      ? "border-yellow bg-primary-dim"
+                      : "hover:bg-white/[0.03]",
                   )}
                   data-testid={`add-exercise-row-${ex.id}`}
                 >
-                  <Checkbox checked={isChecked} disabled={isAdded} className="pointer-events-none" />
+                  <Checkbox checked={isChecked} className="pointer-events-none" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm line-clamp-2 leading-snug">{ex.name}</div>
                     {ex.muscleGroups?.length ? (
                       <MuscleGroupsLabel groups={ex.muscleGroups} className="text-xs truncate" />
                     ) : null}
                   </div>
+                  {isRecentlyAdded(ex) && !isAdded ? (
+                    <span
+                      className="text-[10px] font-mono uppercase tracking-wide text-primary shrink-0"
+                      data-testid={`add-exercise-new-${ex.id}`}
+                    >
+                      New
+                    </span>
+                  ) : null}
+                  {/* Informational, not a block: a movement can legitimately be
+                      added to the same session twice. */}
                   {isAdded ? (
-                    <span className="text-xs text-muted-foreground shrink-0">Added</span>
+                    <span className="text-xs text-muted-foreground shrink-0">In workout</span>
                   ) : null}
                 </button>
               );

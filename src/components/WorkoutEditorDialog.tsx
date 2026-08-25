@@ -27,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { coarseGroupsOf, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
+import { isRecentlyAdded, sortForPicker } from "@/lib/recent-exercises";
 import { type Exercise } from "@/data/exercises";
 
 export interface WorkoutData {
@@ -63,6 +64,21 @@ export function WorkoutEditorDialog({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [muscleFilter, setMuscleFilter] = useState<string>("All");
+
+  // Native HTML5 drag is mouse-only, and on a touch device a `draggable`
+  // element also SWALLOWS taps aimed at its children - which is why the
+  // up/down/remove buttons inside each row were dead on a phone, not just the
+  // dragging. Enable drag only for a precise pointer; touch reorders with the
+  // arrow buttons, which is what the existing 40px hit targets are there for.
+  const [canDrag, setCanDrag] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(pointer: fine)");
+    const apply = () => setCanDrag(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const filteredExercises = muscleFilter === "All"
     ? availableExercises
@@ -105,14 +121,22 @@ export function WorkoutEditorDialog({
     onClose();
   };
 
+  // A workout may legitimately contain the same movement twice, and the whole
+  // tracking subsystem is keyed on `instanceId` for exactly that reason. This
+  // used to refuse to add an exercise already in the list, which read as "the
+  // add button does nothing". Every row now carries its own instanceId, so
+  // duplicates are addable and removable independently.
   const handleAddExercise = (exercise: Exercise) => {
-    if (!selectedExercises.find(e => e.id === exercise.id)) {
-      setSelectedExercises([...selectedExercises, exercise]);
-    }
+    const instanceId =
+      (exercise as { instanceId?: string }).instanceId ??
+      `new-${exercise.id}-${Date.now()}-${selectedExercises.length}`;
+    setSelectedExercises([...selectedExercises, { ...exercise, instanceId } as Exercise]);
   };
 
-  const handleRemoveExercise = (exerciseId: string) => {
-    setSelectedExercises(selectedExercises.filter(e => e.id !== exerciseId));
+  // Remove by POSITION, not by exercise id. Filtering by id deleted every copy
+  // of a duplicated movement instead of the row the user tapped.
+  const handleRemoveExercise = (index: number) => {
+    setSelectedExercises(selectedExercises.filter((_, i) => i !== index));
   };
 
   const handleMoveExercise = (index: number, direction: "up" | "down") => {
@@ -283,15 +307,18 @@ export function WorkoutEditorDialog({
                 ) : (
                   <div className="border rounded-md">
                     <div className="p-2 space-y-1">
-                      {selectedExercises.map((exercise, index) => (
+                      {selectedExercises.map((exercise, index) => {
+                        const rowKey =
+                          (exercise as { instanceId?: string }).instanceId ?? `${exercise.id}-${index}`;
+                        return (
                         <div
-                          key={exercise.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, index)}
-                          onDragOver={(e) => handleDragOver(e, index)}
-                          onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, index)}
-                          onDragEnd={handleDragEnd}
+                          key={rowKey}
+                          draggable={canDrag}
+                          onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+                          onDragOver={canDrag ? (e) => handleDragOver(e, index) : undefined}
+                          onDragLeave={canDrag ? handleDragLeave : undefined}
+                          onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+                          onDragEnd={canDrag ? handleDragEnd : undefined}
                           className={`flex items-center gap-2 p-2 rounded-[10px] border border-yellow transition-all ${
                             draggedIndex === index ? "opacity-50" : ""
                           } ${
@@ -299,7 +326,9 @@ export function WorkoutEditorDialog({
                           }`}
                           data-testid={`selected-exercise-${exercise.id}`}
                         >
-                          <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                          {canDrag && (
+                            <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                          )}
                           <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
                           <Badge variant="outline" className="text-xs hidden sm:flex">
                             {coarseGroupsOf(exercise.muscleGroups)[0] || ""}
@@ -329,14 +358,15 @@ export function WorkoutEditorDialog({
                               variant="ghost"
                               size="icon"
                               className="h-9 w-9 text-destructive"
-                              onClick={() => handleRemoveExercise(exercise.id)}
+                              onClick={() => handleRemoveExercise(index)}
                               data-testid={`button-remove-${exercise.id}`}
                             >
                               <X className="h-[18px] w-[18px]" />
                             </Button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -349,31 +379,38 @@ export function WorkoutEditorDialog({
                 </div>
                 <div className="border rounded-md">
                   <div className="p-2 space-y-1">
-                    {[...filteredExercises]
-                      .sort((a, b) => {
-                        const muscleA = (a.muscleGroups[0] || "").toLowerCase();
-                        const muscleB = (b.muscleGroups[0] || "").toLowerCase();
-                        if (muscleA !== muscleB) return muscleA.localeCompare(muscleB);
-                        return a.name.localeCompare(b.name);
-                      })
+                    {sortForPicker(filteredExercises)
                       .map((exercise) => {
-                      const isSelected = selectedExercises.some(e => e.id === exercise.id);
+                      // How many times this movement is already in the workout.
+                      // It stays tappable at any count: adding the same lift
+                      // twice is legitimate, and refusing to made the picker
+                      // look broken.
+                      const count = selectedExercises.filter((e) => e.id === exercise.id).length;
                       return (
                         <div
                           key={exercise.id}
-                          className={`flex items-center gap-2 p-2 rounded-md ${
-                            isSelected ? 'opacity-50' : 'hover-elevate cursor-pointer'
-                          }`}
-                          onClick={() => !isSelected && handleAddExercise(exercise)}
+                          className="flex items-center gap-2 p-2 rounded-md hover-elevate cursor-pointer"
+                          onClick={() => handleAddExercise(exercise)}
                           data-testid={`available-exercise-${exercise.id}`}
                         >
                           <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
+                          {isRecentlyAdded(exercise) && count === 0 && (
+                            <Badge className="text-[10px] font-mono uppercase tracking-wide" data-testid={`badge-recent-${exercise.id}`}>
+                              New
+                            </Badge>
+                          )}
                           <Badge variant="outline" className="text-xs">
                             {coarseGroupsOf(exercise.muscleGroups)[0] || ""}
                           </Badge>
-                          {!isSelected && (
-                            <Plus className="h-4 w-4 text-muted-foreground" />
+                          {count > 0 && (
+                            <span
+                              className="text-xs font-mono text-primary"
+                              data-testid={`count-selected-${exercise.id}`}
+                            >
+                              x{count}
+                            </span>
                           )}
+                          <Plus className="h-4 w-4 text-muted-foreground" />
                         </div>
                       );
                     })}

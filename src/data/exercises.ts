@@ -13,6 +13,9 @@ export interface Exercise {
   imageUrl?: string | null;
   exerciseType?: string | null;
   isAssisted?: boolean;
+  /** When the exercise entered the catalog. NULL for every row predating the
+   *  column, which the pickers read as "not recent". */
+  createdAt?: string | Date | null;
   // Computed/runtime-only fields used by the editor and tracking screens.
   // Not persisted as columns — sets data lives on completed_workouts.
   setsData?: unknown[];

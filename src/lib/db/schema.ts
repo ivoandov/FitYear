@@ -84,6 +84,13 @@ export const exercises = pgTable(
     imageUrl: text("image_url"),
     exerciseType: text("exercise_type").notNull().default("weight_reps"),
     isAssisted: boolean("is_assisted").notNull().default(false),
+    // When this exercise entered the catalog, so a freshly created one can be
+    // surfaced at the top of the pickers instead of being hunted for in a
+    // 117-item alphabetical list. DELIBERATELY NULLABLE with no backfill: the
+    // column was added to a live catalog, and `ADD COLUMN ... DEFAULT now()`
+    // would have stamped every pre-existing row with the same timestamp and
+    // marked the entire catalog "new". Null means "not recent".
+    createdAt: timestamp("created_at"),
   },
   (t) => [index("exercises_user_id_idx").on(t.userId)],
 );
