@@ -8,7 +8,23 @@ import { getBucket } from "@/lib/gcs";
 const STYLE_PREFIX =
   "Editorial fitness illustration, single athletic figure performing the exercise, clean modern gym setting, neutral muted background, balanced studio lighting, photographic style, 3/4 angled view, full body in frame, centered composition. Crisp focus on form and posture. No text, no watermarks, no logos.";
 
-const MODEL = "imagen-4.0-generate-001";
+// Image generation moved off the Imagen `generateImages` API (2026-08-25).
+// Every `imagen-*` publisher model started returning 404 NOT_FOUND for this
+// project - 4.0-generate-001/002, the fast + ultra variants, the 06-06 preview
+// and even 3.0-generate-002 - and the SDK now marks `generateImages` itself
+// deprecated in favour of `generateContent` with an image-capable model. That
+// broke exercise-image regeneration in production for every user.
+//
+// `gemini-2.5-flash-image` is what this project actually has access to
+// (verified against both us-central1 and global). It returns PNG bytes as an
+// inlineData part rather than the old `generatedImages` array.
+const MODEL = "gemini-2.5-flash-image";
+
+// The catalog is brand-locked to 16:9 (it matches the card thumbnail crop, and
+// mixing ratios across the catalog looks uneven). This model defaults to a
+// SQUARE 1024x1024 unless the aspect ratio is set explicitly, so keep this -
+// dropping it silently changes the shape of every new image.
+const ASPECT_RATIO = "16:9";
 const MAX_WIDTH = 800;
 const JPEG_QUALITY = 82;
 
@@ -75,21 +91,30 @@ export async function regenerateExerciseImage(opts: {
     : `Subject: ${exerciseName}.${description ? ` ${description}` : ""}`;
   const prompt = `${STYLE_PREFIX}\n\n${userPrompt}`;
 
-  const response = await ai.models.generateImages({
+  const response = await ai.models.generateContent({
     model: MODEL,
-    prompt,
+    contents: prompt,
     config: {
-      numberOfImages: 1,
-      aspectRatio: "16:9",
+      responseModalities: ["IMAGE"],
+      imageConfig: { aspectRatio: ASPECT_RATIO },
     },
   });
 
-  const generated = response.generatedImages;
-  if (!generated?.length) {
-    throw new Error("Imagen returned no images");
+  // The image comes back as an inlineData part, not a `generatedImages` array.
+  // A refusal or safety block returns text parts instead of an image, so treat
+  // a missing image part as a real failure rather than reading past it.
+  const parts = response.candidates?.[0]?.content?.parts ?? [];
+  const b64 = parts.find((p) => p.inlineData?.data)?.inlineData?.data;
+  if (!b64) {
+    const text = parts
+      .map((p) => p.text)
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 200);
+    throw new Error(
+      `Image model returned no image${text ? `: ${text}` : ""}`,
+    );
   }
-  const b64 = generated[0].image?.imageBytes;
-  if (!b64) throw new Error("Imagen response missing imageBytes");
 
   const rawBuf = Buffer.from(b64, "base64");
   const optimized = await sharp(rawBuf)
