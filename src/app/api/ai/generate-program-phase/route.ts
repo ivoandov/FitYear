@@ -123,6 +123,10 @@ Return ONLY valid JSON, no preamble and no markdown fences. Include EVERY workou
   const parsed = extractJson(raw);
   const result = PhaseVarietySchema.safeParse(parsed);
   if (!result.success) {
+    console.error(
+      "[ai/phase] schema rejected model output:",
+      JSON.stringify(result.error.issues.slice(0, 10)),
+    );
     throw new ApiError(502, "Fit Bot's phase was incomplete. Please retry the phase.");
   }
   return { phaseIndex: input.phaseIndex, variety: result.data };

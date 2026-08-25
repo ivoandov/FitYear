@@ -1,6 +1,55 @@
 import { z } from "zod";
 import { MAX_PROGRAM_PHASES } from "@/lib/api/ai-limits";
 
+// --- Model-output tolerance -------------------------------------------------
+// A program build is ONE metered skeleton call plus one call per phase, and the
+// quota unit is spent up front. So a single field the model spelled slightly
+// differently must never discard the whole build: every one of these helpers
+// coerces a plausible variant into the canonical value instead of throwing.
+//
+// This is not hypothetical. `exerciseType` was the live failure: the skeleton
+// prompt never listed the legal values (the phase prompt does), so whenever the
+// model programmed a conditioning anchor - a carry, sled push or rower - it
+// emitted "time", "time_based" or "cardio". `z.enum().default()` only fills a
+// MISSING field, never an invalid one, so the whole skeleton failed to parse and
+// the user got "Fit Bot's program structure was incomplete" with their quota
+// already charged. The prompt now lists the values AND this normalizes anything
+// else that arrives.
+
+const EXERCISE_TYPES = ["weight_reps", "distance_time"] as const;
+
+/** Anything time/distance-flavoured becomes distance_time; everything else lifts. */
+function normalizeExerciseType(v: unknown): "weight_reps" | "distance_time" {
+  if (typeof v !== "string") return "weight_reps";
+  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (s === "weight_reps" || s === "distance_time") return s;
+  if (/time|distance|cardio|duration|interval|conditioning|carry|hold|run|row/.test(s)) {
+    return "distance_time";
+  }
+  return "weight_reps";
+}
+
+const exerciseTypeField = z.preprocess(normalizeExerciseType, z.enum(EXERCISE_TYPES));
+
+/** Reps is a prescription STRING ("5", "8-12", "AMRAP", "30s"); models often send a number. */
+const repsField = z.preprocess(
+  (v) => (typeof v === "number" && Number.isFinite(v) ? String(v) : v),
+  z.string(),
+);
+
+/** Models sometimes send "false"/"true" as strings for booleans. */
+function looseBoolean(fallback: boolean) {
+  return z.preprocess((v) => {
+    if (typeof v === "boolean") return v;
+    if (typeof v === "string") {
+      const s = v.trim().toLowerCase();
+      if (s === "true") return true;
+      if (s === "false") return false;
+    }
+    return fallback;
+  }, z.boolean());
+}
+
 // Shared Fit Bot program shape. The client (fit-bot/page.tsx) validates the
 // streamed LLM output against this before saving; the server (ai/save-program)
 // validates it again on write. One definition so the two never drift.
@@ -55,18 +104,33 @@ export type Exercise = z.infer<typeof ExerciseSchema>;
 export const AnchorProgressionSchema = z.object({
   // v1 is linear load progression: reps/sets fixed, load climbs each non-deload
   // week. The enum leaves room for rep-based or percentage schemes later.
-  scheme: z.literal("linear").default("linear"),
-  startLoadLbs: z.number().min(0), // 0 for bodyweight anchors
-  incrementLbs: z.number().min(0), // added each non-deload week
-  sets: z.number().int().min(1).max(10),
-  reps: z.string(), // "5", "8-12"
+  // Anything the model calls this ("linear progression", "linear_progression")
+  // still means the one scheme we implement, so it is normalized rather than
+  // rejected - see the model-output tolerance note at the top of this file.
+  scheme: z.preprocess(() => "linear", z.literal("linear")),
+  // Loads are clamped rather than rejected: a negative or absurd number is a
+  // model slip, not a reason to discard a charged build. 2000 lb is far beyond
+  // any real prescription while still leaving sled/rack pulls room.
+  startLoadLbs: z.preprocess(
+    (v) => (typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 0), 2000) : 0),
+    z.number().min(0),
+  ),
+  incrementLbs: z.preprocess(
+    (v) => (typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 0), 100) : 0),
+    z.number().min(0),
+  ),
+  sets: z.preprocess(
+    (v) => (typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 1), 10) : 3),
+    z.number().int().min(1).max(10),
+  ),
+  reps: repsField, // "5", "8-12"
 });
 
 export const AnchorLiftSchema = z.object({
   name: z.string(),
   muscleGroups: z.array(z.string()).default([]),
-  exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
-  isAssisted: z.boolean().default(false),
+  exerciseType: exerciseTypeField,
+  isAssisted: looseBoolean(false),
   // Rest between sets for this anchor (seconds). Heavy compounds want more rest
   // than accessories; the model sets it. Defaulted so pre-existing skeletons
   // (and the committed tests) that omit it still validate, and expandSkeleton
@@ -130,10 +194,16 @@ export type Skeleton = z.infer<typeof SkeletonSchema>;
 export const PhaseAccessorySchema = z.object({
   name: z.string(),
   muscleGroups: z.array(z.string()).default([]),
-  exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
-  sets: z.number().int().min(1).max(10),
-  reps: z.string(),
-  rest: z.number().int().min(0),
+  exerciseType: exerciseTypeField,
+  sets: z.preprocess(
+    (v) => (typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 1), 10) : 3),
+    z.number().int().min(1).max(10),
+  ),
+  reps: repsField,
+  rest: z.preprocess(
+    (v) => (typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(Math.round(v), 0), 3600) : 90),
+    z.number().int().min(0),
+  ),
   notes: z.string().optional(),
 });
 

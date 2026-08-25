@@ -5,6 +5,7 @@ import { requireUser, ApiError } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { signBuildToken } from "@/lib/api/build-token";
+import { PROGRAM_BUILD_DAILY_LIMIT } from "@/lib/api/ai-limits";
 import { SkeletonSchema } from "@/lib/program-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
@@ -52,7 +53,7 @@ function extractJson(raw: string): unknown {
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   // Count ONE build here (stage 2 per-phase calls don't re-charge).
-  await enforceDailyQuota(user.id, "generate-program", 15);
+  await enforceDailyQuota(user.id, "generate-program", PROGRAM_BUILD_DAILY_LIMIT);
   const input = InputSchema.parse(await request.json());
 
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -78,6 +79,7 @@ Design:
 - Exactly ${input.distinctWorkouts} DISTINCT workouts the user rotates through (e.g. "Push", "Pull", "Legs", "Upper A"). These are NOT tied to weekdays; they repeat on a rotating cycle. Give each a short "label".
 - A rotating "cycle": an array where each entry is either a workout index (0-based, into your workouts array) or -1 for a REST day. The cycle repeats back-to-back for the whole program, so it defines how often each workout recurs. Include every workout at least once per cycle and place rest sensibly (typically 1 rest after every 2-4 training days). Keep the cycle compact (roughly ${input.distinctWorkouts}-${input.distinctWorkouts + 3} days). Example for 3 workouts training then resting: [0,1,2,-1].
 - For EACH workout, choose 1-3 ANCHOR lifts (the key compound movements that drive progression). Each anchor gets a linear progression: a realistic starting load in POUNDS for a ${input.experience} lifter with this equipment (use 0 for bodyweight or unloaded movements), a per-week load increment in pounds (typically 2.5-10 lb for upper body, 5-15 lb for lower body; 0 for bodyweight), the fixed sets, and a rep prescription string (e.g. "5", "8-12"). Only pick anchors the equipment allows; respect injuries.
+- Each anchor's exerciseType MUST be exactly one of two values: "weight_reps" for anything measured in sets and reps (including bodyweight lifts), or "distance_time" for anything measured by distance or time (carries, sled work, rower, runs). Do NOT invent any other value.
 - ${durationWeeks >= 6 ? `Lay out 2-4 training PHASES (e.g. Foundation, Strength, Hypertrophy, Peak) that tile weeks 1..${durationWeeks} with no gaps or overlaps.` : `Lay out 1-2 training PHASES that tile weeks 1..${durationWeeks}.`}
 - Include a deload roughly every 4-6 weeks (list those 1-indexed week numbers in deloadWeeks; deloadLoadFactor ~0.9). ${durationWeeks < 4 ? "For a short program, deloadWeeks may be empty." : ""}
 - Every muscleGroups value (on workouts and anchorLifts) MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group; do not invent other muscle names.
@@ -103,6 +105,14 @@ Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shap
   const parsed = extractJson(raw);
   const result = SkeletonSchema.safeParse(parsed);
   if (!result.success) {
+    // Log WHICH field the model got wrong. Without this a 502 here is opaque,
+    // and runtime logs are short-lived on Hobby, so a user report arrives long
+    // after the evidence is gone. This is what turned the `exerciseType` bug
+    // from "FitBot sometimes fails" into a one-line fix.
+    console.error(
+      "[ai/skeleton] schema rejected model output:",
+      JSON.stringify(result.error.issues.slice(0, 10)),
+    );
     throw new ApiError(502, "Fit Bot's program structure was incomplete. Please try again.");
   }
   // The exact program length in days is authoritative from the wizard, not the
