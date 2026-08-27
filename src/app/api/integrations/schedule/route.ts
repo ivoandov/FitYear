@@ -11,7 +11,7 @@ import {
 import { handle } from "@/lib/api/handler";
 import { requireIntegrationCaller } from "@/lib/api/integration-auth";
 import { buildSchedulePayload, type RawRows } from "@/lib/integration-schedule";
-import { localDateKeyInZone, startOfLocalDayUtc } from "@/lib/date";
+import { localDateKeyInZone, scheduledDateKey, startOfLocalDayUtc } from "@/lib/date";
 
 /**
  * GET /api/integrations/schedule
@@ -180,6 +180,7 @@ export const GET = handle(async (request: NextRequest) => {
     windowEnd: new Date(horizon.getTime() - 1),
     timeZone,
     dateKey: localDateKeyInZone,
+    scheduledKey: scheduledDateKey,
     upcomingLimit: UPCOMING_LIMIT,
     recentLimit: RECENT_LIMIT,
     // Exercise detail is OPT-IN: the default payload carries counts only, which

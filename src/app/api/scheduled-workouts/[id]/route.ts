@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -58,10 +60,14 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     update.routineInstanceId = body.routineInstanceId;
   if (body.routineDayIndex !== undefined)
     update.routineDayIndex = body.routineDayIndex;
+  // Both branches anchor at noon UTC; see the POST route for why the legacy
+  // `date` branch cannot be left raw.
   if (body.localDate) {
-    update.date = new Date(`${body.localDate}T12:00:00Z`);
+    update.date = scheduledDateFromKey(body.localDate);
   } else if (body.date) {
-    update.date = new Date(body.date);
+    update.date = scheduledDateFromKey(
+      localDateKeyInZone(new Date(body.date), await viewerTimeZone()),
+    );
   }
 
   // If name changed, propagate to sibling rows in the same routine/template

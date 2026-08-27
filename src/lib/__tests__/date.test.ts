@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseServerDate, localDateKey, startOfLocalDayUtc, scheduledDateFromKey, addDaysToDateKey } from "@/lib/date";
+import {
+  addDaysToDateKey,
+  localDateKey,
+  localDateKeyInZone,
+  parseServerDate,
+  scheduledDateFromKey,
+  scheduledDateKey,
+  startOfLocalDayUtc,
+} from "@/lib/date";
 
 describe("parseServerDate", () => {
   it("treats a no-timezone string as UTC", () => {
@@ -111,5 +119,40 @@ describe("scheduled workouts survive being read from another zone", () => {
     // Across a DST boundary, where naive Date arithmetic slips an hour.
     expect(addDaysToDateKey("2026-11-01", 1)).toBe("2026-11-02");
     expect(addDaysToDateKey("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
+
+describe("scheduledDateKey - reading an authored day back", () => {
+  it("is the exact inverse of scheduledDateFromKey", () => {
+    for (const key of ["2026-08-27", "2026-01-01", "2026-12-31", "2028-02-29"]) {
+      expect(scheduledDateKey(scheduledDateFromKey(key))).toBe(key);
+    }
+  });
+
+  it("reads the SAME day in every zone, including UTC+12 and beyond", () => {
+    // The bug this exists to prevent: resolving the stored instant in the
+    // viewer's zone shipped a day late in the Liv payload from UTC+12 east.
+    // Auckland is not an edge case.
+    const stored = scheduledDateFromKey("2026-08-27");
+    for (const tz of [
+      "Pacific/Midway",       // UTC-11
+      "America/Los_Angeles",
+      "UTC",
+      "Asia/Makassar",        // UTC+8
+      "Pacific/Auckland",     // UTC+12, was WRONG
+      "Pacific/Chatham",      // UTC+12:45, was WRONG
+      "Pacific/Kiritimati",   // UTC+14, was WRONG
+    ]) {
+      const viaZone = localDateKeyInZone(stored, tz);
+      expect(scheduledDateKey(stored), `zone-free read must hold in ${tz}`).toBe("2026-08-27");
+      // Documents WHICH zones the old zone-resolving read got wrong.
+      if (tz === "Pacific/Auckland" || tz === "Pacific/Chatham" || tz === "Pacific/Kiritimati") {
+        expect(viaZone, `${tz} is exactly the case that broke`).toBe("2026-08-28");
+      }
+    }
+  });
+
+  it("accepts the string form a driver hands back", () => {
+    expect(scheduledDateKey("2026-08-27T12:00:00.000Z")).toBe("2026-08-27");
   });
 });

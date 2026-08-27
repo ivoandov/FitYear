@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   createCalendarEvent,
   isCalendarConnected,
@@ -37,12 +39,13 @@ export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PostSchema.parse(await request.json());
 
-  // Use localDate (YYYY-MM-DD) at noon UTC for timezone-safe storage
+  // A scheduled workout is a DAY. Every path anchors at noon UTC so the row
+  // is readable back with scheduledDateKey; the `date` fallback is legacy and
+  // must be anchored too, or one caller omitting `localDate` silently
+  // reintroduces the un-anchored rows the 2026-08-27 migration removed.
   const dateValue = body.localDate
-    ? new Date(`${body.localDate}T12:00:00Z`)
-    : body.date
-      ? new Date(body.date)
-      : new Date();
+    ? scheduledDateFromKey(body.localDate)
+    : scheduledDateFromKey(localDateKeyInZone(body.date ? new Date(body.date) : new Date(), await viewerTimeZone()));
 
   const [created] = await db
     .insert(scheduledWorkouts)

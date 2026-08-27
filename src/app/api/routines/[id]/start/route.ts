@@ -95,7 +95,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
         routineId: id,
         userId: user.id,
         routineName: routine.name,
-        startDate,
+        startDate: scheduledDateFromKey(startKey),
         endDate,
         durationDays: maxDays,
         totalWorkouts: filtered.length,

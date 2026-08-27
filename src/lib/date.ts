@@ -142,14 +142,34 @@ export function startOfLocalDayUtc(at: Date, timeZone: string): Date {
  * Honolulu while resolving correctly everywhere east of him.
  *
  * NOON UTC is the safe anchor, and is already the convention the manual
- * scheduling route uses ("timezone-safe storage"). It lands on the same
- * calendar day for every zone from UTC-12 through UTC+11, which covers
- * everywhere Ivo trains. It does slip a day at UTC+12 and beyond (New Zealand,
- * Fiji, Kiribati); fixing that needs the intended day stored as its own column
- * rather than inferred from an instant.
+ * scheduling route uses ("timezone-safe storage").
+ *
+ * Noon is chosen so that even code which WRONGLY resolves the instant in a
+ * local zone still gets the right day across UTC-12..UTC+11. That is a safety
+ * net, not the contract: read the day back with `scheduledDateKey`, which is
+ * exact in every zone including UTC+12 and beyond.
  */
 export function scheduledDateFromKey(dateKey: string): Date {
   return new Date(`${dateKey}T12:00:00Z`);
+}
+
+/**
+ * Recovers the authored day from a stored scheduled date. The EXACT inverse of
+ * `scheduledDateFromKey`, and the only correct way to read one back.
+ *
+ * A scheduled workout is a day someone CHOSE, not a moment that happened, so it
+ * must read the same everywhere - a session Ivo put on the 27th is on the 27th
+ * whether he opens the app in Los Angeles or Auckland. Resolving the stored
+ * instant in the viewer's zone re-interprets it instead, and noon UTC lands on
+ * the NEXT local day from UTC+12 east: Auckland, Fiji, Chatham, Kiritimati. New
+ * Zealand is not an edge case, and that bug shipped in the Liv payload.
+ *
+ * Because the anchor is ours, the UTC date part IS the key that was written, so
+ * no zone enters the read at all.
+ */
+export function scheduledDateKey(d: Date | string): string {
+  const at = typeof d === "string" ? parseServerDate(d) : d;
+  return at.toISOString().slice(0, 10);
 }
 
 /** Add whole days to a YYYY-MM-DD key without touching timezones at all. */

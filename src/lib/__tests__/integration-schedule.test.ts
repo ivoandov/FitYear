@@ -5,7 +5,7 @@ import {
   type RawRows,
   type BuildOptions,
 } from "@/lib/integration-schedule";
-import { localDateKeyInZone } from "@/lib/date";
+import { localDateKeyInZone, scheduledDateKey } from "@/lib/date";
 
 const NOW = new Date("2026-08-27T16:00:00.000Z"); // 9am in Los Angeles
 
@@ -15,6 +15,7 @@ const opts = (over: Partial<BuildOptions> = {}): BuildOptions => ({
   windowEnd: new Date("2026-09-10T06:59:59.999Z"),
   timeZone: "America/Los_Angeles",
   dateKey: localDateKeyInZone,
+  scheduledKey: scheduledDateKey,
   upcomingLimit: 7,
   recentLimit: 3,
   includeExercises: false,
@@ -105,40 +106,42 @@ describe("buildSchedulePayload", () => {
     });
   });
 
-  it("resolves dates in the requested zone, and flags today correctly", () => {
-    // A session stored at 02:00 UTC is the PREVIOUS evening in Los Angeles.
-    // Getting this wrong puts a workout on the wrong day, which is the
-    // tz-naive-UTC trap this codebase has hit before.
+  it("reports each authored day and flags today against the viewer's zone", () => {
+    // Scheduled rows are ALWAYS noon-anchored (scheduledDateFromKey), so the
+    // day is read straight off the stored value. `is_today` is the one part
+    // that is still zone-dependent, because "today" is a fact about the reader.
     const rows: RawRows = {
       ...empty,
       scheduled: [
-        { name: "Today", date: new Date("2026-08-27T18:00:00.000Z"), exercises: [], routineInstanceId: "i", routineDayIndex: 1 },
-        { name: "Tomorrow", date: new Date("2026-08-29T02:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null },
+        { name: "Today", date: new Date("2026-08-27T12:00:00.000Z"), exercises: [], routineInstanceId: "i", routineDayIndex: 1 },
+        { name: "Later", date: new Date("2026-08-29T12:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null },
       ],
     };
     const p = buildSchedulePayload(rows, opts());
     expect(p.upcoming[0]).toMatchObject({ date: "2026-08-27", is_today: true, source: "routine", day_index: 1 });
-    // 02:00 UTC on the 29th is still the 28th in Los Angeles.
-    expect(p.upcoming[1]).toMatchObject({ date: "2026-08-28", is_today: false, source: "manual", day_index: null });
+    expect(p.upcoming[1]).toMatchObject({ date: "2026-08-29", is_today: false, source: "manual", day_index: null });
   });
 
-  it("carries the raw UTC instant alongside the local date", () => {
-    // So the consumer can re-derive if the default zone is wrong for where Ivo
-    // actually is - FitYear stores no timezone to be authoritative from.
+  it("carries the raw UTC instant alongside the day", () => {
+    // Kept for diagnosis. The Liv session reads `date` and deliberately does
+    // NOT re-derive from `at`; it was re-deriving that made the Honolulu bug
+    // visible. Tell that session before `at` ever means a real training time.
     const p = buildSchedulePayload(
-      { ...empty, scheduled: [{ name: "X", date: new Date("2026-08-27T18:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null }] },
+      { ...empty, scheduled: [{ name: "X", date: new Date("2026-08-27T12:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null }] },
       opts(),
     );
-    expect(p.upcoming[0].at).toBe("2026-08-27T18:00:00.000Z");
+    expect(p.upcoming[0].at).toBe("2026-08-27T12:00:00.000Z");
   });
 
-  it("honours a different zone", () => {
+  it("honours a different zone for the window, but NOT for an authored day", () => {
+    // The zone governs `timezone`, `covers` and `is_today`. It must not move a
+    // scheduled day: this test used to assert the 28th in Manila for a session
+    // authored on the 27th, which was the bug, not the contract.
     const p = buildSchedulePayload(
-      { ...empty, scheduled: [{ name: "X", date: new Date("2026-08-27T18:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null }] },
+      { ...empty, scheduled: [{ name: "X", date: new Date("2026-08-27T12:00:00.000Z"), exercises: [], routineInstanceId: null, routineDayIndex: null }] },
       opts({ timeZone: "Asia/Manila" }),
     );
-    // 18:00 UTC is already the 28th in Manila.
-    expect(p.upcoming[0].date).toBe("2026-08-28");
+    expect(p.upcoming[0].date).toBe("2026-08-27");
     expect(p.timezone).toBe("Asia/Manila");
   });
 
@@ -183,5 +186,56 @@ describe("buildSchedulePayload", () => {
     const json = JSON.stringify(p);
     expect(json).not.toMatch(/@/);
     expect(json).not.toMatch(/token|secret|refresh|password/i);
+  });
+});
+
+describe("an authored day survives the reader's timezone", () => {
+  const scheduled = [
+    {
+      id: "s1",
+      name: "Day 1",
+      date: new Date("2026-08-27T12:00:00.000Z"), // authored for the 27th
+      exercises: [],
+      routineInstanceId: "ri1",
+      routineDayIndex: 1,
+    },
+  ] as unknown as RawRows["scheduled"];
+
+  it("reports the 27th from Auckland, where the old zone-resolved read said the 28th", () => {
+    // Ivo travels. Reading a chosen day as an instant made every session in the
+    // Liv payload land a day late from UTC+12 east.
+    const payload = buildSchedulePayload(
+      { instance: null, cycleLength: null, scheduled, completed: [] },
+      opts({ timeZone: "Pacific/Auckland" }),
+    );
+    expect(payload.upcoming[0].date).toBe("2026-08-27");
+    // The instant is unchanged; only its INTERPRETATION was ever wrong.
+    expect(payload.upcoming[0].at).toBe("2026-08-27T12:00:00.000Z");
+  });
+
+  it("reports the same day from Los Angeles, Auckland and Kiritimati alike", () => {
+    const day = (tz: string) =>
+      buildSchedulePayload(
+        { instance: null, cycleLength: null, scheduled, completed: [] },
+        opts({ timeZone: tz }),
+      ).upcoming[0].date;
+    expect(day("America/Los_Angeles")).toBe("2026-08-27");
+    expect(day("Pacific/Auckland")).toBe(day("America/Los_Angeles"));
+    expect(day("Pacific/Kiritimati")).toBe(day("America/Los_Angeles"));
+  });
+
+  it("still resolves a COMPLETED workout in the viewer's zone, because that is a moment", () => {
+    // The two kinds of date must not be collapsed: a workout finished at
+    // 06:00Z genuinely falls on a different local day in Auckland than in LA.
+    const completed = [
+      { id: "c1", name: "Done", completedAt: new Date("2026-08-27T06:00:00.000Z") },
+    ] as unknown as RawRows["completed"];
+    const at = (tz: string) =>
+      buildSchedulePayload(
+        { instance: null, cycleLength: null, scheduled: [], completed },
+        opts({ timeZone: tz }),
+      ).recent[0].date;
+    expect(at("America/Los_Angeles")).toBe("2026-08-26");
+    expect(at("Pacific/Auckland")).toBe("2026-08-27");
   });
 });

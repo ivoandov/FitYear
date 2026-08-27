@@ -142,22 +142,31 @@ export interface BuildOptions {
   windowEnd: Date;
   /** IANA zone every date is resolved in. */
   timeZone: string;
-  /** Resolves a Date to a YYYY-MM-DD key in `timeZone`. */
+  /**
+   * Resolves an INSTANT to a YYYY-MM-DD key in `timeZone`. For things that
+   * happened at a moment: "now", a completed workout.
+   */
   dateKey: (d: Date | string, tz: string) => string;
+  /**
+   * Recovers the authored day from a stored SCHEDULED date. Zone-free, because
+   * a day someone chose is the same day everywhere. Using `dateKey` here reads
+   * one day late from UTC+12 east.
+   */
+  scheduledKey: (d: Date | string) => string;
   upcomingLimit: number;
   recentLimit: number;
   includeExercises: boolean;
 }
 
 export function buildSchedulePayload(rows: RawRows, opts: BuildOptions): SchedulePayload {
-  const { now, windowStart, windowEnd, timeZone, dateKey, upcomingLimit, recentLimit, includeExercises } = opts;
+  const { now, windowStart, windowEnd, timeZone, dateKey, scheduledKey, upcomingLimit, recentLimit, includeExercises } = opts;
   const todayKey = dateKey(now, timeZone);
 
   const active: PublicActive | null = rows.instance
     ? {
         routine_name: rows.instance.routineName,
-        start_date: dateKey(rows.instance.startDate, timeZone),
-        end_date: dateKey(rows.instance.endDate, timeZone),
+        start_date: scheduledKey(rows.instance.startDate),
+        end_date: scheduledKey(rows.instance.endDate),
         duration_days: rows.instance.durationDays,
         completed_workouts: rows.instance.completedWorkouts,
         skipped_workouts: rows.instance.skippedWorkouts,
@@ -169,11 +178,11 @@ export function buildSchedulePayload(rows: RawRows, opts: BuildOptions): Schedul
   const upcoming: PublicUpcoming[] = rows.scheduled.slice(0, upcomingLimit).map((s) => {
     const all = asArray(s.exercises);
     const item: PublicUpcoming = {
-      date: dateKey(s.date, timeZone),
+      date: scheduledKey(s.date),
       at: iso(s.date),
       name: s.name,
       exercise_count: all.length,
-      is_today: dateKey(s.date, timeZone) === todayKey,
+      is_today: scheduledKey(s.date) === todayKey,
       source: s.routineInstanceId ? "routine" : "manual",
       day_index: s.routineDayIndex ?? null,
     };

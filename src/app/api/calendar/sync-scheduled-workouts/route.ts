@@ -8,7 +8,7 @@ import {
   createCalendarEvent,
   isCalendarConnected,
 } from "@/lib/calendar";
-import { localDateKey } from "@/lib/date";
+import { scheduledDateKey } from "@/lib/date";
 
 export const maxDuration = 60;
 
@@ -20,7 +20,10 @@ type SyncedWorkout = {
 };
 
 function localDateString(d: Date): string {
-  return localDateKey(d);
+  // The authored day, not the server's reading of the instant. localDateKey
+  // uses the RUNNING MACHINE's zone: correct on Vercel only because that is
+  // UTC, and wrong on any developer machine west of it.
+  return scheduledDateKey(d);
 }
 
 export const POST = handle(async () => {
