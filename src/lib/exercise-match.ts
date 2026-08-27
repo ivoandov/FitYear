@@ -131,7 +131,19 @@ function analyze(name: string): Analyzed {
   const raw = normalized ? normalized.split(" ") : [];
   // Expand abbreviations first (a synonym may expand to multiple tokens, e.g.
   // "rdl" -> "romanian deadlift"), then singularize.
-  const expanded = raw.flatMap((t) => (TOKEN_SYNONYMS[t] ?? t).split(" "));
+  //
+  // The SINGULAR form is tried too, because the lookup used to run before
+  // singularization and a pluralised abbreviation therefore never expanded:
+  // "RDLs" stayed literal while "RDL" became "romanian deadlift", so
+  // "Single-Leg Dumbbell RDLs" scored 0.50 against "RDL Dumbbells Single Leg"
+  // when the singular form of the same name scored 0.95. Same for "DBs".
+  const expanded = raw.flatMap((t) => {
+    const direct = TOKEN_SYNONYMS[t];
+    if (direct) return direct.split(" ");
+    const viaSingular = TOKEN_SYNONYMS[singularize(t)];
+    if (viaSingular) return viaSingular.split(" ");
+    return [t];
+  });
   const singular = expanded.map(singularize);
   return {
     normalized,

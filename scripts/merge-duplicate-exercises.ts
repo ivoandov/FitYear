@@ -151,6 +151,55 @@ const EMPTY_FILLS: Record<string, { name: string; muscles: string[] }> = {
 };
 
 const APPLY = process.argv.includes("--apply");
+/**
+ * 2026-08-27: duplicates created by the JSON routine import.
+ *
+ * Ivo imported a program and a few exercises were created new because the
+ * matcher scored them under the 0.8 threshold, even though he already had the
+ * movement with real training history behind it. These three are the
+ * unambiguous ones. Run with `--include-import-dupes`.
+ *
+ * Everything else that import created was left alone ON PURPOSE. Of the 30 new
+ * rows, most are genuinely new movements from his program (Nordic Hamstring
+ * Curls, L-Sit Holds, Deficit Push-Ups on Parallettes, Prone Y-T-W Raises) and
+ * deleting them would both lose real exercises and break his RUNNING routine,
+ * which references all 30 by id in routine_entries and scheduled_workouts.
+ *
+ * The survivors keep their existing names and muscle lists: each already has
+ * Ivo's history, and the imported spelling is not an improvement on it.
+ */
+const IMPORT_DUPES: MergeSpec[] = [
+  {
+    keepId: "1",
+    keepName: "Barbell Squat",
+    finalName: "Barbell Squat",
+    finalMuscles: ["Legs"],
+    absorb: [
+      { id: "6ac11c31-e8fb-4bdb-95e9-55bf95ee1379", name: "Barbell Back Squats or Front Squats" },
+    ],
+    note: "import created a back-squat row alongside the existing Barbell Squat (4 logged sessions)",
+  },
+  {
+    keepId: "7",
+    keepName: "DB Shoulder Press - Standing",
+    finalName: "DB Shoulder Press - Standing",
+    finalMuscles: ["Shoulders", "Triceps"],
+    absorb: [
+      { id: "bc3f96ac-5692-4e66-bfe0-ae0efdf939a8", name: "Dumbbell Overhead Press (DB OHP)" },
+    ],
+    note: "same movement; the survivor holds 18 logged sessions and 6 PRs",
+  },
+  {
+    keepId: "2fa04349-c72f-4159-9e6d-eef30943f5c1",
+    keepName: "RDL Dumbbells Single Leg",
+    finalName: "RDL Dumbbells Single Leg",
+    finalMuscles: ["Legs"],
+    absorb: [{ id: "8dfedca0-add5-4ee0-8011-8cc426cead75", name: "Single-Leg Dumbbell RDLs" }],
+    note: "identical token set once RDLs expands; survivor holds 9 logged sessions",
+  },
+];
+
+const INCLUDE_IMPORT_DUPES = process.argv.includes("--include-import-dupes");
 const INCLUDE_PENDING = process.argv.includes("--include-pending");
 
 function asArray(v: unknown): string[] {
@@ -196,7 +245,11 @@ async function main() {
   };
 
   try {
-    const merges = [...MERGES, ...(INCLUDE_PENDING ? PENDING_MERGES : [])];
+    const merges = [
+      ...MERGES,
+      ...(INCLUDE_PENDING ? PENDING_MERGES : []),
+      ...(INCLUDE_IMPORT_DUPES ? IMPORT_DUPES : []),
+    ];
     const catalog = (await sql`select id, name, user_id, muscle_groups from exercises`) as Array<{
       id: string;
       name: string;

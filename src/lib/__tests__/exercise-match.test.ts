@@ -213,3 +213,19 @@ describe("import near-miss names (2026-08-25 regression)", () => {
     expect(matchExercise("Front Squat", catalog)?.name).toBe("Front Squat");
   });
 });
+
+describe("pluralised abbreviations expand (2026-08-27)", () => {
+  it("scores a plural abbreviation the same as its singular", () => {
+    // The lookup ran before singularization, so "RDLs" never expanded and the
+    // same movement scored 0.50 plural vs 0.95 singular.
+    expect(nameMatchScore("Single-Leg Dumbbell RDLs", "RDL Dumbbells Single Leg")).toBeCloseTo(
+      nameMatchScore("Single-Leg Dumbbell RDL", "RDL Dumbbells Single Leg"),
+      2,
+    );
+    expect(nameMatchScore("Single-Leg Dumbbell RDLs", "RDL Dumbbells Single Leg")).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it("does the same for other equipment abbreviations", () => {
+    expect(nameMatchScore("DBs Bicep Curl", "Dumbbell Bicep Curl")).toBeGreaterThanOrEqual(0.8);
+  });
+});
