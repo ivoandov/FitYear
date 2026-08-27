@@ -39,6 +39,22 @@ const EQUIPMENT: Array<[RegExp, string]> = [
   [/\bmachines?\b/i, "Machine"],
   [/\bparallettes?\b/i, "Parallettes"],
   [/\bsleds?\b/i, "Sled"],
+  // "Bodyweight" is the equipment when there is none, and it belongs in front
+  // like any other. Left as a plain word it landed at the END of the core
+  // phrase - "Squats - Bodyweight" came out as "Squats Bodyweight".
+  [/\bbody[\s-]?weights?\b/i, "Bodyweight"],
+];
+
+/**
+ * Abbreviations the EQUIPMENT table cannot carry because they are not
+ * equipment. Expanded before anything else matches, so the modifier table sees
+ * the full phrase.
+ */
+const ABBREVIATIONS: Array<[RegExp, string]> = [
+  // The catalog ran both forms at once ("SL Dumbbell Hip Thrust" beside
+  // "Hamstring Curls - Single Leg"), which is the same split-convention problem
+  // the equipment ordering exists to fix.
+  [/\bsl\b/gi, "Single Leg"],
 ];
 
 /** Position / grip / stance qualifiers, longest-first. */
@@ -48,7 +64,7 @@ const MODIFIERS: string[] = [
   "Feet Elevated", "Heel Elevated", "Glute Focused", "Cross Body", "Crossbody",
   "B Stance", "Seated", "Standing", "Incline", "Decline", "Flat", "Kneeling",
   "Prone", "Supine", "Lying", "Assisted", "Deficit", "Explosive", "Eccentric",
-  "Isometric", "Strict", "Tempo", "Barefoot", "Nordic", "Bulgarian", "Split",
+  "Isometric", "Strict", "Tempo", "Barefoot", "Vertical", "Nordic", "Bulgarian", "Split",
   "Overhead", "Rear Delt", "Conventional", "Romanian",
   // "Back" and "Front" are NOT here on purpose. They read as modifiers in
   // "back squat" but as body parts everywhere else, and hoisting them mangled
@@ -73,6 +89,12 @@ const SPELLINGS: Array<[RegExp, string]> = [
   [/\bchin[\s-]?up\b/gi, "Chin-up"],
   [/\bsit[\s-]?ups\b/gi, "Sit-ups"],
   [/\bsit[\s-]?up\b/gi, "Sit-up"],
+  // The catalog held "Lat Pulldown" beside "Cable Lat Pull Down" and
+  // "Lat Pushdown" beside "Cable Push Down". One word is the house form.
+  [/\bpull[\s-]?downs\b/gi, "Pulldowns"],
+  [/\bpull[\s-]?down\b/gi, "Pulldown"],
+  [/\bpush[\s-]?downs\b/gi, "Pushdowns"],
+  [/\bpush[\s-]?down\b/gi, "Pushdown"],
 ];
 
 /**
@@ -98,6 +120,21 @@ const OVERRIDES: Record<string, string> = {
   // splitting single-letter compounds then, so "L-Sit" was written as "L Sit".
   // The rule no longer does that, but the stored name needs putting back.
   "parallettes l sit holds + dead hangs": "Parallettes L-Sit Holds + Dead Hangs",
+  // Three more repairs of the same kind. The first pass turned "&" into "and"
+  // and then dropped it with the other connectives, which reads as word salad
+  // once both things being joined are body parts. The rule now keeps an "and"
+  // that has something to join, but nothing can put back a word already gone
+  // from the stored name - so these state the result outright.
+  "foam roll quads, calves upper back": "Foam Roll Quads, Calves and Upper Back",
+  "band ankle inversion eversion": "Band Ankle Inversion and Eversion",
+  "dumbbell forearm pronation supination rotations":
+    "Dumbbell Forearm Pronation and Supination Rotations",
+  // "Cable or Banded External Rotations" is one movement you can do with
+  // either, but both words hoisted and it read as needing both.
+  "cable band external rotations": "Cable External Rotations",
+  // A plain typo in the source name, which is why the equipment rule never saw
+  // the word "Machine" in it.
+  "wide chest press machibe": "Machine Wide Chest Press",
 };
 
 const SMALL_WORDS = new Set(["to", "and", "with", "on", "in", "of", "or", "the", "a"]);
@@ -162,10 +199,15 @@ export function canonicalExerciseName(raw: string): string {
   });
 
   // " or " offers an alternative; keep the first option rather than truncating
-  // the movement away entirely.
+  // the movement away entirely. When the first option is a single word the
+  // split is refused (it would leave nothing but that word), and the
+  // alternative survives into the equipment pass - remembered here so it can be
+  // collapsed once we know what it hoisted.
+  let unsplitAlternative = false;
   if (/\bor\b/i.test(s)) {
     const [first] = s.split(/\bor\b/i);
     if (first.trim().split(/\s+/).filter(Boolean).length >= 2) s = first;
+    else unsplitAlternative = true;
   }
 
   s = s.replace(/[–—]/g, " ").replace(/\s+-\s+/g, " ").replace(/[&/]/g, " and ");
@@ -178,6 +220,7 @@ export function canonicalExerciseName(raw: string): string {
   // compound that must survive intact - "Y-T-W" became "Y T W" and "L-Sit"
   // would have become "L Sit". Digits are untouched, so "12-3-30" is safe.
   s = s.replace(/(?<=[A-Za-z]{2})-(?=[A-Za-z]{2})/g, " ");
+  for (const [re, to] of ABBREVIATIONS) s = s.replace(re, to);
   s = s.replace(/\s+/g, " ").trim();
 
   const extraFromParens = parens

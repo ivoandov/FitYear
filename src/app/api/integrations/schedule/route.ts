@@ -11,7 +11,7 @@ import {
 import { handle } from "@/lib/api/handler";
 import { requireIntegrationCaller } from "@/lib/api/integration-auth";
 import { buildSchedulePayload, type RawRows } from "@/lib/integration-schedule";
-import { localDateKeyInZone } from "@/lib/date";
+import { localDateKeyInZone, startOfLocalDayUtc } from "@/lib/date";
 
 /**
  * GET /api/integrations/schedule
@@ -82,7 +82,13 @@ export const GET = handle(async (request: NextRequest) => {
     request.nextUrl.searchParams.get("tz") ?? settings?.timeZone ?? null,
   );
   const now = new Date();
-  const horizon = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  // Window starts at the beginning of the LOCAL day, not at `now`. Filtering by
+  // instant dropped the session due TODAY as soon as its start time passed:
+  // Ivo's Day 1 sat at 14:00Z (07:00 in Los Angeles), so by 09:50 local it had
+  // vanished and the consumer reported "nothing scheduled today" on the first
+  // day of his program. A schedule is read by DAY.
+  const windowStart = startOfLocalDayUtc(now, timeZone);
+  const horizon = new Date(windowStart.getTime() + days * 24 * 60 * 60 * 1000);
 
   // The running program, if any. `status = 'active'` is the same filter the
   // Routines page uses; a cancelled or completed instance is history.
@@ -125,7 +131,7 @@ export const GET = handle(async (request: NextRequest) => {
     .where(
       and(
         eq(scheduledWorkouts.userId, userId),
-        gte(scheduledWorkouts.date, now),
+        gte(scheduledWorkouts.date, windowStart),
         // drizzle's own comparator, NOT a raw sql fragment: interpolating a JS
         // Date into raw sql reaches postgres.js unserialized and throws
         // ERR_INVALID_ARG_TYPE at query time.

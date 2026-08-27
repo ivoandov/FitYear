@@ -76,3 +76,58 @@ export function localDateKey(d: Date | string): string {
   const day = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+/**
+ * The UTC instant at which the CURRENT local day began in `timeZone`.
+ *
+ * Exists because filtering "upcoming" by `date >= now()` silently drops the
+ * session due TODAY the moment its start time passes. Ivo's Day 1 was stored
+ * at 14:00Z (07:00 in Los Angeles), so at 09:50 local it had already fallen out
+ * of the payload and Liv reported "nothing scheduled today" on the very day the
+ * program began. A schedule is a thing people read by DAY, not by instant.
+ *
+ * Computed from the zone's own offset rather than by assuming a fixed one, and
+ * corrected once so a DST transition inside the day cannot shift it an hour.
+ */
+export function startOfLocalDayUtc(at: Date, timeZone: string): Date {
+  const key = localDateKeyInZone(at, timeZone);
+  const [y, m, d] = key.split("-").map(Number);
+  if (!y || !m || !d) return at;
+
+  // Offset the zone was at, for a given instant.
+  const offsetMs = (instant: Date): number => {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hour12: false,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).formatToParts(instant);
+      const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+      const asUtc = Date.UTC(
+        get("year"),
+        get("month") - 1,
+        get("day"),
+        get("hour") % 24,
+        get("minute"),
+        get("second"),
+      );
+      return asUtc - instant.getTime();
+    } catch {
+      return 0;
+    }
+  };
+
+  // Treat local midnight as if it were UTC, then step back by the offset that
+  // actually applies there. One correction pass settles a DST boundary.
+  let guess = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
+  const first = offsetMs(new Date(guess));
+  guess -= first;
+  const second = offsetMs(new Date(guess));
+  if (second !== first) guess += first - second;
+  return new Date(guess);
+}
