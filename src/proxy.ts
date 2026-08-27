@@ -16,6 +16,14 @@ const PUBLIC_PATHS = [
   // auth gate would redirect them to /login and the workflow would never
   // resume; the Workflow runtime authenticates these requests itself.
   "/.well-known/workflow",
+  // Machine-to-machine integration reads (2026-08-25, for Liv). Another service
+  // has no Supabase session cookie, so this gate would 307 it to the login HTML
+  // no matter how correct its own auth was. "Public" here means ONLY that the
+  // cookie gate does not apply: every route under /api/integrations/
+  // authenticates itself with a shared secret bound to one user id
+  // (lib/api/integration-auth.ts) and is READ-ONLY. Do not put anything under
+  // this prefix that writes, or that authenticates any other way.
+  "/api/integrations",
 ];
 
 const ONBOARDED_COOKIE = "fy_onboarded";
