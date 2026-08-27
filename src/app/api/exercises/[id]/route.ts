@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { canonicalExerciseName } from "@/lib/exercise-naming";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -33,6 +34,11 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     .parse(await request.json());
   // Same write-path canonicalization as POST (this route was missed when the
   // taxonomy landed, so edits could reintroduce freeform/nested tags).
+  // Renames go through the same canonicalization as creates, so an edit cannot
+  // reintroduce a spelling the rest of the catalog has moved off.
+  if (typeof body.name === "string") {
+    body.name = canonicalExerciseName(body.name);
+  }
   if (body.muscleGroups !== undefined) {
     body.muscleGroups = normalizeMuscleGroups(
       Array.isArray(body.muscleGroups)

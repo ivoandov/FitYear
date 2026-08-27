@@ -7,6 +7,7 @@ import { handle } from "@/lib/api/handler";
 import { rewriteImageUrl } from "@/lib/image-url";
 import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 import { matchExercise } from "@/lib/exercise-match";
+import { canonicalExerciseName } from "@/lib/exercise-naming";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -55,6 +56,13 @@ export const POST = handle(async (request: NextRequest) => {
     })
     .parse(json);
   const { force } = CreateOptionsSchema.parse(json);
+
+  // Canonicalize the NAME before anything else looks at it, so every creation
+  // path - the manual dialog, FitBot's reconcile-on-Start, the plan importer -
+  // lands the same movement on the same spelling. Done BEFORE the duplicate
+  // guard on purpose: reformatting "Bicep Curls - Cable" to "Cable Bicep
+  // Curls" is exactly what lets the matcher recognise it as an existing row.
+  parsed.name = canonicalExerciseName(parsed.name);
 
   // Duplicate guard: a name that confidently matches an existing catalog row is
   // rejected with the match so the caller can reuse it (or re-POST with

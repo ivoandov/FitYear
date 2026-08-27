@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { ProgramSchema } from "@/lib/program-schema";
 import { matchExercise, normalizeExerciseName } from "@/lib/exercise-match";
+import { canonicalExerciseName } from "@/lib/exercise-naming";
 
 const InputSchema = z.object({
   program: ProgramSchema,
@@ -53,8 +54,13 @@ export const POST = handle(async (request: NextRequest) => {
       if (prior !== raw) exercisesReconciled++;
       return prior;
     }
-    chosenForNew.set(key, raw);
-    return raw;
+    // A genuinely new movement is stored under the house naming convention, so
+    // FitBot output cannot seed a differently-spelled variant that a later
+    // import or manual add then fails to match.
+    const canonical = canonicalExerciseName(raw);
+    if (canonical !== raw) exercisesReconciled++;
+    chosenForNew.set(key, canonical);
+    return canonical;
   };
 
   const days = program.days

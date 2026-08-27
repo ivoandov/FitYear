@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { matchExercise, normalizeExerciseName } from "@/lib/exercise-match";
 import { normalizeMuscleGroups } from "@/lib/muscle-groups";
+import { canonicalExerciseName } from "@/lib/exercise-naming";
 import {
   ImportedPlanSchema,
   planExerciseNames,
@@ -129,7 +130,9 @@ export const POST = handle(async (request: NextRequest) => {
     const [created] = await db
       .insert(exercises)
       .values({
-        name: importedName.slice(0, 60),
+        // Same canonicalization every other creation path uses, so an imported
+        // plan cannot seed a differently-spelled variant of a movement.
+        name: canonicalExerciseName(importedName).slice(0, 60),
         // Canonicalized on write like every other creation path, so an import
         // cannot accrete freeform or case-variant muscle tags into the shared
         // catalog.
