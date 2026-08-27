@@ -157,7 +157,10 @@ describe("connectives, abbreviations and trailing qualifiers", () => {
   it("still drops a connective with nothing left to join", () => {
     // "Cable" and "Band" both hoist out, so the "or" between them is stranded.
     expect(c("Cable or Banded External Rotations")).not.toContain("or");
-    expect(c("Side Plank with Top-Leg Abduction")).toBe("Side Plank Top Leg Abduction");
+    // NOT this one any more. Ivo asked for the "with" back (2026-08-27): it is
+    // carrying the relationship between the hold and the movement, so it is an
+    // override rather than a connective to drop.
+    expect(c("Side Plank with Top-Leg Abduction")).toBe("Side Plank with Top Leg Abduction");
   });
 
   it("expands SL to Single Leg so the catalog runs one form", () => {

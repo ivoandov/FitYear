@@ -64,7 +64,12 @@ function safeZone(tz: string | null): string {
 export const GET = handle(async (request: NextRequest) => {
   const { userId } = requireIntegrationCaller(request);
 
-  const daysRaw = Number(request.nextUrl.searchParams.get("days"));
+  // An ABSENT param must fall through to the default. `Number(null)` is 0,
+  // which is finite, so the previous check took the clamp branch and pinned the
+  // window to a single day - the consumer was only ever seeing today and
+  // tomorrow, and only got tomorrow because the boundary is inclusive.
+  const daysParam = request.nextUrl.searchParams.get("days");
+  const daysRaw = daysParam === null || daysParam.trim() === "" ? NaN : Number(daysParam);
   const days = Number.isFinite(daysRaw)
     ? Math.min(Math.max(Math.trunc(daysRaw), 1), MAX_DAYS)
     : DEFAULT_DAYS;
@@ -169,6 +174,10 @@ export const GET = handle(async (request: NextRequest) => {
 
   const payload = buildSchedulePayload(rows, {
     now,
+    windowStart,
+    // Inclusive last day of the window. `horizon` is the exclusive instant the
+    // query stops at, so step back a moment to land on the final local day.
+    windowEnd: new Date(horizon.getTime() - 1),
     timeZone,
     dateKey: localDateKeyInZone,
     upcomingLimit: UPCOMING_LIMIT,

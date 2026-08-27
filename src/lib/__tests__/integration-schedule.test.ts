@@ -11,6 +11,8 @@ const NOW = new Date("2026-08-27T16:00:00.000Z"); // 9am in Los Angeles
 
 const opts = (over: Partial<BuildOptions> = {}): BuildOptions => ({
   now: NOW,
+  windowStart: new Date("2026-08-27T07:00:00.000Z"),
+  windowEnd: new Date("2026-09-10T06:59:59.999Z"),
   timeZone: "America/Los_Angeles",
   dateKey: localDateKeyInZone,
   upcomingLimit: 7,
@@ -69,6 +71,9 @@ describe("buildSchedulePayload", () => {
     expect(p.recent).toEqual([]);
     expect(p.as_of).toBe("2026-08-27T16:00:00.000Z");
     expect(p.timezone).toBe("America/Los_Angeles");
+    // The window the lists describe, so a rest day is distinguishable from a
+    // hole in the feed.
+    expect(p.covers).toEqual({ from: "2026-08-27", to: "2026-09-09" });
   });
 
   it("shapes a running program", () => {

@@ -57,11 +57,19 @@ const ABBREVIATIONS: Array<[RegExp, string]> = [
   [/\bsl\b/gi, "Single Leg"],
 ];
 
+/**
+ * Qualifiers that read better AFTER the movement (Ivo, 2026-08-27: "always keep
+ * feet elevated at the end of an exercise"). "Barbell Feet Elevated Rack
+ * Inverted Rows" is a mouthful; "Barbell Rack Inverted Rows Feet Elevated" is
+ * how a person says it.
+ */
+const TRAILING_MODIFIERS: string[] = ["Feet Elevated"];
+
 /** Position / grip / stance qualifiers, longest-first. */
 const MODIFIERS: string[] = [
   "Side Lying", "Half Kneeling", "Chest Supported", "Bent Over", "Single Leg", "Single Arm",
   "Neutral Grip", "Wide Grip", "Close Grip", "Reverse Grip", "Stacked Wrists",
-  "Feet Elevated", "Heel Elevated", "Glute Focused", "Cross Body", "Crossbody",
+  "Heel Elevated", "Glute Focused", "Cross Body", "Crossbody",
   "B Stance", "Seated", "Standing", "Incline", "Decline", "Flat", "Kneeling",
   "Prone", "Supine", "Lying", "Assisted", "Deficit", "Explosive", "Eccentric",
   "Isometric", "Strict", "Tempo", "Barefoot", "Vertical", "Nordic", "Bulgarian", "Split",
@@ -113,7 +121,6 @@ const OVERRIDES: Record<string, string> = {
   "tibialis wall raises (or tib bar)": "Tibialis Wall Raises",
   "reverse wrist extensions (light db / band)": "Dumbbell Reverse Wrist Extensions",
   "side-lying thoracic rotation (open book)": "Side Lying Thoracic Rotation",
-  "strict neutral-grip pull-ups (tempo 3-0-1)": "Neutral Grip Strict Pull-ups",
   "low-bar assisted transitions (bar in squat rack)": "Assisted Low Bar Transitions",
   "single-dumbbell eccentric wrist lowers": "Dumbbell Single Arm Eccentric Wrist Lowers",
   // Repairs a row the FIRST rename pass damaged: the internal-hyphen rule was
@@ -125,7 +132,8 @@ const OVERRIDES: Record<string, string> = {
   // once both things being joined are body parts. The rule now keeps an "and"
   // that has something to join, but nothing can put back a word already gone
   // from the stored name - so these state the result outright.
-  "foam roll quads, calves upper back": "Foam Roll Quads, Calves and Upper Back",
+  "foam roll quads, calves upper back": "Foam Roll Quads, Calves, Upper Back",
+  "foam roll quads, calves and upper back": "Foam Roll Quads, Calves, Upper Back",
   "band ankle inversion eversion": "Band Ankle Inversion and Eversion",
   "dumbbell forearm pronation supination rotations":
     "Dumbbell Forearm Pronation and Supination Rotations",
@@ -135,6 +143,26 @@ const OVERRIDES: Record<string, string> = {
   // A plain typo in the source name, which is why the equipment rule never saw
   // the word "Machine" in it.
   "wide chest press machibe": "Machine Wide Chest Press",
+  // Ivo's calls on the Back review, 2026-08-27. "Biceps" alone read like a
+  // stray body part; "Focus" says what it means. And the tempo is how the set
+  // is PERFORMED, so dropping it lost prescription rather than noise.
+  "lat pulldown - biceps": "Lat Pulldown Biceps Focus",
+  "lat pulldown biceps": "Lat Pulldown Biceps Focus",
+  "strict neutral-grip pull-ups (tempo 3-0-1)": "Neutral Grip Strict Pull-ups Tempo 3-0-1",
+  "neutral grip strict pull-ups": "Neutral Grip Strict Pull-ups Tempo 3-0-1",
+  // The conventional name for the movement; "Pallof" was dangling at the end
+  // and "Anti-Rotation" had lost its hyphen.
+  "half-kneeling cable anti-rotation press (pallof)": "Cable Half Kneeling Pallof Press",
+  "cable half kneeling anti rotation press pallof": "Cable Half Kneeling Pallof Press",
+  // Ivo: these are two DIFFERENT movements, distinguished by the attachment -
+  // a straight bar versus a rope - not two names for one thing. The rope one
+  // takes its conventional name so the difference is legible.
+  "cable push down": "Cable Rope Pushdowns",
+  "cable pushdown": "Cable Rope Pushdowns",
+  // "with" is dropped as a connective by the general rule, but here it is
+  // carrying the relationship between the hold and the movement.
+  "side plank with top-leg abduction": "Side Plank with Top Leg Abduction",
+  "side plank top leg abduction": "Side Plank with Top Leg Abduction",
 };
 
 const SMALL_WORDS = new Set(["to", "and", "with", "on", "in", "of", "or", "the", "a"]);
@@ -248,6 +276,15 @@ export function canonicalExerciseName(raw: string): string {
   // read as needing both, when the name offered a choice between them.
   if (unsplitAlternative && equipment.length > 1) equipment.length = 1;
 
+  const trailing: string[] = [];
+  for (const m of TRAILING_MODIFIERS) {
+    const re = new RegExp("\\b" + m.replace(/ /g, "[ -]?") + "\\b", "i");
+    if (re.test(rest)) {
+      if (!trailing.includes(m)) trailing.push(m);
+      rest = rest.replace(new RegExp(re.source, "gi"), " ");
+    }
+  }
+
   const modifiers: string[] = [];
   for (const m of MODIFIERS) {
     const re = new RegExp("\\b" + m.replace(/ /g, "[ -]?") + "\\b", "i");
@@ -287,7 +324,7 @@ export function canonicalExerciseName(raw: string): string {
   // inventing something or returning an empty string.
   if (coreWords.length === 0) return applySpellings(input);
 
-  const assembled = [...equipment, ...modifiers, ...coreWords].join(" ");
+  const assembled = [...equipment, ...modifiers, ...coreWords, ...trailing].join(" ");
   const named = applySpellings(titleCase(assembled));
 
   // The column is capped at 60; if canonicalizing would overflow it, the

@@ -59,6 +59,14 @@ export interface SchedulePayload {
   as_of: string;
   /** The zone every `date` above was resolved in. */
   timezone: string;
+  /**
+   * The local-day window `upcoming` actually describes, inclusive.
+   *
+   * Without it a consumer cannot tell a genuine REST DAY from a hole in the
+   * feed: both look like "no session dated today". With it, a date inside the
+   * window and absent from `upcoming` is definitively a rest day.
+   */
+  covers: { from: string; to: string };
   /** null when no routine instance is running. NEVER omitted. */
   active: PublicActive | null;
   /** Today onward. Always an array, never absent. */
@@ -128,6 +136,10 @@ export const MAX_EXERCISES_PER_WORKOUT = 40;
 
 export interface BuildOptions {
   now: Date;
+  /** Local day the window opens on (inclusive). */
+  windowStart: Date;
+  /** Local day the window closes on (inclusive). */
+  windowEnd: Date;
   /** IANA zone every date is resolved in. */
   timeZone: string;
   /** Resolves a Date to a YYYY-MM-DD key in `timeZone`. */
@@ -138,7 +150,7 @@ export interface BuildOptions {
 }
 
 export function buildSchedulePayload(rows: RawRows, opts: BuildOptions): SchedulePayload {
-  const { now, timeZone, dateKey, upcomingLimit, recentLimit, includeExercises } = opts;
+  const { now, windowStart, windowEnd, timeZone, dateKey, upcomingLimit, recentLimit, includeExercises } = opts;
   const todayKey = dateKey(now, timeZone);
 
   const active: PublicActive | null = rows.instance
@@ -174,6 +186,7 @@ export function buildSchedulePayload(rows: RawRows, opts: BuildOptions): Schedul
   return {
     as_of: now.toISOString(),
     timezone: timeZone,
+    covers: { from: dateKey(windowStart, timeZone), to: dateKey(windowEnd, timeZone) },
     active,
     upcoming,
     recent: rows.completed.slice(0, recentLimit).map((c) => ({
