@@ -107,3 +107,32 @@ describe("case handling", () => {
     expect(c("cable lat pull down")).toBe("Cable Lat Pull Down");
   });
 });
+
+describe("hyphen compounds and override stability", () => {
+  it("keeps single-letter compounds intact", () => {
+    // The internal-hyphen rule split these: "Y-T-W" -> "Y T W", "L-Sit" -> "L Sit".
+    expect(c("Prone Y-T-W Raises")).toContain("Y-T-W");
+    expect(c("L-Sit Holds")).toContain("L-Sit");
+    expect(c("Incline Treadmill (12-3-30)")).toContain("12-3-30");
+  });
+
+  it("still splits multi-letter compounds that hid a modifier", () => {
+    expect(c("Side-Lying Clamshells")).toBe("Side Lying Clamshells");
+    expect(c("Single-Dumbbell Wrist Lowers")).not.toContain("Single-");
+  });
+
+  it("every override output is a FIXED POINT", () => {
+    // canonicalExerciseName runs on every save, so a name that keeps changing
+    // would be rewritten on each one.
+    for (const name of [
+      "Wrist Holds - Flat Bench",
+      "Prone Y-T-W Raises on Incline Bench",
+      "Nordic Hamstring Curls (or Slider Curls)",
+      "Side-Lying Thoracic Rotation (Open Book)",
+      "Cable Fly - Down to Up",
+    ]) {
+      const once = c(name);
+      expect(c(once), `override not stable for ${name}`).toBe(once);
+    }
+  });
+});

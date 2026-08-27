@@ -74,3 +74,4 @@ next-env.d.ts
 
 # One-shot audit cleanup backups (2026-07-29)
 /migration/audit-cleanup-backups/
+migration/exercise-rename-backups/

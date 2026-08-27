@@ -43,13 +43,20 @@ const EQUIPMENT: Array<[RegExp, string]> = [
 
 /** Position / grip / stance qualifiers, longest-first. */
 const MODIFIERS: string[] = [
-  "Half Kneeling", "Chest Supported", "Bent Over", "Single Leg", "Single Arm",
+  "Side Lying", "Half Kneeling", "Chest Supported", "Bent Over", "Single Leg", "Single Arm",
   "Neutral Grip", "Wide Grip", "Close Grip", "Reverse Grip", "Stacked Wrists",
   "Feet Elevated", "Heel Elevated", "Glute Focused", "Cross Body", "Crossbody",
   "B Stance", "Seated", "Standing", "Incline", "Decline", "Flat", "Kneeling",
   "Prone", "Supine", "Lying", "Assisted", "Deficit", "Explosive", "Eccentric",
   "Isometric", "Strict", "Tempo", "Barefoot", "Nordic", "Bulgarian", "Split",
-  "Front", "Back", "Overhead", "Rear Delt", "Lateral", "Conventional", "Romanian",
+  "Overhead", "Rear Delt", "Conventional", "Romanian",
+  // "Back" and "Front" are NOT here on purpose. They read as modifiers in
+  // "back squat" but as body parts everywhere else, and hoisting them mangled
+  // "Foam Roll Quads, Calves & Upper Back" into "Back Foam Roll Quads, Calves
+  // Upper". The back-squat case is handled at PHRASE level in
+  // lib/exercise-match instead, which is where meaning belongs.
+  // "Lateral" is likewise left alone: it is part of the movement in "Lateral
+  // Raises" and "Lateral Line Hops", not a position qualifier.
 ];
 
 /**
@@ -75,6 +82,22 @@ const SPELLINGS: Array<[RegExp, string]> = [
 const OVERRIDES: Record<string, string> = {
   "cable fly - down to up": "Cable Fly Low to High",
   "cable fly - up to down": "Cable Fly High to Low",
+  // These read wrong under any mechanical rule: the qualifier belongs to a
+  // compound the parser cannot see ("Flat Bench", "Open Book", an "or"
+  // alternative inside a parenthetical), so the name is stated outright.
+  "wrist holds - flat bench": "Flat Bench Wrist Holds",
+  "prone y-t-w raises on incline bench": "Incline Bench Prone Y-T-W Raises",
+  "nordic hamstring curls (or slider curls)": "Nordic Hamstring Curls",
+  "tibialis wall raises (or tib bar)": "Tibialis Wall Raises",
+  "reverse wrist extensions (light db / band)": "Dumbbell Reverse Wrist Extensions",
+  "side-lying thoracic rotation (open book)": "Side Lying Thoracic Rotation",
+  "strict neutral-grip pull-ups (tempo 3-0-1)": "Neutral Grip Strict Pull-ups",
+  "low-bar assisted transitions (bar in squat rack)": "Assisted Low Bar Transitions",
+  "single-dumbbell eccentric wrist lowers": "Dumbbell Single Arm Eccentric Wrist Lowers",
+  // Repairs a row the FIRST rename pass damaged: the internal-hyphen rule was
+  // splitting single-letter compounds then, so "L-Sit" was written as "L Sit".
+  // The rule no longer does that, but the stored name needs putting back.
+  "parallettes l sit holds + dead hangs": "Parallettes L-Sit Holds + Dead Hangs",
 };
 
 const SMALL_WORDS = new Set(["to", "and", "with", "on", "in", "of", "or", "the", "a"]);
@@ -110,12 +133,22 @@ function applySpellings(s: string): string {
  * name is never destroyed - an empty or unparseable result is always worse than
  * leaving what the user typed.
  */
+/**
+ * The override VALUES, so each is accepted as already-canonical. Without this
+ * an override could name something the mechanical rules would then rewrite
+ * again, and canonicalExerciseName - which runs on every save - would never
+ * settle. "Incline Bench Prone Y-T-W Raises" was exactly that: re-running it
+ * hoisted "Prone" and produced a different name each pass.
+ */
+const OVERRIDE_VALUES = new Set(Object.values(OVERRIDES).map((v) => v.toLowerCase()));
+
 export function canonicalExerciseName(raw: string): string {
   const input = (raw ?? "").trim();
   if (!input) return input;
 
   const override = OVERRIDES[input.toLowerCase()];
   if (override) return override;
+  if (OVERRIDE_VALUES.has(input.toLowerCase())) return input;
 
   let s = input;
 
@@ -136,6 +169,15 @@ export function canonicalExerciseName(raw: string): string {
   }
 
   s = s.replace(/[–—]/g, " ").replace(/\s+-\s+/g, " ").replace(/[&/]/g, " and ");
+  // An INTERNAL hyphen becomes a space before matching. Left as-is, "Lying"
+  // matched inside "Side-Lying" and "Dumbbell" inside "Single-Dumbbell",
+  // hoisting half the compound and leaving "Side-" and "Single-" stranded.
+  // Genuinely hyphenated names are restored by SPELLINGS (Push-ups) or by an
+  // override; everything else reads fine as separate words.
+  // Both sides must be multi-letter words. A single letter either side means a
+  // compound that must survive intact - "Y-T-W" became "Y T W" and "L-Sit"
+  // would have become "L Sit". Digits are untouched, so "12-3-30" is safe.
+  s = s.replace(/(?<=[A-Za-z]{2})-(?=[A-Za-z]{2})/g, " ");
   s = s.replace(/\s+/g, " ").trim();
 
   const extraFromParens = parens
@@ -169,8 +211,10 @@ export function canonicalExerciseName(raw: string): string {
     .filter(Boolean)
     .filter((w) => !/^(or|and|the|a|with)$/i.test(w));
 
-  // A trailing preposition dangles once its object was pulled out as equipment
-  // ("Deficit Push-Ups on Parallettes" -> "... Push-ups on").
+  // A preposition dangles once its object was pulled out as equipment or a
+  // modifier - "Deficit Push-Ups on Parallettes" left "... Push-ups on", and
+  // "Prone Y-T-W Raises on Incline Bench" left "on" stranded mid-phrase. Drop
+  // one that has nothing after it, at the end OR before another hoisted word.
   while (
     coreWords.length > 1 &&
     /^(on|to|with|in|at|for|from)$/i.test(coreWords[coreWords.length - 1])
