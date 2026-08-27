@@ -131,3 +131,31 @@ export function startOfLocalDayUtc(at: Date, timeZone: string): Date {
   if (second !== first) guess += first - second;
   return new Date(guess);
 }
+
+/**
+ * A scheduled workout is a DAY, not a moment, and it must survive being read
+ * from a different timezone than the one it was created in.
+ *
+ * Storing local midnight does not survive that: midnight in Los Angeles is
+ * 07:00Z, which any zone WEST of Los Angeles reads as the previous day. That is
+ * exactly what happened - Day 1 of Ivo's program resolved to the 26th in
+ * Honolulu while resolving correctly everywhere east of him.
+ *
+ * NOON UTC is the safe anchor, and is already the convention the manual
+ * scheduling route uses ("timezone-safe storage"). It lands on the same
+ * calendar day for every zone from UTC-12 through UTC+11, which covers
+ * everywhere Ivo trains. It does slip a day at UTC+12 and beyond (New Zealand,
+ * Fiji, Kiribati); fixing that needs the intended day stored as its own column
+ * rather than inferred from an instant.
+ */
+export function scheduledDateFromKey(dateKey: string): Date {
+  return new Date(`${dateKey}T12:00:00Z`);
+}
+
+/** Add whole days to a YYYY-MM-DD key without touching timezones at all. */
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d));
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}

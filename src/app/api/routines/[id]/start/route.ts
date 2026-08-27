@@ -11,6 +11,8 @@ import {
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
+import { addDaysToDateKey, localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { viewerTimeZone } from "@/lib/server-timezone";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -61,11 +63,14 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   );
 
   const startDate = new Date(body.startDate);
+  // The calendar day the user picked, resolved in THEIR zone rather than the
+  // server's (UTC on Vercel). Every date below is derived from this KEY by
+  // calendar arithmetic, so no step ever depends on a machine's local clock.
+  const startKey = localDateKeyInZone(startDate, await viewerTimeZone());
+
   const conflicts: string[] = [];
   for (const entry of filtered) {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + entry.dayIndex - 1);
-    const dateStr = d.toISOString().split("T")[0];
+    const dateStr = addDaysToDateKey(startKey, entry.dayIndex - 1);
     if (existingDates.has(dateStr)) conflicts.push(dateStr);
   }
   if (conflicts.length > 0) {
@@ -75,8 +80,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
     });
   }
 
-  const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + maxDays - 1);
+  const endDate = scheduledDateFromKey(addDaysToDateKey(startKey, maxDays - 1));
 
   // One transaction: the instance and its scheduled workouts must land
   // together. Separately, a failed bulk insert left an ACTIVE instance
@@ -104,8 +108,14 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
       .insert(scheduledWorkouts)
       .values(
         filtered.map((entry) => {
-          const d = new Date(startDate);
-          d.setDate(startDate.getDate() + entry.dayIndex - 1);
+          // Calendar arithmetic on the DAY KEY, then anchored at noon UTC.
+          // This used to add days to a Date and store the result, which is
+          // local midnight - 07:00Z for Los Angeles - and any zone west of the
+          // creating one then read it as the previous day. See
+          // scheduledDateFromKey.
+          const d = scheduledDateFromKey(
+            addDaysToDateKey(startKey, entry.dayIndex - 1),
+          );
           return {
             userId: user.id,
             name: entry.workoutName || `Day ${entry.dayIndex}`,

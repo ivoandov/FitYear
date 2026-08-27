@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseServerDate, localDateKey, startOfLocalDayUtc } from "@/lib/date";
+import { parseServerDate, localDateKey, startOfLocalDayUtc, scheduledDateFromKey, addDaysToDateKey } from "@/lib/date";
 
 describe("parseServerDate", () => {
   it("treats a no-timezone string as UTC", () => {
@@ -78,5 +78,38 @@ describe("startOfLocalDayUtc", () => {
   it("falls back rather than throwing on an unusable zone", () => {
     const at = new Date("2026-08-27T16:55:00.000Z");
     expect(() => startOfLocalDayUtc(at, "Not/AZone")).not.toThrow();
+  });
+});
+
+describe("scheduled workouts survive being read from another zone", () => {
+  it("noon UTC lands on the same calendar day from UTC-11 to UTC+11", () => {
+    // Local midnight does NOT: midnight in Los Angeles is 07:00Z, which every
+    // zone west of it reads as the previous day. That is the Honolulu bug.
+    const key = (d: Date, tz: string) =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(d);
+
+    const safe = scheduledDateFromKey("2026-08-27");
+    for (const tz of [
+      "Pacific/Honolulu", "America/Los_Angeles", "America/New_York",
+      "UTC", "Europe/London", "Asia/Bangkok", "Asia/Manila", "Australia/Sydney",
+    ]) {
+      expect(key(safe, tz), `noon UTC failed in ${tz}`).toBe("2026-08-27");
+    }
+
+    // The old scheme, for contrast: correct east of LA, wrong west of it.
+    const midnightLa = new Date("2026-08-27T07:00:00.000Z");
+    expect(key(midnightLa, "America/Los_Angeles")).toBe("2026-08-27");
+    expect(key(midnightLa, "Pacific/Honolulu")).toBe("2026-08-26");
+  });
+
+  it("adds days without touching timezones", () => {
+    expect(addDaysToDateKey("2026-08-27", 0)).toBe("2026-08-27");
+    expect(addDaysToDateKey("2026-08-27", 1)).toBe("2026-08-28");
+    expect(addDaysToDateKey("2026-08-27", 5)).toBe("2026-09-01");
+    // Across a DST boundary, where naive Date arithmetic slips an hour.
+    expect(addDaysToDateKey("2026-11-01", 1)).toBe("2026-11-02");
+    expect(addDaysToDateKey("2026-12-31", 1)).toBe("2027-01-01");
   });
 });
