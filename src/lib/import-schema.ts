@@ -134,3 +134,50 @@ export function planExerciseNames(plan: ImportedPlan): string[] {
 export function planTrainingDayCount(plan: ImportedPlan): number {
   return plan.kind === "workout" ? 1 : plan.days.filter((d) => !d.isRest).length;
 }
+
+/**
+ * Repeat a plan's day pattern until it fills `durationDays`.
+ *
+ * An imported plan is usually ONE cycle - a week of training - but a program
+ * runs for 30 or 60 days. Without this the routine ends after the imported
+ * week, which is what Ivo hit: he imported a week and could only get a 7-day
+ * routine out of it.
+ *
+ * Repeats by CYCLE LENGTH, not by array position, so rest days keep their place
+ * in the rotation. Day indices stay absolute (1..durationDays), which is the
+ * contract routine_entries and the routine-start route both expect.
+ *
+ * Returns the days unchanged when the plan already covers the duration, so
+ * importing a genuine 30-day program is never re-tiled.
+ */
+export function repeatPlanDays(
+  days: ImportedDay[],
+  cycleLength: number,
+  durationDays: number,
+): ImportedDay[] {
+  const period = Math.max(1, Math.floor(cycleLength) || 1);
+  if (!Number.isFinite(durationDays) || durationDays <= 0) return days;
+
+  const covered = days.reduce((max, d) => Math.max(max, d.dayIndex), 0);
+  if (covered >= durationDays) return days;
+
+  // Position within the cycle -> the day that occupies it.
+  const bySlot = new Map<number, ImportedDay>();
+  for (const d of days) {
+    const slot = ((d.dayIndex - 1) % period + period) % period;
+    if (!bySlot.has(slot)) bySlot.set(slot, d);
+  }
+
+  const out: ImportedDay[] = [];
+  for (let dayIndex = 1; dayIndex <= durationDays; dayIndex++) {
+    const slot = ((dayIndex - 1) % period + period) % period;
+    const source = bySlot.get(slot);
+    if (!source) {
+      // A slot the plan never filled is rest, not a gap to silently drop.
+      out.push({ dayIndex, workoutName: "Rest", isRest: true, exercises: [] });
+      continue;
+    }
+    out.push({ ...source, dayIndex });
+  }
+  return out;
+}

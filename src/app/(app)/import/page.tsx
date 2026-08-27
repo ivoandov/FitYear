@@ -60,7 +60,12 @@ interface Resolution {
   suggestion: CatalogRow | null;
 }
 
-const SUGGESTION_FLOOR = 0.6;
+// Deliberately below the old 0.6. Real near-misses from Ivo's import scored
+// 0.67 ("Barbell Back Squats" vs "Barbell Squat") and 0.50 ("Barbell Row" vs
+// "Bent Over Barbell Row"), and anything under the floor was created silently
+// as a duplicate. Surfacing more candidates is safe because none of them
+// auto-apply: each one has to be decided before the import can be saved.
+const SUGGESTION_FLOOR = 0.5;
 
 export default function ImportPage() {
   const router = useRouter();
@@ -76,6 +81,9 @@ export default function ImportPage() {
   const [result, setResult] = useState<CommitResult | null>(null);
   // importedName -> exerciseId to reuse, or null to create it anyway.
   const [choices, setChoices] = useState<Record<string, string | null>>({});
+  // Run length in days. An imported plan is usually one cycle (a week); this is
+  // how long the routine actually runs, with the pattern repeated to fill it.
+  const [durationDays, setDurationDays] = useState<number | null>(null);
 
   const { data: catalog = [] } = useQuery<CatalogRow[]>({
     queryKey: ["/api/exercises"],
@@ -93,6 +101,14 @@ export default function ImportPage() {
       })
     : [];
 
+  // A near-match the user has not ruled on yet. Saving is blocked until each is
+  // decided: leaving the default as "create new" is exactly how Ivo's import
+  // quietly added "Barbell Back Squats or Front Squats" alongside his existing
+  // "Barbell Squat". Fragmenting the catalog needs a merge migration to undo,
+  // so an explicit choice is cheaper than the cleanup.
+  const undecided = resolutions.filter(
+    (r) => !r.auto && r.suggestion && choices[r.imported] === undefined,
+  );
   const newCount = resolutions.filter(
     (r) => !r.auto && (choices[r.imported] === null || choices[r.imported] === undefined),
   ).length;
@@ -123,6 +139,7 @@ export default function ImportPage() {
         plan,
         name: planName.trim() || undefined,
         mappings: choices,
+        durationDays: durationDays ?? undefined,
       });
       const data = (await res.json()) as CommitResult;
       setResult(data);
@@ -147,6 +164,7 @@ export default function ImportPage() {
     setError(null);
     setText("");
     setChoices({});
+    setDurationDays(null);
   };
 
   const modeButton = (value: Mode, label: string) => (
@@ -393,6 +411,54 @@ export default function ImportPage() {
               </div>
             </div>
 
+            {plan.kind === "routine" && (
+              <div className="space-y-2">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-tertiary-foreground">
+                  Run this for
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { v: null, label: `As imported (${plan.days.length}d)` },
+                    { v: 30, label: "30 days" },
+                    { v: 60, label: "60 days" },
+                    { v: 90, label: "90 days" },
+                  ].map((opt) => (
+                    <button
+                      key={String(opt.v)}
+                      type="button"
+                      onClick={() => setDurationDays(opt.v)}
+                      className={`h-9 rounded-lg px-3 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                        durationDays === opt.v
+                          ? "border border-yellow bg-primary-dim text-primary"
+                          : "border border-strong text-tertiary-foreground"
+                      }`}
+                      data-testid={`import-duration-${opt.v ?? "asis"}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {durationDays !== null && (
+                  <p className="text-xs text-tertiary-foreground">
+                    The {plan.cycleLength}-day pattern repeats to fill {durationDays} days.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {undecided.length > 0 && (
+              <div
+                className="rounded-xl border border-yellow bg-primary-dim p-3 text-sm"
+                data-testid="import-undecided-warning"
+              >
+                {undecided.length} exercise{undecided.length === 1 ? "" : "s"} look like
+                {undecided.length === 1 ? "s" : ""} something already in your library.
+                Choose <span className="text-primary">Use it</span> or{" "}
+                <span className="text-primary">Keep new</span> for each before saving, so
+                the import does not create duplicates.
+              </div>
+            )}
+
             <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
@@ -405,7 +471,7 @@ export default function ImportPage() {
               <button
                 type="button"
                 onClick={commit}
-                disabled={isSaving}
+                disabled={isSaving || undecided.length > 0}
                 className="flex h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground shadow-cta disabled:opacity-40"
                 data-testid="import-save-button"
               >

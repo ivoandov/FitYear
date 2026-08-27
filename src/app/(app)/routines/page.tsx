@@ -119,6 +119,22 @@ function cycleLegend(days: CycleDay[]): ReactNode {
   );
 }
 
+/**
+ * Sentinel for a routine day whose workout is stored INLINE on the entry
+ * (workoutName + exercises, no workoutTemplateId). FitBot's save-program and
+ * the plan importer both write entries that way, so the editor has to be able
+ * to represent one instead of collapsing it to "Rest day".
+ */
+const INLINE_WORKOUT = "__inline_workout__";
+
+function dayValue(
+  entry: { workoutTemplateId: string | null; workoutName: string | null } | undefined,
+): string {
+  if (!entry) return "rest";
+  if (entry.workoutTemplateId) return entry.workoutTemplateId;
+  return entry.workoutName ? INLINE_WORKOUT : "rest";
+}
+
 export default function RoutinesPage() {
   const { toast } = useToast();
   const router = useRouter();
@@ -387,6 +403,9 @@ export default function RoutinesPage() {
       if (templateId === null || templateId === "rest") {
         return prev.filter(e => e.dayIndex !== dayIndex);
       }
+      // Re-picking the day's own inline workout is a no-op, not a reason to
+      // replace it with a template that does not exist.
+      if (templateId === INLINE_WORKOUT) return prev;
 
       const newEntry = {
         dayIndex,
@@ -907,7 +926,7 @@ export default function RoutinesPage() {
                         <div key={dayIndex} className="flex items-center gap-3 rounded-xl border bg-white/[0.03] p-2.5">
                           <span className="w-14 shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-tertiary-foreground">Day {dayIndex}</span>
                           <Select
-                            value={entry?.workoutTemplateId || "rest"}
+                            value={dayValue(entry)}
                             onValueChange={(v) => setDayWorkout(dayIndex, v === "rest" ? null : v)}
                           >
                             <SelectTrigger className="flex-1" data-testid={`select-day-${dayIndex}-workout`}>
@@ -915,6 +934,19 @@ export default function RoutinesPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="rest">Rest day</SelectItem>
+                              {/* A day whose workout is stored INLINE (no
+                                  workoutTemplateId) needs its own option, or the
+                                  Select falls back to "rest" and the editor
+                                  claims a full program is empty. Both FitBot's
+                                  save-program and the plan importer write
+                                  entries this way, so without this every
+                                  generated or imported routine looks blank
+                                  here. */}
+                              {entry && !entry.workoutTemplateId && entry.workoutName && (
+                                <SelectItem value={INLINE_WORKOUT}>
+                                  {entry.workoutName}
+                                </SelectItem>
+                              )}
                               {workoutTemplates.map(template => (
                                 <SelectItem key={template.id} value={template.id}>
                                   {template.name}

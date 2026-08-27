@@ -14,6 +14,7 @@ import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 import {
   ImportedPlanSchema,
   planExerciseNames,
+  repeatPlanDays,
   type ImportedExercise,
   type ResolvedExerciseReport,
 } from "@/lib/import-schema";
@@ -54,11 +55,18 @@ const InputSchema = z.object({
    * curl. So near-matches are shown and the user decides.
    */
   mappings: z.record(z.string(), z.string().nullable()).optional(),
+  /**
+   * How long the routine should RUN, in days. An imported plan is usually one
+   * cycle (a week), but a program runs for 30 or 60, so the pattern is repeated
+   * to fill this. Omitted means "exactly as imported". Ignored for a single
+   * workout, which has no duration.
+   */
+  durationDays: z.number().int().min(1).max(365).optional(),
 });
 
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
-  const { plan, name: nameOverride, mappings } = InputSchema.parse(await request.json());
+  const { plan, name: nameOverride, mappings, durationDays } = InputSchema.parse(await request.json());
 
   const catalog = await db
     .select({ id: exercises.id, name: exercises.name })
@@ -184,9 +192,16 @@ export const POST = handle(async (request: NextRequest) => {
     );
   }
 
+  // Repeat the imported cycle to fill the requested run length. Importing one
+  // week and asking for 30 days materialises 30 days of entries; importing a
+  // real 30-day program and asking for 30 changes nothing.
+  const planDays = durationDays
+    ? repeatPlanDays(plan.days, plan.cycleLength, durationDays)
+    : plan.days;
+
   // Routine: parent + its days in ONE transaction. A failed entries insert must
   // not leave an empty routine behind (the same guarantee ai/save-program has).
-  const trainingDays = plan.days.filter((d) => !d.isRest && d.exercises.length > 0);
+  const trainingDays = planDays.filter((d) => !d.isRest && d.exercises.length > 0);
   const routine = await db.transaction(async (tx) => {
     const [row] = await tx
       .insert(routines)
@@ -194,7 +209,7 @@ export const POST = handle(async (request: NextRequest) => {
         userId: user.id,
         name: (nameOverride ?? plan.name).slice(0, 80),
         description: "Imported",
-        defaultDurationDays: plan.days.length,
+        defaultDurationDays: planDays.length,
         // Drives the true rotation strip on the Routines card.
         cycleLength: plan.cycleLength,
         isPublic: false,
@@ -221,6 +236,7 @@ export const POST = handle(async (request: NextRequest) => {
       name: routine.name,
       cycleLength: plan.cycleLength,
       daysGenerated: trainingDays.length,
+      durationDays: planDays.length,
       exercisesMatched: report.filter((r) => r.action === "matched").length,
       exercisesCreated: report.filter((r) => r.action === "created").length,
       report,

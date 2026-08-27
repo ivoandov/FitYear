@@ -149,3 +149,67 @@ describe("matchExercise", () => {
     expect(m!.id).toBe("x");
   });
 });
+
+/**
+ * 2026-08-25: Ivo imported a JSON routine and several exercises were created as
+ * duplicates of ones he already had. These are the exact names from that
+ * import, with the scores they produced before the fix.
+ */
+describe("import near-miss names (2026-08-25 regression)", () => {
+  const catalog = [
+    { id: "1", name: "Barbell Squat" },
+    { id: "2", name: "Dumbbell Overhead Press (DB OHP)" },
+    { id: "3", name: "Bench Press" },
+    { id: "4", name: "Lat Pulldown" },
+    // Keep-separate pairs must survive every change below.
+    { id: "5", name: "Split Squats" },
+    { id: "6", name: "Bulgarian Split Squats" },
+    { id: "7", name: "Front Squat" },
+    { id: "8", name: "Pull-ups" },
+    { id: "9", name: "Pull Ups Assisted" },
+  ];
+
+  it("matches a barbell back squat to the barbell squat (was 0.67, created a duplicate)", () => {
+    expect(matchExercise("Barbell Back Squats", catalog)?.name).toBe("Barbell Squat");
+  });
+
+  it("leaves a BARE 'Back Squat' to the user rather than guessing the equipment", () => {
+    // Deliberate. With no equipment word this could be any squat variant, and
+    // auto-matching it would mean ignoring "barbell" - the exact loosening that
+    // would also fold Split into Bulgarian Split Squat. It does not auto-match,
+    // but it clears the import preview's 0.5 suggestion floor, so the importer
+    // offers it and Ivo decides.
+    expect(matchExercise("Back Squat", catalog)).toBeNull();
+    expect(nameMatchScore("Back Squat", "Barbell Squat")).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("ignores a parenthetical gloss (was 0.75, created a duplicate)", () => {
+    expect(matchExercise("DB Overhead Press", catalog)?.name).toBe(
+      "Dumbbell Overhead Press (DB OHP)",
+    );
+    expect(matchExercise("Dumbbell Overhead Press", catalog)?.name).toBe(
+      "Dumbbell Overhead Press (DB OHP)",
+    );
+  });
+
+  it("ignores an 'or ...' alternative, taking the movement actually prescribed", () => {
+    expect(normalizeExerciseName("Barbell Back Squats or Front Squats")).toBe(
+      "barbell back squats",
+    );
+  });
+
+  it("STILL refuses the keep-separate pairs", () => {
+    // The whole point of the conservative threshold. A wrong merge corrupts
+    // history; these must never fold together.
+    expect(nameMatchScore("Split Squats", "Bulgarian Split Squats")).toBeLessThan(0.8);
+    expect(nameMatchScore("Front Squat", "Barbell Squat")).toBeLessThan(0.8);
+    expect(nameMatchScore("Front Squat", "Back Squat")).toBeLessThan(0.8);
+    expect(nameMatchScore("Pull-ups", "Pull Ups Assisted")).toBeLessThan(0.8);
+    expect(nameMatchScore("Bench Press", "Leg Press")).toBeLessThan(0.8);
+  });
+
+  it("does not fold a front squat into a back squat via the phrase synonym", () => {
+    // "back squat" -> "squat" must NOT bring "front squat" with it.
+    expect(matchExercise("Front Squat", catalog)?.name).toBe("Front Squat");
+  });
+});

@@ -26,9 +26,28 @@
 
 export const DEFAULT_MATCH_THRESHOLD = 0.8;
 
+/**
+ * Annotation the name carries but the IDENTITY does not.
+ *
+ * A parenthetical is a gloss, not part of the movement: an imported
+ * "Dumbbell Overhead Press (DB OHP)" is the same lift as "Dumbbell Overhead
+ * Press", but the extra tokens diluted the overlap to 0.75 and it was created
+ * as a duplicate instead. Same for an "or ..." alternative, which imported
+ * plans use to offer a swap ("Barbell Back Squats or Front Squats") - the
+ * first movement named is the one being prescribed.
+ *
+ * Stripped BEFORE normalization so the tokens never exist to be scored.
+ */
+function stripAnnotations(name: string): string {
+  return name
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\bor\b[\s\S]*$/i, " ");
+}
+
 /** Lowercase, turn any run of punctuation into a single space, trim + collapse. */
 export function normalizeExerciseName(name: string): string {
-  return name
+  return stripAnnotations(name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -46,7 +65,45 @@ const TOKEN_SYNONYMS: Record<string, string> = {
   bb: "barbell",
   kb: "kettlebell",
   rdl: "romanian deadlift",
+  ohp: "overhead press",
+  // Spelling variants of one word, not different movements.
+  pushdown: "push down",
+  pushdowns: "push down",
+  pulldown: "pull down",
+  pulldowns: "pull down",
+  pullup: "pull up",
+  pullups: "pull up",
+  pushup: "push up",
+  pushups: "push up",
+  chinup: "chin up",
+  chinups: "chin up",
 };
+
+/**
+ * PHRASE-level equivalences, applied to the normalized string before tokens
+ * exist. Multi-word on purpose: these are cases where the whole phrase is a
+ * conventional alias, and folding the individual words would be wrong.
+ *
+ * The bar for adding one is high, and deliberately NOT "these look similar".
+ * "back squat" is the standard name for the plain barbell squat, so it folds -
+ * but "front squat" MUST NOT, because it is a different lift. Likewise nothing
+ * here may collapse an Ivo-ratified keep-separate pair (Split vs Bulgarian
+ * Split Squat, the goblet variants, incline/flat/decline bench, Pull-ups vs
+ * Pull Ups Assisted). Every entry earns its place by being a true synonym, and
+ * `exercise-match.test.ts` asserts the keep-separate pairs still do not match.
+ */
+const PHRASE_SYNONYMS: Array<[RegExp, string]> = [
+  // The default barbell squat. "front squat" is untouched and stays distinct.
+  [/\bback squat/g, "squat"],
+  // Two conventional names for the same press.
+  [/\boverhead press/g, "shoulder press"],
+];
+
+function applyPhraseSynonyms(normalized: string): string {
+  let out = normalized;
+  for (const [re, to] of PHRASE_SYNONYMS) out = out.replace(re, to);
+  return out.replace(/\s+/g, " ").trim();
+}
 
 /**
  * Fold a single token toward a rough singular stem so plural variants match
@@ -70,7 +127,7 @@ interface Analyzed {
 }
 
 function analyze(name: string): Analyzed {
-  const normalized = normalizeExerciseName(name);
+  const normalized = applyPhraseSynonyms(normalizeExerciseName(name));
   const raw = normalized ? normalized.split(" ") : [];
   // Expand abbreviations first (a synonym may expand to multiple tokens, e.g.
   // "rdl" -> "romanian deadlift"), then singularize.
