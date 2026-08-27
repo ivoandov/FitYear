@@ -199,6 +199,43 @@ const IMPORT_DUPES: MergeSpec[] = [
   },
 ];
 
+/**
+ * 2026-08-27, second pass: Ivo's calls on the four borderline pairs I left out
+ * of the first import cleanup. Run with `--include-import-dupes-2`.
+ *
+ * His rulings, recorded so nobody re-litigates them:
+ *   - the two CALF raise rows are DIFFERENT (single-leg free vs machine) - kept
+ *   - the two TIBIALIS rows are DIFFERENT (wall vs seated) - kept
+ *   - the two parallel-bar DIP rows are the SAME - merged below
+ *   - "Conventional or Romanian Deadlifts (RDL)" is ambiguous by name; he said
+ *     "just do rdl", so it folds into the existing RDL Barbell, which carries 5
+ *     logged sessions. That also gives the routine day his real RDL history.
+ */
+const IMPORT_DUPES_2: MergeSpec[] = [
+  {
+    keepId: "793f34f0-ca11-4a8b-8596-79d50306d707",
+    keepName: "Parallel Bar Dips (Stacked Wrists)",
+    // Drops the parenthetical: it is a cue, not an identity, and the matcher
+    // now strips parentheticals before scoring anyway.
+    finalName: "Parallel Bar Dips",
+    finalMuscles: ["Chest", "Triceps"],
+    absorb: [{ id: "0c4926bb-ff1e-409c-8694-8cecfab62da6", name: "Neutral-Grip Parallel Bar Dips" }],
+    note: "Ivo: the two bar-dip rows are the same movement; neither had history",
+  },
+  {
+    keepId: "20aaf410-9173-41ba-8911-4f9a712d0326",
+    keepName: "RDL Barbell",
+    finalName: "RDL Barbell",
+    finalMuscles: ["Legs"],
+    absorb: [
+      { id: "70c04841-d453-48ab-8519-266a23c776ef", name: "Conventional or Romanian Deadlifts (RDL)" },
+    ],
+    note: "Ivo: 'just do rdl'; survivor holds 5 logged sessions",
+  },
+];
+
+const INCLUDE_IMPORT_DUPES_2 = process.argv.includes("--include-import-dupes-2");
+
 const INCLUDE_IMPORT_DUPES = process.argv.includes("--include-import-dupes");
 const INCLUDE_PENDING = process.argv.includes("--include-pending");
 
@@ -249,6 +286,7 @@ async function main() {
       ...MERGES,
       ...(INCLUDE_PENDING ? PENDING_MERGES : []),
       ...(INCLUDE_IMPORT_DUPES ? IMPORT_DUPES : []),
+      ...(INCLUDE_IMPORT_DUPES_2 ? IMPORT_DUPES_2 : []),
     ];
     const catalog = (await sql`select id, name, user_id, muscle_groups from exercises`) as Array<{
       id: string;

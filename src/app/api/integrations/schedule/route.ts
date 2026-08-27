@@ -6,6 +6,7 @@ import {
   routineInstances,
   scheduledWorkouts,
   completedWorkouts,
+  userSettings,
 } from "@/lib/db/schema";
 import { handle } from "@/lib/api/handler";
 import { requireIntegrationCaller } from "@/lib/api/integration-auth";
@@ -68,7 +69,18 @@ export const GET = handle(async (request: NextRequest) => {
     ? Math.min(Math.max(Math.trunc(daysRaw), 1), MAX_DAYS)
     : DEFAULT_DAYS;
 
-  const timeZone = safeZone(request.nextUrl.searchParams.get("tz"));
+  // Zone precedence: an explicit ?tz= wins (a caller that knows better, or a
+  // test), then the zone the DEVICE last reported, then the default. Liv should
+  // send NO tz so Ivo's real phone zone is used - he travels, and assuming
+  // California put "today" a day out whenever he is in Asia.
+  const [settings] = await db
+    .select({ timeZone: userSettings.timeZone })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const timeZone = safeZone(
+    request.nextUrl.searchParams.get("tz") ?? settings?.timeZone ?? null,
+  );
   const now = new Date();
   const horizon = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 

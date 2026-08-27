@@ -38,6 +38,23 @@ const PatchSchema = z.object({
   monthlyWorkoutGoal: z.number().int().min(1).max(31).optional(),
   fitbotDefaultFocus: z.string().optional(),
   hasCompletedOnboarding: z.boolean().optional(),
+  // Validated as a REAL IANA zone, not stored verbatim: it comes from the
+  // device and is read later by code that has no request to sanity-check it.
+  timeZone: z
+    .string()
+    .max(64)
+    .refine(
+      (tz) => {
+        try {
+          new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { message: "not a valid IANA timezone" },
+    )
+    .optional(),
   onboardingDaysPerWeek: z.number().int().min(1).max(7).nullable().optional(),
   onboardingProgramLength: z.number().int().min(1).max(365).nullable().optional(),
 });

@@ -179,6 +179,14 @@ export const userSettings = pgTable("user_settings", {
   hasCompletedOnboarding: boolean("has_completed_onboarding")
     .notNull()
     .default(false),
+  // The viewer's last-seen IANA timezone, stamped from the device.
+  //
+  // The app already knows this per request (the fy_tz cookie) but never stored
+  // it, so anything WITHOUT a request context - a cron, or the read-only
+  // integration endpoint another service calls - had no way to resolve a local
+  // day and had to assume one. Nullable: null means "never seen", and callers
+  // fall back rather than guessing.
+  timeZone: text("time_zone"),
   onboardingDaysPerWeek: integer("onboarding_days_per_week"),
   onboardingProgramLength: integer("onboarding_program_length"),
 });
