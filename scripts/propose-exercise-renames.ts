@@ -54,6 +54,9 @@ const MODIFIERS: string[] = [
   "Front", "Back", "Overhead", "Rear Delt", "Lateral", "Conventional", "Romanian",
 ];
 
+// Retained for reference only; plurality is deliberately preserved (see
+// proposeName). Kept so the decision is visible rather than silently lost.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function singularizeWord(w: string): string {
   if (/ies$/i.test(w) && w.length > 4) return w.slice(0, -3) + "y";
   if (/sses$/i.test(w)) return w.slice(0, -2);
@@ -87,7 +90,30 @@ export interface Proposal {
   problem?: string;
 }
 
+/**
+ * Names Ivo has ruled on directly. These bypass the mechanical transform
+ * entirely - a rule cannot know that "Down to Up" means "Low to High".
+ */
+const OVERRIDES: Record<string, string> = {
+  "Cable Fly - Down to Up": "Cable Fly Low to High",
+  "Cable Fly - Up to Down": "Cable Fly High to Low",
+  "Knee Pushups": "Knee Push Ups",
+};
+
+/**
+ * Plurality is PRESERVED, not normalized.
+ *
+ * An earlier pass singularized every name, which is the convention most public
+ * exercise catalogs use - but it buys nothing here and Ivo prefers plural for
+ * some movements. lib/exercise-match singularizes BOTH sides at scoring time,
+ * so "Pushups" and "Pushup" already score 0.97 against each other whatever is
+ * stored. Rewriting 82 names for a purely cosmetic reason would have churned
+ * history snapshots for no functional gain.
+ */
 export function proposeName(original: string): { proposed: string; problem?: string } {
+  const override = OVERRIDES[original];
+  if (override) return { proposed: override };
+
   let s = original.trim();
 
   // Parentheticals are kept as MODIFIER text, not discarded: for
@@ -154,7 +180,6 @@ export function proposeName(original: string): { proposed: string; problem?: str
     // to name, so this one needs a human.
     return { proposed: "", problem: "no movement word left after parsing" };
   }
-  coreWords[coreWords.length - 1] = singularizeWord(coreWords[coreWords.length - 1]);
 
   const proposed = titleCase([...equipment, ...modifiers, ...coreWords].join(" "));
   if (!proposed) return { proposed: "", problem: "empty proposal" };
