@@ -235,10 +235,18 @@ export function canonicalExerciseName(raw: string): string {
       rest = rest.replace(new RegExp(re.source, "gi"), " ");
     }
   }
+  // A Smith machine already IS a machine and already IS a barbell, so listing
+  // either alongside it is noise: "Barbell Squats - Smith Machine" came out as
+  // "Smith Machine Barbell Squats".
   if (equipment.includes("Smith Machine")) {
-    const i = equipment.indexOf("Machine");
-    if (i >= 0) equipment.splice(i, 1);
+    for (const redundant of ["Machine", "Barbell"]) {
+      const i = equipment.indexOf(redundant);
+      if (i >= 0) equipment.splice(i, 1);
+    }
   }
+  // The alternative the " or " split refused to take. Two pieces of equipment
+  // read as needing both, when the name offered a choice between them.
+  if (unsplitAlternative && equipment.length > 1) equipment.length = 1;
 
   const modifiers: string[] = [];
   for (const m of MODIFIERS) {
@@ -249,10 +257,20 @@ export function canonicalExerciseName(raw: string): string {
     }
   }
 
+  const isConnective = (w: string | undefined) => Boolean(w) && /^(or|and|the|a|with)$/i.test(w!);
   const coreWords = rest
     .split(/\s+/)
     .filter(Boolean)
-    .filter((w) => !/^(or|and|the|a|with)$/i.test(w));
+    .filter((w, i, arr) => {
+      if (!isConnective(w)) return true;
+      // An "and" sitting BETWEEN two real words is load-bearing - it joins a
+      // list of targets, and dropping it turned "Foam Roll Quads, Calves &
+      // Upper Back" into "Foam Roll Quads, Calves Upper Back". Every other
+      // connective still goes, and so does an "and" whose other half was
+      // already hoisted out as equipment or a modifier.
+      if (!/^and$/i.test(w)) return false;
+      return !isConnective(arr[i - 1]) && !isConnective(arr[i + 1]) && Boolean(arr[i - 1] && arr[i + 1]);
+    });
 
   // A preposition dangles once its object was pulled out as equipment or a
   // modifier - "Deficit Push-Ups on Parallettes" left "... Push-ups on", and

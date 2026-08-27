@@ -176,6 +176,11 @@ describe("isRepTotalExercise", () => {
       "Lat Pushdown",
       "Bar Push Downs",
       "Cable Push Down",
+      // The one-word house spelling the catalog uses now. "pushdown" must not
+      // read as a push-up just because it starts with the same four letters.
+      "Cable Lat Pulldown",
+      "Bar Pushdowns",
+      "Cable Pushdown",
       "Band Pull-Apart",
       "Cable Pull-Through",
       "Face Pulls",

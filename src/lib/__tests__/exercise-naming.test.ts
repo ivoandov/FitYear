@@ -11,7 +11,9 @@ describe("canonicalExerciseName", () => {
 
   it("dedupes equipment and never doubles Smith Machine", () => {
     // A naive pass produced "Barbell Machine Smith Machine Squat".
-    expect(c("Barbell Squats - Smith Machine")).toBe("Smith Machine Barbell Squats");
+    // A Smith machine is already both a machine and a barbell, so neither word
+    // survives beside it.
+    expect(c("Barbell Squats - Smith Machine")).toBe("Smith Machine Squats");
     expect(c("Incline Bench Press - Smith Machine")).toBe("Smith Machine Incline Bench Press");
   });
 
@@ -23,8 +25,10 @@ describe("canonicalExerciseName", () => {
   });
 
   it("keeps the first option of an 'or' alternative instead of deleting the movement", () => {
-    // Truncating at " or " once produced the bare word "Cable".
-    expect(c("Cable or Banded External Rotations")).toBe("Cable Band External Rotations");
+    // Truncating at " or " once produced the bare word "Cable", so the split is
+    // refused when the first option is one word. The alternative equipment then
+    // hoisted too, and "Cable Band External Rotations" read as needing both.
+    expect(c("Cable or Banded External Rotations")).toBe("Cable External Rotations");
     expect(c("Conventional or Romanian Deadlifts")).toContain("Deadlifts");
   });
 
@@ -104,7 +108,7 @@ describe("case handling", () => {
   });
 
   it("still fixes plain lower/upper case", () => {
-    expect(c("cable lat pull down")).toBe("Cable Lat Pull Down");
+    expect(c("cable lat pull down")).toBe("Cable Lat Pulldown");
   });
 });
 
@@ -134,5 +138,65 @@ describe("hyphen compounds and override stability", () => {
       const once = c(name);
       expect(c(once), `override not stable for ${name}`).toBe(once);
     }
+  });
+});
+
+describe("connectives, abbreviations and trailing qualifiers", () => {
+  it("KEEPS an 'and' that joins two real words", () => {
+    // The first backfill dropped every connective, which is fine when the other
+    // half was hoisted away but destroys a list of targets.
+    expect(c("Foam Roll Quads, Calves & Upper Back")).toBe(
+      "Foam Roll Quads, Calves and Upper Back",
+    );
+    expect(c("Mini-Band Ankle Inversion & Eversion")).toBe("Band Ankle Inversion and Eversion");
+    expect(c("DB Forearm Pronation & Supination Rotations")).toBe(
+      "Dumbbell Forearm Pronation and Supination Rotations",
+    );
+  });
+
+  it("still drops a connective with nothing left to join", () => {
+    // "Cable" and "Band" both hoist out, so the "or" between them is stranded.
+    expect(c("Cable or Banded External Rotations")).not.toContain("or");
+    expect(c("Side Plank with Top-Leg Abduction")).toBe("Side Plank Top Leg Abduction");
+  });
+
+  it("expands SL to Single Leg so the catalog runs one form", () => {
+    expect(c("SL Dumbbell Hip Thrust")).toBe("Dumbbell Single Leg Hip Thrust");
+    expect(c("SL B-Stance DB RDL")).toContain("Single Leg");
+    // A word that merely starts with those letters is untouched.
+    expect(c("Sled Push")).toBe("Sled Push");
+  });
+
+  it("hoists Bodyweight and Vertical instead of stranding them at the end", () => {
+    expect(c("Squats - Bodyweight")).toBe("Bodyweight Squats");
+    expect(c("Shoulder External Rotation - Vertical")).toBe(
+      "Vertical Shoulder External Rotation",
+    );
+  });
+
+  it("uses one house spelling for pulldown and pushdown", () => {
+    expect(c("Cable lat pull down")).toBe("Cable Lat Pulldown");
+    expect(c("Bar Push Downs")).toBe("Bar Pushdowns");
+    expect(c("Lat Pulldown")).toBe("Lat Pulldown");
+    // "Pull Through" is a different movement and must not be folded in.
+    expect(c("Cable Pull-Through")).toBe("Cable Pull Through");
+  });
+
+  it("every repair override is a FIXED POINT", () => {
+    for (const name of [
+      "Foam Roll Quads, Calves Upper Back",
+      "Band Ankle Inversion Eversion",
+      "Dumbbell Forearm Pronation Supination Rotations",
+      "Cable Band External Rotations",
+      "Wide Chest Press Machibe",
+      "Parallettes L Sit Holds + Dead Hangs",
+    ]) {
+      const once = c(name);
+      expect(c(once), `repair not stable for ${name}`).toBe(once);
+    }
+  });
+
+  it("repairs the typo that hid the equipment word", () => {
+    expect(c("Wide Chest Press Machibe")).toBe("Machine Wide Chest Press");
   });
 });
