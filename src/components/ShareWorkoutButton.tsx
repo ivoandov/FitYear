@@ -25,7 +25,7 @@ interface Props {
   prCount: number;
   prs: Array<{
     exerciseName: string;
-    type: "weight" | "volume";
+    type: "weight" | "volume" | "time";
     newValue: number;
     previousValue: number | null;
   }>;

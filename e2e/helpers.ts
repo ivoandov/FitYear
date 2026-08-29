@@ -251,3 +251,25 @@ export async function completedSetsFor(
      order by ws.set_number`;
   return rows as unknown as Array<{ weight: number | null; reps: number | null }>;
 }
+
+/** A completed HOLD, so the tracker has a duration record to beat. */
+export async function seedCompletedHold(
+  userId: string,
+  exerciseId: string,
+  name: string,
+  weightLbs: number,
+  seconds: number,
+): Promise<void> {
+  const [cw] = await sql`
+    insert into completed_workouts (user_id, display_id, name, completed_at)
+    values (${userId}::uuid, ${`e2e-hold-${Date.now()}-${counter++}`}, ${name}, now())
+    returning id`;
+  const [we] = await sql`
+    insert into workout_exercises
+      (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)
+    values (${cw.id}, ${exerciseId}, 0, ${name}, ${JSON.stringify(["Back"])}::jsonb, 'weight_time', false)
+    returning id`;
+  await sql`
+    insert into workout_sets (workout_exercise_id, set_number, weight_lbs, reps, distance, time, completed)
+    values (${we.id}, 1, ${weightLbs}, 0, 0, ${seconds}, true)`;
+}

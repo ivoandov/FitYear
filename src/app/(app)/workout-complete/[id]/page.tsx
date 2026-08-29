@@ -263,13 +263,18 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
                   <span className="whitespace-nowrap font-mono text-[13px] text-foreground">
                     {h.type === "weight"
                       ? `${lbsToDisplay(h.newValue, weightUnit)} ${weightUnit}`
-                      : `${Math.round(lbsToDisplay(h.newValue, weightUnit) ?? 0).toLocaleString()} vol`}
+                      : h.type === "time"
+                        // Seconds, NOT a weight - never unit-convert this one.
+                        ? `${h.newValue}s`
+                        : `${Math.round(lbsToDisplay(h.newValue, weightUnit) ?? 0).toLocaleString()} vol`}
                     {h.previousValue != null ? (
                       <span className="ml-1.5 text-[11px] text-tertiary-foreground">
                         was{" "}
                         {h.type === "weight"
                           ? h.previousValue
-                          : h.previousValue.toLocaleString()}
+                          : h.type === "time"
+                            ? `${h.previousValue}s`
+                            : h.previousValue.toLocaleString()}
                       </span>
                     ) : (
                       <span className="ml-1.5 text-[11px] text-primary">first time!</span>

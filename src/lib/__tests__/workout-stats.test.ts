@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   EPLEY_MAX_REPS,
+  beatsHold,
   calcStreak,
   deriveWorkoutName,
   detectPRs,
@@ -298,7 +299,7 @@ describe("detectPRs epsilon", () => {
 });
 
 describe("prSetIndices - the badge follows the CURRENT sets", () => {
-  const s = (weight: number, reps: number, completed = true) => ({ weight, reps, completed });
+  const s = (weight: number, reps: number, completed = true) => ({ weight, reps, time: 0, completed });
 
   it("keeps the badge only on the top set when working up in weight", () => {
     // Ivo, 2026-08-28: "if I do a set and I get a PR at say 5lbs, then another
@@ -359,3 +360,76 @@ describe("prSetIndices - the badge follows the CURRENT sets", () => {
     expect(prSetIndices([s(100.1, 5)], 100, 500, false).has(0)).toBe(false);
   });
 });
+
+describe("hold PRs - a duration axis for weight_time", () => {
+  const hold = (sets: Array<{ w: number; t: number; done?: boolean }>) => ({
+    id: "h",
+    name: "Plate Pinch",
+    exerciseType: "weight_time",
+    setsData: sets.map((s, i) => ({
+      setNumber: i + 1, weight: s.w, reps: 0, distance: 0, time: s.t,
+      completed: s.done !== false,
+    })),
+  });
+
+  it("beatsHold requires no LESS weight than the previous best", () => {
+    // 5 lb for 90s is easier than 25 lb for 60s. Badging it would reward
+    // going lighter, which is the opposite of progress.
+    expect(beatsHold(90, 5, { seconds: 60, weightLbs: 25 })).toBe(false);
+    expect(beatsHold(75, 25, { seconds: 60, weightLbs: 25 })).toBe(true);
+    expect(beatsHold(75, 30, { seconds: 60, weightLbs: 25 })).toBe(true);
+  });
+
+  it("reduces to 'longer than before' for a BODYWEIGHT hold", () => {
+    // Weight is 0 on both sides, so only the clock matters.
+    expect(beatsHold(50, 0, { seconds: 45, weightLbs: 0 })).toBe(true);
+    expect(beatsHold(40, 0, { seconds: 45, weightLbs: 0 })).toBe(false);
+  });
+
+  it("counts a first-ever hold, and never a zero-length one", () => {
+    expect(beatsHold(30, 0, undefined)).toBe(true);
+    expect(beatsHold(0, 25, undefined)).toBe(false);
+  });
+
+  it("detectPRs reports a hold PR at ZERO weight, which the weight rules skip", () => {
+    // A bodyweight hang is weight 0; the lift rules discard those rows, so
+    // before this a hang could never register a record at all.
+    const hits = detectPRs(
+      { exercises: [hold([{ w: 0, t: 60 }])] },
+      [{ exercises: [hold([{ w: 0, t: 45 }])] }],
+    );
+    expect(hits).toEqual([
+      { exerciseId: "h", exerciseName: "Plate Pinch", type: "time", newValue: 60, previousValue: 45 },
+    ]);
+  });
+
+  it("detectPRs gives a hold NO weight or volume PR", () => {
+    // A hold has no reps, so volume is meaningless, and its record is the clock.
+    const hits = detectPRs(
+      { exercises: [hold([{ w: 25, t: 60 }])] },
+      [{ exercises: [hold([{ w: 5, t: 90 }])] }],
+    );
+    expect(hits.map((h) => h.type)).toEqual([]);
+  });
+
+  it("prSetIndices badges the LONGEST hold only", () => {
+    const marks = prSetIndices(
+      [
+        { weight: 25, reps: 0, time: 40, completed: true },
+        { weight: 25, reps: 0, time: 65, completed: true },
+      ],
+      undefined, undefined, false,
+      { previousBest: { seconds: 60, weightLbs: 25 } },
+    );
+    expect(marks.has(1)).toBe(true);
+    expect(marks.has(0)).toBe(false);
+  });
+
+  it("prSetIndices drops the badge when a hold is corrected back down", () => {
+    const prev = { previousBest: { seconds: 60, weightLbs: 25 } };
+    const before = prSetIndices([{ weight: 25, reps: 0, time: 90, completed: true }], undefined, undefined, false, prev);
+    expect(before.has(0)).toBe(true);
+    const after = prSetIndices([{ weight: 25, reps: 0, time: 30, completed: true }], undefined, undefined, false, prev);
+    expect(after.size).toBe(0);
+  });
+})

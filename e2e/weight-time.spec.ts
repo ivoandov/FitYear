@@ -11,7 +11,7 @@
  * value rather than an empty one.
  */
 import { test, expect } from "./fixtures";
-import { seedExercise, seedActiveWorkout } from "./helpers";
+import { seedCompletedHold, seedExercise, seedActiveWorkout } from "./helpers";
 
 async function seedHold(accountId: string, name: string, exerciseId: string, iid: string) {
   const displayId = `e2e-wt-${Date.now()}`;
@@ -90,4 +90,21 @@ test("a BODYWEIGHT hold logs 0 weight as a real value", async ({ page, account }
   await page.getByTestId("checkbox-complete-1").click();
   await expect(page.getByTestId("checkbox-complete-1")).toBeChecked();
   await expect(page.getByTestId("input-weight-1")).toHaveValue("0");
+});
+
+test("beating a previous hold fires a PR", async ({ page, account }) => {
+  // A bodyweight hang is 0 lb, which every weight-based PR rule discards, so
+  // the duration axis is the only thing that can register a record for it.
+  const exId = await seedExercise(account.id, `ZZHold ${Date.now()}`, ["Back"], "weight_time");
+  await seedCompletedHold(account.id, exId, "Prior Hang", 0, 45);
+  await seedHold(account.id, "Neutral Hang", exId, "iid-pr");
+
+  await page.goto("/track");
+  await expect(page.getByTestId("input-time-1")).toBeVisible();
+
+  await page.getByTestId("input-weight-1").fill("0");
+  await page.getByTestId("input-time-1").fill("60");
+  await page.getByTestId("checkbox-complete-1").click();
+
+  await expect(page.getByText(/new hold PR/i)).toBeVisible({ timeout: 10_000 });
 });

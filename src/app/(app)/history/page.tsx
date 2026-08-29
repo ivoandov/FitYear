@@ -65,7 +65,7 @@ export default function HistoryPage() {
     exerciseId: string;
     exerciseName: string | null;
     workoutId: string;
-    prType: "weight" | "volume";
+    prType: "weight" | "volume" | "time";
     newValue: number;
     previousValue: number | null;
     achievedAt: string;

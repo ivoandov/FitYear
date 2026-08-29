@@ -1,4 +1,5 @@
 import { localDateKey, localDateKeyInZone } from "@/lib/date";
+import { usesDistance, usesTime } from "@/lib/exercise-types";
 
 // These operate on the ASSEMBLED workout shape (exercises[] built from the
 // normalized tables), not a raw DB row — so they're typed locally rather than
@@ -27,6 +28,8 @@ export interface ExerciseInWorkout {
   setsData?: SetData[];
   completedSets?: number;
   sets?: number;
+  /** Needed to tell a HOLD (weight + seconds, no reps) from a lift. */
+  exerciseType?: string | null;
 }
 
 export interface WorkoutSummary {
@@ -184,9 +187,36 @@ export function calcStreak(completedAtList: Date[], timeZone?: string): number {
 export interface PrHit {
   exerciseId: string;
   exerciseName: string;
-  type: "weight" | "volume";
+  /** "time" is a hold's duration in seconds; the other two are lbs. */
+  type: "weight" | "volume" | "time";
   newValue: number;
   previousValue: number | null;
+}
+
+/**
+ * Seconds a HOLD must beat to count, and the load it was held at.
+ *
+ * A longer hold at a LIGHTER load is not a record - 5 lb for 90 s is easier
+ * than 25 lb for 60 s, and badging it would reward going lighter. So a time PR
+ * has to hold at least as much weight as the previous best did. For a
+ * bodyweight hold the load is 0 on both sides, which reduces this to simply
+ * "longer than before", which is what it should be.
+ */
+export interface BestHold {
+  seconds: number;
+  weightLbs: number;
+}
+
+/** Whether a hold beats the record, given the weight it was held at. */
+export function beatsHold(
+  seconds: number,
+  weightLbs: number,
+  previous: BestHold | undefined,
+): boolean {
+  if (seconds <= 0) return false;
+  if (!previous) return true;
+  if (weightLbs < previous.weightLbs - PR_EPSILON_LBS) return false;
+  return seconds > previous.seconds;
 }
 
 /**
@@ -212,14 +242,25 @@ export function detectPRs(
   // non-zero weights only, since "0 lbs assist" is a degenerate seed value).
   const histBestWeight = new Map<string, number>(); // max OR min by mode
   const histMaxVolume = new Map<string, number>();
+  // A hold's record is a duration plus the load it was held at.
+  const histBestHold = new Map<string, BestHold>();
 
   for (const w of priorWorkouts) {
     const exs = (w.exercises as ExerciseInWorkout[]) || [];
     for (const ex of exs) {
       const assisted = isAssistedById.get(ex.id) === true;
+      const hold = usesTime(ex.exerciseType) && !usesDistance(ex.exerciseType);
       for (const s of ex.setsData ?? []) {
         if (!s.completed) continue;
         const wt = s.weight || 0;
+        if (hold) {
+          // A hold's load may legitimately be ZERO (a bodyweight hang), so the
+          // zero-weight guard below would discard every one of them.
+          const secs = s.time || 0;
+          if (secs > 0 && beatsHold(secs, wt, histBestHold.get(ex.id))) {
+            histBestHold.set(ex.id, { seconds: secs, weightLbs: wt });
+          }
+        }
         if (wt <= 0) continue; // ignore zero-weight rows for best-tracking
         const cur = histBestWeight.get(ex.id);
         if (assisted) {
@@ -238,6 +279,29 @@ export function detectPRs(
   const currentExs = (currentWorkout.exercises as ExerciseInWorkout[]) || [];
   for (const ex of currentExs) {
     const assisted = isAssistedById.get(ex.id) === true;
+    const isHold = usesTime(ex.exerciseType) && !usesDistance(ex.exerciseType);
+    if (isHold) {
+      // The longest hold of the session, and the load behind it.
+      let best: BestHold | null = null;
+      for (const s of ex.setsData ?? []) {
+        if (!s.completed) continue;
+        const secs = s.time || 0;
+        if (secs <= 0) continue;
+        if (!best || secs > best.seconds) best = { seconds: secs, weightLbs: s.weight || 0 };
+      }
+      const prevHold = histBestHold.get(ex.id);
+      if (best && beatsHold(best.seconds, best.weightLbs, prevHold)) {
+        hits.push({
+          exerciseId: ex.id,
+          exerciseName: ex.name,
+          type: "time",
+          newValue: best.seconds,
+          previousValue: prevHold?.seconds ?? null,
+        });
+      }
+      // A hold has no reps, so weight and volume below would find nothing.
+      continue;
+    }
     let bestWt = assisted ? Number.POSITIVE_INFINITY : 0;
     let bestVol = 0;
     let bestVolReps = 0;
@@ -339,12 +403,33 @@ export function epley1RM(weight: number, reps: number): number {
  * matching detectPRs and the records endpoint.
  */
 export function prSetIndices(
-  sets: Array<Pick<SetData, "weight" | "reps" | "completed">>,
+  sets: Array<Pick<SetData, "weight" | "reps" | "time" | "completed">>,
   histBestWeight: number | undefined,
   histMaxVolume: number | undefined,
   assisted: boolean,
+  /** A HOLD scores on duration instead of weight and volume. */
+  hold?: { previousBest: BestHold | undefined },
 ): Set<number> {
   const marks = new Set<number>();
+
+  if (hold) {
+    // The longest hold in the session, and only if it also beats history at no
+    // less load. Ties keep the earliest, as below.
+    let bestIdx = -1;
+    let best: BestHold | null = null;
+    for (let i = 0; i < sets.length; i++) {
+      const s = sets[i];
+      if (!s.completed) continue;
+      const secs = s.time ?? 0;
+      if (secs <= 0) continue;
+      if (!best || secs > best.seconds) {
+        best = { seconds: secs, weightLbs: s.weight ?? 0 };
+        bestIdx = i;
+      }
+    }
+    if (best && beatsHold(best.seconds, best.weightLbs, hold.previousBest)) marks.add(bestIdx);
+    return marks;
+  }
 
   let bestWeight = histBestWeight;
   let bestWeightIdx = -1;

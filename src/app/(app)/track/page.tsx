@@ -132,7 +132,7 @@ export default function TrackPage() {
   const prMarkedSets = useMemo(() => {
     const ex = activeWorkout?.exercises[currentExerciseIndex];
     if (!ex) return new Set<number>();
-    return prSetMarkersFor(ex.id, ex.instanceId, exerciseSets);
+    return prSetMarkersFor(ex.id, ex.instanceId, exerciseSets, ex.exerciseType);
   }, [activeWorkout, currentExerciseIndex, exerciseSets, prSetMarkersFor]);
 
 
@@ -455,10 +455,12 @@ export default function TrackPage() {
   // Unified set-complete handler for both exercise types (was two near-identical
   // inline checkbox handlers). Distance/time sets don't propagate or PR-check.
   const handleToggleSetComplete = (index: number, checked: boolean) => {
-    // Prefill-propagation and PR checks are about REPS, not "not cardio":
-    // a loaded hold has a weight but no reps, so it belongs on the same side
-    // as cardio here even though it does carry a load.
+    // Two DIFFERENT questions. Prefill-propagation copies a weight and rep
+    // count forward, so it needs reps. PR checking does not: a hold is scored
+    // on its duration, and gating that on reps meant a hold could never
+    // register a record (which is how the hold-PR toast first failed).
     const tracksReps = usesReps(currentExercise?.exerciseType);
+    const scoresPRs = !usesDistance(currentExercise?.exerciseType);
     let newSets = [...sets];
     newSets[index].completed = checked;
     if (checked && tracksReps) {
@@ -467,7 +469,7 @@ export default function TrackPage() {
     setCurrentSets(newSets);
     if (!checked) return;
 
-    if (tracksReps) {
+    if (scoresPRs) {
       // PR check (in-workout)
       const completedSet = newSets[index];
       const wLbs = toLbs(completedSet.weight) ?? 0;
@@ -475,7 +477,16 @@ export default function TrackPage() {
       if (currentExercise && activeWorkout) {
         const ex = activeWorkout.exercises[currentExerciseIndex];
         if (ex) {
-          checkForPRs(ex.id, ex.instanceId, currentExercise.name, index, wLbs, reps, exerciseSets);
+          checkForPRs(
+            ex.id,
+            ex.instanceId,
+            currentExercise.name,
+            index,
+            wLbs,
+            reps,
+            exerciseSets,
+            ex.exerciseType,
+          );
         }
       }
     }
@@ -512,6 +523,7 @@ export default function TrackPage() {
             wLbs,
             reps,
             exerciseSets,
+            ex.exerciseType,
           );
         }
       }

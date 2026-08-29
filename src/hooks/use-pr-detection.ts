@@ -3,11 +3,19 @@
 import { useCallback, useMemo } from "react";
 import { toast } from "@/hooks/use-toast";
 import { displayToLbs, lbsToDisplay, type WeightUnit } from "@/lib/units";
-import { PR_EPSILON_LBS, prSetIndices, type SetData } from "@/lib/workout-stats";
+import {
+  PR_EPSILON_LBS,
+  beatsHold,
+  prSetIndices,
+  type BestHold,
+  type SetData,
+} from "@/lib/workout-stats";
+import { usesDistance, usesTime } from "@/lib/exercise-types";
 
 interface ExerciseLite {
   id: string;
   isAssisted?: boolean | null;
+  exerciseType?: string | null;
 }
 
 /**
@@ -39,6 +47,49 @@ export function usePrDetection(
     for (const ex of exercises) m.set(ex.id, !!ex.isAssisted);
     return m;
   }, [exercises]);
+
+  const isHoldById = useMemo(() => {
+    const m = new Map<string, boolean>();
+    for (const ex of exercises) {
+      m.set(ex.id, usesTime(ex.exerciseType) && !usesDistance(ex.exerciseType));
+    }
+    return m;
+  }, [exercises]);
+
+  /** Prefer what the workout says; fall back to the catalog if it is loaded. */
+  const isHold = useCallback(
+    (exerciseType: string | null | undefined, exerciseId: string) => {
+      if (exerciseType != null) return usesTime(exerciseType) && !usesDistance(exerciseType);
+      return isHoldById.get(exerciseId) === true;
+    },
+    [isHoldById],
+  );
+
+  /**
+   * Longest hold per exercise, with the load it was held at. Separate from the
+   * weight/volume bests because a hold's load can legitimately be ZERO (a
+   * bodyweight hang), which those deliberately discard.
+   */
+  const historicalHolds = useMemo(() => {
+    const best = new Map<string, BestHold>();
+    for (const w of completedWorkouts) {
+      for (const ex of w.exercises as Array<{
+        id: string;
+        exerciseType?: string | null;
+        setsData?: Array<{ weight?: number | null; time?: number | null; completed?: boolean }>;
+      }>) {
+        if (!(usesTime(ex.exerciseType) && !usesDistance(ex.exerciseType))) continue;
+        for (const s of ex.setsData ?? []) {
+          if (!s.completed) continue;
+          const secs = s.time || 0;
+          if (secs > 0 && beatsHold(secs, s.weight || 0, best.get(ex.id))) {
+            best.set(ex.id, { seconds: secs, weightLbs: s.weight || 0 });
+          }
+        }
+      }
+    }
+    return best;
+  }, [completedWorkouts]);
 
   // Historical bests per exerciseId (in lbs/DB units).
   const historicalBests = useMemo(() => {
@@ -77,17 +128,34 @@ export function usePrDetection(
    * badge. Derived, so editing a set re-evaluates it for free.
    */
   const prSetMarkersFor = useCallback(
-    (exerciseId: string, instanceId: string, exerciseSets: Map<string, SetData[]>) => {
+    (
+      exerciseId: string,
+      instanceId: string,
+      exerciseSets: Map<string, SetData[]>,
+      /**
+       * The type as the WORKOUT records it. Passed in rather than looked up,
+       * because the catalog is fetched: before it lands, a hold looked like a
+       * lift and scored on a weight it does not have, so its PR silently never
+       * fired. The workout already carries the type, so this cannot race.
+       */
+      exerciseType?: string | null,
+    ) => {
       const hist = historicalBests.get(exerciseId);
       const assisted = isAssistedById.get(exerciseId) === true;
       const sets = (exerciseSets.get(instanceId) ?? []).map((s) => ({
         weight: displayToLbs(s.weight, weightUnit) ?? 0,
         reps: s.reps ?? 0,
+        time: s.time ?? 0,
         completed: !!s.completed,
       }));
+      if (isHold(exerciseType, exerciseId)) {
+        return prSetIndices(sets, undefined, undefined, false, {
+          previousBest: historicalHolds.get(exerciseId),
+        });
+      }
       return prSetIndices(sets, hist?.bestWeight, assisted ? undefined : hist?.maxVolume, assisted);
     },
-    [historicalBests, isAssistedById, weightUnit],
+    [historicalBests, historicalHolds, isAssistedById, isHold, weightUnit],
   );
 
   const checkForPRs = useCallback(
@@ -99,7 +167,23 @@ export function usePrDetection(
       setWeightLbs: number,
       setReps: number,
       exerciseSets: Map<string, SetData[]>,
+      exerciseType?: string | null,
     ) => {
+      // A HOLD is scored on duration, and its load may legitimately be zero, so
+      // it cannot pass through the weight/reps guard below.
+      if (isHold(exerciseType, exerciseId)) {
+        const secs = (exerciseSets.get(instanceId) ?? [])[setIndex]?.time ?? 0;
+        const prev = historicalHolds.get(exerciseId);
+        if (beatsHold(secs, setWeightLbs, prev)) {
+          const load = setWeightLbs > 0 ? ` at ${lbsToDisplay(setWeightLbs, weightUnit)} ${weightUnit}` : "";
+          toast({
+            title: `⏱️ ${exerciseName} — new hold PR!`,
+            description: `${secs}s${load}${prev ? ` (was ${prev.seconds}s)` : ""}`,
+          });
+        }
+        return;
+      }
+
       if (setWeightLbs <= 0 || setReps <= 0) return;
       const assisted = isAssistedById.get(exerciseId) === true;
       const volume = setWeightLbs * setReps;
@@ -166,7 +250,7 @@ export function usePrDetection(
       // prSetMarkersFor from the sets as they stand.
       void isPr;
     },
-    [historicalBests, isAssistedById, weightUnit],
+    [historicalBests, historicalHolds, isAssistedById, isHold, weightUnit],
   );
 
   return { prSetMarkersFor, checkForPRs };
