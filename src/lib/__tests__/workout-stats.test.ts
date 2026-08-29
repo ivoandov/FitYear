@@ -1,15 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
+  EPLEY_MAX_REPS,
+  calcStreak,
   deriveWorkoutName,
   detectPRs,
   epley1RM,
-  EPLEY_MAX_REPS,
-  summarizeWorkout,
-  calcStreak,
   isRepTotalExercise,
+  prSetIndices,
+  summarizeWorkout,
   totalCompletedReps,
-  type SetData,
   type ExerciseInWorkout,
+  type SetData,
 } from "@/lib/workout-stats";
 
 function set(partial: Partial<SetData>): SetData {
@@ -293,5 +294,68 @@ describe("detectPRs epsilon", () => {
   it("still reports a genuine improvement", () => {
     const hits = detectPRs(ex(105, 10), [ex(100, 10)], new Map([["e1", false]]));
     expect(hits.some((h) => h.type === "weight")).toBe(true);
+  });
+});
+
+describe("prSetIndices - the badge follows the CURRENT sets", () => {
+  const s = (weight: number, reps: number, completed = true) => ({ weight, reps, completed });
+
+  it("keeps the badge only on the top set when working up in weight", () => {
+    // Ivo, 2026-08-28: "if I do a set and I get a PR at say 5lbs, then another
+    // set at 10lbs next, the PR should really only be kept for the second set."
+    const marks = prSetIndices([s(5, 5), s(10, 5)], 4, 20, false);
+    expect(marks.has(1)).toBe(true);
+    expect(marks.has(0)).toBe(false);
+  });
+
+  it("drops the badge when a mistyped weight is corrected back down", () => {
+    // The other half of the same report: entering 10 by mistake against a 5 lb
+    // best set a PR, and editing it back to 5 used to leave the badge behind.
+    const before = prSetIndices([s(10, 5)], 5, 25, false);
+    expect(before.has(0)).toBe(true);
+    const after = prSetIndices([s(5, 5)], 5, 25, false);
+    expect(after.size).toBe(0);
+  });
+
+  it("ignores sets that are not completed", () => {
+    expect(prSetIndices([s(100, 5, false)], 10, 50, false).size).toBe(0);
+  });
+
+  it("ignores zero-weight and zero-rep rows", () => {
+    expect(prSetIndices([s(0, 5), s(100, 0)], undefined, undefined, false).size).toBe(0);
+  });
+
+  it("marks a first-ever set with no history", () => {
+    expect(prSetIndices([s(45, 5)], undefined, undefined, false).has(0)).toBe(true);
+  });
+
+  it("does not mark a set that only matches the historical best", () => {
+    expect(prSetIndices([s(100, 5)], 100, 500, false).size).toBe(0);
+  });
+
+  it("keeps the EARLIEST set on a tie, because a later match did not beat it", () => {
+    const marks = prSetIndices([s(50, 5), s(50, 5)], 40, 200, false);
+    expect(marks.has(0)).toBe(true);
+    expect(marks.has(1)).toBe(false);
+  });
+
+  it("can mark two different sets when weight and volume peak apart", () => {
+    // A heavy single and a high-volume set are genuinely separate records.
+    const marks = prSetIndices([s(100, 1), s(50, 20)], 90, 900, false);
+    expect(marks.has(0)).toBe(true); // weight
+    expect(marks.has(1)).toBe(true); // volume
+  });
+
+  it("INVERTS for assisted lifts and skips volume entirely", () => {
+    // Less counterweight is harder, so the lightest assist is the record.
+    const marks = prSetIndices([s(50, 5), s(30, 5)], 60, undefined, true);
+    expect(marks.has(1)).toBe(true);
+    expect(marks.has(0)).toBe(false);
+    expect(marks.size).toBe(1); // no volume badge
+  });
+
+  it("respects the kg round-trip epsilon", () => {
+    // 100 lb re-logged by a kg user comes back as ~100.1 and must not badge.
+    expect(prSetIndices([s(100.1, 5)], 100, 500, false).has(0)).toBe(false);
   });
 });

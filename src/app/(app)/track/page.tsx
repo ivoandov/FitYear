@@ -115,13 +115,23 @@ export default function TrackPage() {
     [exercises],
   );
 
-  // In-workout PR detection (historical bests + toasts + persistent markers)
-  // lives in usePrDetection; TrackPage just wires it up and reads prSetMarkers.
-  const { prSetMarkers, checkForPRs } = usePrDetection(
+  // In-workout PR detection lives in usePrDetection. The toast is an event;
+  // the badge is DERIVED from the current sets, so editing a set re-evaluates
+  // which one holds the record instead of leaving a stale marker behind.
+  const { prSetMarkersFor, checkForPRs } = usePrDetection(
     completedWorkouts,
     exercises,
     weightUnit,
   );
+
+  // Recomputed from the sets as they stand, so a corrected weight drops its
+  // badge and only the set that actually holds the record keeps one.
+  const prMarkedSets = useMemo(() => {
+    const ex = activeWorkout?.exercises[currentExerciseIndex];
+    if (!ex) return new Set<number>();
+    return prSetMarkersFor(ex.id, ex.instanceId, exerciseSets);
+  }, [activeWorkout, currentExerciseIndex, exerciseSets, prSetMarkersFor]);
+
 
   // The unit the in-memory weights are currently expressed in. Single source of
   // truth for conversions: the restore effect seeds it, the live effect below
@@ -847,8 +857,7 @@ export default function TrackPage() {
               {sets.map((set, index) => {
                 const isCurrentSet = index === currentSetIndex && !set.completed;
                 const isActive = isCurrentSet && trackingState === "in_set";
-                const currentInstanceId = activeWorkout?.exercises[currentExerciseIndex]?.instanceId;
-                const isPR = !!currentInstanceId && (prSetMarkers.get(currentInstanceId)?.has(index) ?? false);
+                const isPR = prMarkedSets.has(index);
                 // Show the overload ghost only on the current set while it still
                 // holds the untouched prefill (weight + reps === last session's
                 // top set) - any edit clears it, with no extra state.

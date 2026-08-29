@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { toast } from "@/hooks/use-toast";
 import { displayToLbs, lbsToDisplay, type WeightUnit } from "@/lib/units";
-import { PR_EPSILON_LBS, type SetData } from "@/lib/workout-stats";
+import { PR_EPSILON_LBS, prSetIndices, type SetData } from "@/lib/workout-stats";
 
 interface ExerciseLite {
   id: string;
@@ -14,10 +14,19 @@ interface ExerciseLite {
  * In-workout PR detection engine, extracted verbatim from TrackPage.
  *
  * Builds historical bests per exercise (max weight for normal exercises, MIN
- * weight for assisted — less counterweight = harder), and `checkForPRs` fires a
- * toast + records a persistent marker when a just-completed set beats the best
- * (historical + earlier sets in the current workout). Volume PRs are skipped
- * for assisted exercises. Algorithm unchanged; only relocated.
+ * weight for assisted — less counterweight = harder). Volume PRs are skipped
+ * for assisted exercises.
+ *
+ * TWO SEPARATE THINGS, deliberately:
+ *   - `checkForPRs` fires the TOAST. That is an event: it happens at the moment
+ *     a set is completed and beats the best, and it is correct that it cannot
+ *     be un-fired.
+ *   - `prSetMarkers` is the BADGE, and is DERIVED from the current sets rather
+ *     than accumulated. It used to be a Set written at completion time and
+ *     never revisited, which badged every set on the way up (5 lb and 10 lb
+ *     both, when only the 10 is the record) and left a badge behind when a
+ *     mistyped weight was corrected back down. Deriving it makes an edit
+ *     self-correcting. See prSetIndices.
  */
 export function usePrDetection(
   completedWorkouts: Array<{ exercises: unknown[] }>,
@@ -63,8 +72,23 @@ export function usePrDetection(
     return bests;
   }, [completedWorkouts, isAssistedById]);
 
-  // Which (instanceId, setIndex) pairs hit a PR this workout — drives the badge.
-  const [prSetMarkers, setPrSetMarkers] = useState<Map<string, Set<number>>>(new Map());
+  /**
+   * Which (instanceId, setIndex) pairs currently HOLD a record — drives the
+   * badge. Derived, so editing a set re-evaluates it for free.
+   */
+  const prSetMarkersFor = useCallback(
+    (exerciseId: string, instanceId: string, exerciseSets: Map<string, SetData[]>) => {
+      const hist = historicalBests.get(exerciseId);
+      const assisted = isAssistedById.get(exerciseId) === true;
+      const sets = (exerciseSets.get(instanceId) ?? []).map((s) => ({
+        weight: displayToLbs(s.weight, weightUnit) ?? 0,
+        reps: s.reps ?? 0,
+        completed: !!s.completed,
+      }));
+      return prSetIndices(sets, hist?.bestWeight, assisted ? undefined : hist?.maxVolume, assisted);
+    },
+    [historicalBests, isAssistedById, weightUnit],
+  );
 
   const checkForPRs = useCallback(
     (
@@ -138,18 +162,12 @@ export function usePrDetection(
         });
       }
 
-      if (isPr) {
-        setPrSetMarkers((prev) => {
-          const next = new Map(prev);
-          const setForInstance = new Set(next.get(instanceId) ?? []);
-          setForInstance.add(setIndex);
-          next.set(instanceId, setForInstance);
-          return next;
-        });
-      }
+      // Nothing recorded here on purpose - the badge is derived by
+      // prSetMarkersFor from the sets as they stand.
+      void isPr;
     },
     [historicalBests, isAssistedById, weightUnit],
   );
 
-  return { prSetMarkers, checkForPRs };
+  return { prSetMarkersFor, checkForPRs };
 }

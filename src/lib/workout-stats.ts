@@ -318,3 +318,67 @@ export function epley1RM(weight: number, reps: number): number {
   if (reps === 1) return weight;
   return weight * (1 + Math.min(reps, EPLEY_MAX_REPS) / 30);
 }
+
+/**
+ * Which sets in ONE exercise instance currently hold a record.
+ *
+ * PR badges used to be accumulated: a set was marked the moment it beat the
+ * running best and the marker was never revisited. Two things followed, both
+ * reported by Ivo (2026-08-28):
+ *   - Working up 5 lb -> 10 lb badged BOTH sets, when only the 10 is the record.
+ *   - Correcting a mistyped 10 back to 5 left the badge behind, so the workout
+ *     claimed a PR that no set in it had achieved.
+ *
+ * So this is a pure function of the CURRENT sets instead. Recomputing on every
+ * change makes an edit self-correcting and keeps the badge on the one set that
+ * actually holds the record. Ties keep the EARLIEST set: the record was set
+ * there, and a later matching set did not beat it.
+ *
+ * Weights are lbs (DB units). `assisted` inverts the weight direction, because
+ * less counterweight is harder; volume is meaningless there and is skipped,
+ * matching detectPRs and the records endpoint.
+ */
+export function prSetIndices(
+  sets: Array<Pick<SetData, "weight" | "reps" | "completed">>,
+  histBestWeight: number | undefined,
+  histMaxVolume: number | undefined,
+  assisted: boolean,
+): Set<number> {
+  const marks = new Set<number>();
+
+  let bestWeight = histBestWeight;
+  let bestWeightIdx = -1;
+  let bestVolume = histMaxVolume;
+  let bestVolumeIdx = -1;
+
+  for (let i = 0; i < sets.length; i++) {
+    const s = sets[i];
+    if (!s.completed) continue;
+    const w = s.weight ?? 0;
+    const r = s.reps ?? 0;
+    if (w <= 0 || r <= 0) continue;
+
+    const beatsWeight = assisted
+      ? bestWeight === undefined || w < bestWeight - PR_EPSILON_LBS
+      : bestWeight === undefined || w > bestWeight + PR_EPSILON_LBS;
+    if (beatsWeight) {
+      bestWeight = w;
+      bestWeightIdx = i;
+    }
+
+    if (!assisted) {
+      const vol = w * r;
+      // Volume drift scales with reps, so the margin does too - a flat one is
+      // too small above ~3 reps and a re-logged prefill reads as a record.
+      const volEpsilon = PR_EPSILON_LBS * Math.max(1, r);
+      if (bestVolume === undefined || vol > bestVolume + volEpsilon) {
+        bestVolume = vol;
+        bestVolumeIdx = i;
+      }
+    }
+  }
+
+  if (bestWeightIdx >= 0) marks.add(bestWeightIdx);
+  if (bestVolumeIdx >= 0) marks.add(bestVolumeIdx);
+  return marks;
+}
