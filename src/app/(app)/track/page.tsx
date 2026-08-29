@@ -31,8 +31,10 @@ import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { convertWeight, lbsToDisplay, displayToLbs } from "@/lib/units";
 import { type SetData, isRepTotalExercise, totalCompletedReps } from "@/lib/workout-stats";
 import {
-  getLastRecordedValues as getLastRecordedValuesHelper,
+  formatTargetLine,
   getDefaultSets as getDefaultSetsHelper,
+  getLastRecordedValues as getLastRecordedValuesHelper,
+  parseRepsPrescription,
 } from "@/lib/track-helpers";
 import { overloadSuggestion } from "@/lib/analytics";
 import { usePrDetection } from "@/hooks/use-pr-detection";
@@ -244,10 +246,32 @@ export default function TrackPage() {
   // passed). Row count still follows plannedSets only — a routine's target load
   // prefills weight without changing set-count behavior for scheduled/template
   // workouts (recorded history always wins on row 0 either way).
-  const planOf = (ex: any) =>
-    ex?.plannedSets != null || ex?.plannedLoadLbs != null
-      ? { sets: ex.plannedSets, reps: ex.plannedReps, targetLoadLbs: ex.plannedLoadLbs }
-      : undefined;
+  // An IMPORTED plan (and a routine day) stores its prescription as `sets` +
+  // `reps`, where reps is a STRING like "6-8". The tracker only ever read
+  // FitBot's plannedSets/plannedReps, so an imported program's targets were
+  // captured on import and then silently dropped - Ivo: "I imported a routine
+  // that had that but it's not showing up anywhere" (2026-08-28).
+  const planOf = (ex: any) => {
+    const prescription = parseRepsPrescription(ex?.plannedReps ?? ex?.reps);
+    const sets = ex?.plannedSets ?? (typeof ex?.sets === "number" ? ex.sets : undefined);
+    if (sets == null && prescription.label == null && ex?.plannedLoadLbs == null) return undefined;
+    return {
+      sets,
+      // Row COUNT and prefill only; the label is what the user is shown.
+      reps: prescription.prefillReps,
+      repsLabel: prescription.label,
+      targetLoadLbs: ex?.plannedLoadLbs,
+      rest: typeof ex?.rest === "number" ? ex.rest : undefined,
+      notes: typeof ex?.notes === "string" && ex.notes.trim() ? ex.notes.trim() : undefined,
+    };
+  };
+
+  // The prescription for the exercise ON SCREEN, shown verbatim so a range
+  // ("6-8") reads as a range rather than being flattened to the number used for
+  // prefill.
+  const currentPlan = planOf(enrichedWorkoutExercises[currentExerciseIndex] as any);
+  const currentTarget = formatTargetLine(currentPlan);
+  const currentPlanNotes = currentPlan?.notes ?? null;
 
   const getDefaultSets = (exerciseId?: string, exerciseType?: string, plan?: { sets?: number; reps?: number | null; targetLoadLbs?: number | null }): SetData[] =>
     getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType, plan);
@@ -812,6 +836,22 @@ export default function TrackPage() {
                 groups={currentExercise.muscleGroups ?? []}
                 className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
               />
+              {currentTarget && (
+                <div
+                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-primary"
+                  data-testid="text-target-prescription"
+                >
+                  Target {currentTarget}
+                </div>
+              )}
+              {currentPlanNotes && (
+                <div
+                  className="mt-1 text-[12px] leading-snug text-tertiary-foreground"
+                  data-testid="text-target-notes"
+                >
+                  {currentPlanNotes}
+                </div>
+              )}
               {repTotal !== null && (
                 <div
                   className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"

@@ -122,3 +122,43 @@ export function getDefaultSets(
     return { setNumber: i + 1, weight: null, reps: null, distance: null, time: null, completed: false };
   });
 }
+
+/**
+ * A program's prescribed reps, which is a STRING ("8", "6-8", "AMRAP", "30s"),
+ * not a number. Importers and FitBot both write prescriptions this way because
+ * that is how programs are actually written.
+ *
+ * Returns the label to SHOW the user verbatim, plus a number to prefill the
+ * first row with when one can be read out of it. A range prefills its LOW end -
+ * the target is to reach the top of the range, so starting there would have the
+ * user log the best case before doing the work. Anything unparseable ("AMRAP")
+ * prefills nothing and is still shown.
+ */
+export function parseRepsPrescription(
+  reps: string | number | null | undefined,
+): { label: string | null; prefillReps: number | null } {
+  if (reps == null) return { label: null, prefillReps: null };
+  if (typeof reps === "number") {
+    return Number.isFinite(reps) ? { label: String(reps), prefillReps: reps } : { label: null, prefillReps: null };
+  }
+  const label = reps.trim();
+  if (!label) return { label: null, prefillReps: null };
+  // First integer in the string: "6-8" -> 6, "8-12 each side" -> 8, "AMRAP" -> none.
+  const m = label.match(/\d+/);
+  const n = m ? Number(m[0]) : NaN;
+  return {
+    label,
+    prefillReps: Number.isFinite(n) && n > 0 && n <= 1000 ? n : null,
+  };
+}
+
+/** Human target line for the tracker: "3 sets x 6-8 reps", omitting absent parts. */
+export function formatTargetLine(
+  plan: { sets?: number | null; repsLabel?: string | null } | undefined,
+): string | null {
+  if (!plan) return null;
+  const parts: string[] = [];
+  if (plan.sets != null && plan.sets > 0) parts.push(`${plan.sets} ${plan.sets === 1 ? "set" : "sets"}`);
+  if (plan.repsLabel) parts.push(`${plan.repsLabel} reps`);
+  return parts.length ? parts.join(" x ") : null;
+}

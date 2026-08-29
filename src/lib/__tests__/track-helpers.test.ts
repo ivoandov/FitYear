@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { getLastRecordedValues, getDefaultSets } from "@/lib/track-helpers";
+import {
+  formatTargetLine,
+  getDefaultSets,
+  getLastRecordedValues,
+  parseRepsPrescription,
+} from "@/lib/track-helpers";
 
 const mk = (completedAt: string, exercises: unknown[]) => ({
   completedAt: new Date(completedAt),
@@ -119,5 +124,51 @@ describe("getDefaultSets — with a FitBot program target load", () => {
   it("lets recorded history win on row 0 over the target load", () => {
     const rows = getDefaultSets([hist], "lbs", "sq", "weight_reps", { targetLoadLbs: 135, reps: 5 });
     expect(rows[0]).toMatchObject({ weight: 155, reps: 6 });
+  });
+});
+
+describe("parseRepsPrescription", () => {
+  it("reads a plain number", () => {
+    expect(parseRepsPrescription("8")).toEqual({ label: "8", prefillReps: 8 });
+    expect(parseRepsPrescription(10)).toEqual({ label: "10", prefillReps: 10 });
+  });
+
+  it("prefills the LOW end of a range but shows the range", () => {
+    // Ivo imported a program prescribing "3-4 sets, 6-8 reps" and none of it
+    // surfaced. The target is to REACH the top of the range, so prefilling 8
+    // would log the best case before the work is done.
+    expect(parseRepsPrescription("6-8")).toEqual({ label: "6-8", prefillReps: 6 });
+  });
+
+  it("shows an unparseable prescription and prefills nothing", () => {
+    expect(parseRepsPrescription("AMRAP")).toEqual({ label: "AMRAP", prefillReps: null });
+  });
+
+  it("handles a qualified range", () => {
+    expect(parseRepsPrescription("8-12 each side")).toEqual({
+      label: "8-12 each side",
+      prefillReps: 8,
+    });
+  });
+
+  it("is empty for missing or blank input", () => {
+    expect(parseRepsPrescription(null)).toEqual({ label: null, prefillReps: null });
+    expect(parseRepsPrescription("   ")).toEqual({ label: null, prefillReps: null });
+  });
+});
+
+describe("formatTargetLine", () => {
+  it("joins sets and reps", () => {
+    expect(formatTargetLine({ sets: 3, repsLabel: "6-8" })).toBe("3 sets x 6-8 reps");
+  });
+
+  it("singularises one set and omits absent halves", () => {
+    expect(formatTargetLine({ sets: 1, repsLabel: null })).toBe("1 set");
+    expect(formatTargetLine({ sets: null, repsLabel: "AMRAP" })).toBe("AMRAP reps");
+  });
+
+  it("is null when there is no target at all", () => {
+    expect(formatTargetLine(undefined)).toBeNull();
+    expect(formatTargetLine({ sets: null, repsLabel: null })).toBeNull();
   });
 });
