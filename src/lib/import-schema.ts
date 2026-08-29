@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EXERCISE_TYPES, normalizeExerciseType } from "@/lib/exercise-types";
 
 /**
  * Shape of a workout or program imported from somewhere else - a plain-text
@@ -10,18 +11,6 @@ import { z } from "zod";
  * parse costs a metered AI call, so a field the model spelled slightly
  * differently must not throw the whole import away. See the note there.
  */
-
-const EXERCISE_TYPES = ["weight_reps", "distance_time"] as const;
-
-function normalizeExerciseType(v: unknown): "weight_reps" | "distance_time" {
-  if (typeof v !== "string") return "weight_reps";
-  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (s === "weight_reps" || s === "distance_time") return s;
-  if (/time|distance|cardio|duration|interval|conditioning|carry|hold|run|row/.test(s)) {
-    return "distance_time";
-  }
-  return "weight_reps";
-}
 
 const exerciseTypeField = z.preprocess(normalizeExerciseType, z.enum(EXERCISE_TYPES));
 

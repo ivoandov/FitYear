@@ -7,6 +7,7 @@ import { exercises, insertExerciseSchema } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { normalizeMuscleGroups } from "@/lib/muscle-groups";
+import { EXERCISE_TYPES } from "@/lib/exercise-types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -28,7 +29,7 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
     .extend({
       name: z.string().trim().min(1).max(60),
       description: z.string().max(2000),
-      exerciseType: z.enum(["weight_reps", "distance_time"]),
+      exerciseType: z.enum(EXERCISE_TYPES),
     })
     .partial()
     .parse(await request.json());

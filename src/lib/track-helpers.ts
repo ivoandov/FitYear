@@ -1,5 +1,6 @@
 import { lbsToDisplay, type WeightUnit } from "@/lib/units";
 import type { SetData } from "@/lib/workout-stats";
+import { usesDistance } from "@/lib/exercise-types";
 
 // Minimal shape the track defaults need from a completed workout. The real
 // records carry much more; we only read completedAt + the inline exercises.
@@ -92,7 +93,9 @@ export function getDefaultSets(
     ? getLastRecordedValues(completedWorkouts, exerciseId)
     : null;
 
-  const isDistanceTime = exerciseType === "distance_time";
+  const isDistanceTime = usesDistance(exerciseType);
+  // A loaded hold is a normal multi-set exercise, so it gets the usual 3 rows;
+  // only a cardio bout defaults to a single row.
   const rowCount = Math.max(1, plan?.sets ?? (isDistanceTime ? 1 : 3));
 
   return Array.from({ length: rowCount }, (_, i) => {

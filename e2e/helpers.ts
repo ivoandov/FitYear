@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import type { ExerciseType } from "@/lib/exercise-types";
 import { createServerClient } from "@supabase/ssr";
 import postgres from "postgres";
 import type { BrowserContext } from "@playwright/test";
@@ -99,7 +100,7 @@ export async function seedExercise(
   userId: string,
   name: string,
   muscleGroups: string[] = ["Forearms"],
-  exerciseType: "weight_reps" | "distance_time" = "weight_reps",
+  exerciseType: ExerciseType = "weight_reps",
 ): Promise<string> {
   const [row] = await sql`
     insert into exercises (user_id, is_public, name, muscle_groups, description, exercise_type)

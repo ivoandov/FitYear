@@ -15,6 +15,7 @@ import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
 import { matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { isRecentlyAdded, sortForPicker } from "@/lib/recent-exercises";
+import type { ExerciseType } from "@/lib/exercise-types";
 
 export interface PickerExercise {
   id: string;
@@ -22,7 +23,7 @@ export interface PickerExercise {
   muscleGroups: string[];
   description?: string;
   imageUrl?: string;
-  exerciseType?: "weight_reps" | "distance_time";
+  exerciseType?: ExerciseType;
   isAssisted?: boolean;
   /** NULL for every exercise predating the column; read as "not recent". */
   createdAt?: string | Date | null;

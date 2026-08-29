@@ -20,6 +20,7 @@ import {
 import { type SetData } from "@/lib/workout-stats";
 import { localDateKey } from "@/lib/date";
 import { formatDuration, parseDurationInput } from "@/lib/workout-duration";
+import { usesDistance, usesTime } from "@/lib/exercise-types";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
 // convert back to lbs before saving. These thin wrappers route through the
@@ -162,7 +163,8 @@ export function WorkoutHistoryCard({
       // Coerce any left-empty inputs to 0 on save (they were kept empty during
       // editing so the fields are clearable), preserving each set's field shape.
       setsData: ex.sets.map(set => {
-        const isCardio = (ex.exerciseType || 'weight_reps') === 'distance_time';
+        const isCardio = usesDistance(ex.exerciseType);
+        const isHoldType = usesTime(ex.exerciseType) && !isCardio;
         return {
           ...set,
           // Each row keeps the flag it was stored with. Forcing `true` here
@@ -174,7 +176,11 @@ export function WorkoutHistoryCard({
           completed: set.completed ?? false,
           ...(isCardio
             ? { distance: set.distance ?? 0, time: set.time ?? 0 }
-            : { weight: displayToLbs(set.weight, weightUnit) ?? 0, reps: set.reps ?? 0 }),
+            : isHoldType
+              // A hold carries a real load and a clock. Writing reps here would
+              // store a rep count nobody entered and give it a phantom volume.
+              ? { weight: displayToLbs(set.weight, weightUnit) ?? 0, time: set.time ?? 0 }
+              : { weight: displayToLbs(set.weight, weightUnit) ?? 0, reps: set.reps ?? 0 }),
         };
       }),
     }));
@@ -421,7 +427,8 @@ export function WorkoutHistoryCard({
                 if (completedSets.length === 0 && !isEditing) return null;
 
                 const setsToDisplay = isEditing ? exercise.sets : completedSets;
-                const isCardioStyle = exercise.exerciseType === 'distance_time';
+                const isCardioStyle = usesDistance(exercise.exerciseType);
+                const isHold = usesTime(exercise.exerciseType) && !isCardioStyle;
                 
                 return (
                   <div key={exIdx} className="border-l-2 border-primary pl-3 sm:pl-4">
@@ -451,7 +458,27 @@ export function WorkoutHistoryCard({
                               <span className={`font-medium w-12 ${set.completed ? "" : "text-tertiary-foreground"}`}>
                                 Set {setIdx + 1}:
                               </span>
-                              {isCardioStyle ? (
+                              {isHold ? (
+                                <>
+                                  <Input
+                                    type="number"
+                                    step={weightUnit === 'kg' ? '0.5' : '1'}
+                                    value={set.weight ?? ""}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'weight', e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                                    className="w-16 h-8 text-center"
+                                    data-testid={`input-weight-${id}-${exIdx}-${setIdx}`}
+                                  />
+                                  <span>{weightUnit} for</span>
+                                  <Input
+                                    type="number"
+                                    value={set.time ?? ""}
+                                    onChange={(e) => updateSet(exIdx, originalSetIdx, 'time', e.target.value === "" ? undefined : parseInt(e.target.value))}
+                                    className="w-16 h-8 text-center"
+                                    data-testid={`input-time-${id}-${exIdx}-${setIdx}`}
+                                  />
+                                  <span>sec</span>
+                                </>
+                              ) : isCardioStyle ? (
                                 <>
                                   <Input
                                     type="number"
@@ -509,7 +536,9 @@ export function WorkoutHistoryCard({
                         
                         return (
                           <div key={setIdx} data-testid={`text-set-${id}-${exIdx}-${setIdx}`}>
-                            {set.weight != null && set.reps ? (
+                            {isHold && set.time ? (
+                              `Set ${setIdx + 1}: ${lbsToDisplay(set.weight ?? 0, weightUnit)} ${weightUnit} for ${set.time}s`
+                            ) : set.weight != null && set.reps ? (
                               `Set ${setIdx + 1}: ${lbsToDisplay(set.weight, weightUnit)} ${weightUnit} × ${set.reps}`
                             ) : set.distance && set.time ? (
                               `Set ${setIdx + 1}: ${set.distance} mi in ${set.time} min`

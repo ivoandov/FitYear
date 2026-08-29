@@ -5,12 +5,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Minus, Plus } from "lucide-react";
 import { LB_PER_KG, type WeightUnit } from "@/lib/units";
 import type { SetData } from "@/lib/workout-stats";
+import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
 
 type Field = "weight" | "reps" | "distance" | "time";
 
 interface SetRowProps {
   set: SetData;
-  isDistanceTime: boolean;
+  /**
+   * Drives which columns render. A TYPE rather than an isDistanceTime boolean:
+   * with three types the question is no longer binary, and "does this use
+   * reps?" and "does this use distance?" are different questions that only
+   * happened to share an answer while there were two.
+   */
+  exerciseType: string | null | undefined;
   isCurrentSet: boolean;
   isActive: boolean;
   isPR: boolean;
@@ -40,15 +47,17 @@ const PILL =
 
 /**
  * A single tracked set row. Presentational: all state lives in TrackPage, which
- * passes the row's flags + field/complete callbacks. Renders the distance/time
- * columns for cardio exercises, else the weight / reps columns as `− value +`
- * stepper pills (with an optional lb hint in kg mode + PR badge). The current
+ * passes the row's flags + field/complete callbacks. Columns follow the
+ * exercise TYPE: distance+time for cardio, weight+time for a loaded hold
+ * (Ivo's plate pinch at 25 lb for 60 s, or a bodyweight hang at 0), else
+ * weight+reps, as `− value +` stepper pills (with an optional lb hint in kg
+ * mode + PR badge). The current
  * set is highlighted (neon border + faint neon wash); completed sets show a
  * neon-filled check. testIds preserved.
  */
 export function SetRow({
   set,
-  isDistanceTime,
+  exerciseType,
   isCurrentSet,
   isActive,
   isPR,
@@ -98,39 +107,10 @@ export function SetRow({
     </div>
   );
 
-  if (isDistanceTime) {
-    return (
-      <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
-        {setNumberCell}
-        <div className={PILL}>
-          <Input
-            type="number"
-            step="0.1"
-            value={set.distance ?? ""}
-            onChange={(e) => onFieldChange("distance", e.target.value === "" ? null : parseFloat(e.target.value))}
-            className={`${FIELD_INPUT} px-3`}
-            data-testid={`input-distance-${set.setNumber}`}
-          />
-        </div>
-        <div className={PILL}>
-          <Input
-            type="number"
-            value={set.time ?? ""}
-            onChange={(e) => onFieldChange("time", e.target.value === "" ? null : parseInt(e.target.value))}
-            className={`${FIELD_INPUT} px-3`}
-            data-testid={`input-time-${set.setNumber}`}
-          />
-        </div>
-        {doneCheckbox}
-      </div>
-    );
-  }
-
-  return (
-    <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
-      {setNumberCell}
-
-      {/* Weight — stepper pill (increment logic unchanged) + optional lb hint (kg mode only) */}
+  // Shared by weight_reps and weight_time. A hold's load is a real load:
+  // 25 lb pinch, or 0 for a bodyweight hang.
+  // Stepper pill (increment logic unchanged) + optional lb hint (kg mode only).
+  const weightColumn = (
       <div className="flex min-w-0 flex-col gap-1">
         <div className={PILL}>
           <button
@@ -179,8 +159,73 @@ export function SetRow({
           </p>
         ) : null}
       </div>
+  );
 
-      {/* Reps — stepper pill (whole-rep +/- over the existing onFieldChange data flow) */}
+  if (usesDistance(exerciseType)) {
+    return (
+      <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
+        {setNumberCell}
+        <div className={PILL}>
+          <Input
+            type="number"
+            step="0.1"
+            value={set.distance ?? ""}
+            onChange={(e) => onFieldChange("distance", e.target.value === "" ? null : parseFloat(e.target.value))}
+            className={`${FIELD_INPUT} px-3`}
+            data-testid={`input-distance-${set.setNumber}`}
+          />
+        </div>
+        <div className={PILL}>
+          <Input
+            type="number"
+            value={set.time ?? ""}
+            onChange={(e) => onFieldChange("time", e.target.value === "" ? null : parseInt(e.target.value))}
+            className={`${FIELD_INPUT} px-3`}
+            data-testid={`input-time-${set.setNumber}`}
+          />
+        </div>
+        {doneCheckbox}
+      </div>
+    );
+  }
+
+  return (
+    <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
+      {setNumberCell}
+
+      {weightColumn}
+
+      {usesTime(exerciseType) ? (
+        /* Loaded hold: seconds instead of reps. */
+        <div className={PILL}>
+          <button
+            type="button"
+            aria-label={`Decrease seconds for set ${set.setNumber}`}
+            className={STEPPER_MINUS}
+            onClick={() => onFieldChange("time", Math.max(0, (set.time ?? 0) - 5))}
+            data-testid={`button-time-minus-${set.setNumber}`}
+          >
+            <Minus className="size-4" />
+          </button>
+          <Input
+            type="number"
+            value={set.time ?? ""}
+            onChange={(e) => onFieldChange("time", e.target.value === "" ? null : parseInt(e.target.value))}
+            className={FIELD_INPUT}
+            data-testid={`input-time-${set.setNumber}`}
+          />
+          <button
+            type="button"
+            aria-label={`Increase seconds for set ${set.setNumber}`}
+            className={STEPPER_PLUS}
+            onClick={() => onFieldChange("time", (set.time ?? 0) + 5)}
+            data-testid={`button-time-plus-${set.setNumber}`}
+          >
+            <Plus className="size-4" />
+          </button>
+        </div>
+      ) : (
+      /* Reps — stepper pill (whole-rep +/- over the existing onFieldChange data flow) */
       <div className={PILL}>
         <button
           type="button"
@@ -208,6 +253,7 @@ export function SetRow({
           <Plus className="size-4" />
         </button>
       </div>
+      )}
 
       {doneCheckbox}
     </div>

@@ -47,6 +47,7 @@ import { GoalsStrip } from "@/components/GoalsStrip";
 import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
 import { ScheduledWorkoutCard } from "@/components/ScheduledWorkoutCard";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
+import type { ExerciseType } from "@/lib/exercise-types";
 
 interface ScheduledWorkout {
   id: string;
@@ -213,7 +214,7 @@ export default function WorkoutsPage() {
         muscleGroups: ex.muscleGroups,
         description: ex.description,
         imageUrl: ex.imageUrl || undefined,
-        exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
+        exerciseType: (ex.exerciseType as ExerciseType) || "weight_reps",
       })),
     [dbExercises],
   );

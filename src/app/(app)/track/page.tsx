@@ -39,6 +39,7 @@ import {
 import { overloadSuggestion } from "@/lib/analytics";
 import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "@/hooks/use-toast";
+import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
@@ -454,16 +455,19 @@ export default function TrackPage() {
   // Unified set-complete handler for both exercise types (was two near-identical
   // inline checkbox handlers). Distance/time sets don't propagate or PR-check.
   const handleToggleSetComplete = (index: number, checked: boolean) => {
-    const isDistanceTime = currentExercise?.exerciseType === "distance_time";
+    // Prefill-propagation and PR checks are about REPS, not "not cardio":
+    // a loaded hold has a weight but no reps, so it belongs on the same side
+    // as cardio here even though it does carry a load.
+    const tracksReps = usesReps(currentExercise?.exerciseType);
     let newSets = [...sets];
     newSets[index].completed = checked;
-    if (checked && !isDistanceTime) {
+    if (checked && tracksReps) {
       newSets = propagateToNextSet(newSets, index);
     }
     setCurrentSets(newSets);
     if (!checked) return;
 
-    if (!isDistanceTime) {
+    if (tracksReps) {
       // PR check (in-workout)
       const completedSet = newSets[index];
       const wLbs = toLbs(completedSet.weight) ?? 0;
@@ -879,21 +883,23 @@ export default function TrackPage() {
 
           <div>
             <div className="space-y-1">
-              {currentExercise.exerciseType === "distance_time" ? (
-                <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-x-2.5 items-center border-b border-divider px-2 pb-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
-                  <div>Set</div>
-                  <div className="text-center">Distance (mi)</div>
-                  <div className="text-center">Time (min)</div>
-                  <div className="text-center">✓</div>
+              {/* The header MUST match SetRow's grid template exactly. */}
+              <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-x-2.5 items-center border-b border-divider px-2 pb-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                <div>Set</div>
+                <div className="text-center">
+                  {usesDistance(currentExercise.exerciseType)
+                    ? "Distance (mi)"
+                    : `Weight (${weightUnit})`}
                 </div>
-              ) : (
-                <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-x-2.5 items-center border-b border-divider px-2 pb-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
-                  <div>Set</div>
-                  <div className="text-center">Weight ({weightUnit})</div>
-                  <div className="text-center">Reps</div>
-                  <div className="text-center">✓</div>
+                <div className="text-center">
+                  {usesDistance(currentExercise.exerciseType)
+                    ? "Time (min)"
+                    : usesTime(currentExercise.exerciseType)
+                      ? "Time (sec)"
+                      : "Reps"}
                 </div>
-              )}
+                <div className="text-center">✓</div>
+              </div>
               {sets.map((set, index) => {
                 const isCurrentSet = index === currentSetIndex && !set.completed;
                 const isActive = isCurrentSet && trackingState === "in_set";
@@ -911,7 +917,7 @@ export default function TrackPage() {
                   <SetRow
                     key={set.setNumber}
                     set={set}
-                    isDistanceTime={currentExercise.exerciseType === "distance_time"}
+                    exerciseType={currentExercise.exerciseType}
                     isCurrentSet={isCurrentSet}
                     isActive={isActive}
                     isPR={isPR}

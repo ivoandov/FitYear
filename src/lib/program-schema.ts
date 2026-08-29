@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_PROGRAM_PHASES } from "@/lib/api/ai-limits";
+import { EXERCISE_TYPES, normalizeExerciseType } from "@/lib/exercise-types";
 
 // --- Model-output tolerance -------------------------------------------------
 // A program build is ONE metered skeleton call plus one call per phase, and the
@@ -15,19 +16,6 @@ import { MAX_PROGRAM_PHASES } from "@/lib/api/ai-limits";
 // the user got "Fit Bot's program structure was incomplete" with their quota
 // already charged. The prompt now lists the values AND this normalizes anything
 // else that arrives.
-
-const EXERCISE_TYPES = ["weight_reps", "distance_time"] as const;
-
-/** Anything time/distance-flavoured becomes distance_time; everything else lifts. */
-function normalizeExerciseType(v: unknown): "weight_reps" | "distance_time" {
-  if (typeof v !== "string") return "weight_reps";
-  const s = v.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (s === "weight_reps" || s === "distance_time") return s;
-  if (/time|distance|cardio|duration|interval|conditioning|carry|hold|run|row/.test(s)) {
-    return "distance_time";
-  }
-  return "weight_reps";
-}
 
 const exerciseTypeField = z.preprocess(normalizeExerciseType, z.enum(EXERCISE_TYPES));
 

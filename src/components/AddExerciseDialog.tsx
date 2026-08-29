@@ -23,8 +23,16 @@ import {
 } from "@/components/ui/select";
 import { useSettings } from "@/components/SettingsProvider";
 import { nameMatchScore, DEFAULT_MATCH_THRESHOLD } from "@/lib/exercise-match";
+import {
+  EXERCISE_TYPES,
+  EXERCISE_TYPE_HINTS,
+  EXERCISE_TYPE_LABELS,
+  type ExerciseType,
+} from "@/lib/exercise-types";
 
-export type ExerciseType = "weight_reps" | "distance_time";
+export type { ExerciseType };
+
+
 
 export interface ExerciseFormData {
   id?: string;
@@ -166,10 +174,16 @@ export function AddExerciseDialog({
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="weight_reps">Weight and Reps</SelectItem>
-                <SelectItem value="distance_time">Distance and Time</SelectItem>
+                {EXERCISE_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {EXERCISE_TYPE_LABELS[t]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {EXERCISE_TYPE_HINTS[exerciseType]}
+            </p>
           </div>
 
           {exerciseType === "weight_reps" && (

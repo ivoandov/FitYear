@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canRegenerateImage } from "@/lib/photo-admin";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
+import type { ExerciseType } from "@/lib/exercise-types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -90,7 +91,7 @@ export default function ExercisesPage() {
         muscleGroups: ex.muscleGroups,
         description: ex.description,
         imageUrl: ex.imageUrl || undefined,
-        exerciseType: (ex.exerciseType as "weight_reps" | "distance_time") || "weight_reps",
+        exerciseType: (ex.exerciseType as ExerciseType) || "weight_reps",
         isAssisted: ex.isAssisted || false,
       })),
     [dbExercises],
@@ -257,7 +258,7 @@ export default function ExercisesPage() {
         name: exercise.name,
         muscleGroups: exercise.muscleGroups,
         description: exercise.description,
-        exerciseType: (exercise.exerciseType as "weight_reps" | "distance_time" | null) || "weight_reps",
+        exerciseType: (exercise.exerciseType as ExerciseType | null) || "weight_reps",
         isAssisted: exercise.isAssisted || false,
       });
     }

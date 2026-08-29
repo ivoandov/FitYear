@@ -32,20 +32,32 @@ function anchor(overrides: Record<string, unknown> = {}) {
 }
 
 describe("AnchorLiftSchema exerciseType tolerance", () => {
-  it("accepts the two canonical values unchanged", () => {
+  it("accepts the canonical values unchanged", () => {
     expect(AnchorLiftSchema.parse(anchor({ exerciseType: "weight_reps" })).exerciseType).toBe("weight_reps");
     expect(AnchorLiftSchema.parse(anchor({ exerciseType: "distance_time" })).exerciseType).toBe("distance_time");
+    expect(AnchorLiftSchema.parse(anchor({ exerciseType: "weight_time" })).exerciseType).toBe("weight_time");
   });
 
-  // The two strings actually observed from the model in production repro.
-  it.each(["time", "time_based"])("maps the observed bad value %s to distance_time", (bad) => {
-    expect(AnchorLiftSchema.parse(anchor({ exerciseType: bad })).exerciseType).toBe("distance_time");
-  });
-
-  it.each(["cardio", "duration", "Distance-Time", "  DISTANCE_TIME  ", "conditioning", "carry"])(
-    "maps time/distance-flavoured value %s to distance_time",
+  // The two strings actually observed from the model in production repro. They
+  // used to become distance_time because that was the only time-bearing type;
+  // since weight_time exists (2026-08-28) a duration with no distance is a
+  // HOLD, which is what these describe.
+  // A bare "time" stays distance_time deliberately. It is ambiguous - a plank
+  // and a 500m row interval are both "time" - and the observed model output
+  // this tolerance was built for was conditioning work, so the ambiguous case
+  // keeps the behaviour tuned against real output. Choosing weight_time is what
+  // the exercise editor is for.
+  it.each(["time", "time_based", "duration", "cardio", "conditioning", "carry", "Distance-Time", "  DISTANCE_TIME  "])(
+    "maps the ambiguous or locomotion value %s to distance_time",
     (v) => {
       expect(AnchorLiftSchema.parse(anchor({ exerciseType: v })).exerciseType).toBe("distance_time");
+    },
+  );
+
+  it.each(["isometric", "plank", "dead_hang", "pinch"])(
+    "maps the unambiguously STATIC value %s to weight_time",
+    (v) => {
+      expect(AnchorLiftSchema.parse(anchor({ exerciseType: v })).exerciseType).toBe("weight_time");
     },
   );
 

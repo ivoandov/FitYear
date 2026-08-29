@@ -8,6 +8,7 @@ import { rewriteImageUrl } from "@/lib/image-url";
 import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 import { matchExercise } from "@/lib/exercise-match";
 import { canonicalExerciseName } from "@/lib/exercise-naming";
+import { EXERCISE_TYPES } from "@/lib/exercise-types";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export const POST = handle(async (request: NextRequest) => {
     .extend({
       name: z.string().trim().min(1).max(60),
       description: z.string().max(2000),
-      exerciseType: z.enum(["weight_reps", "distance_time"]).optional(),
+      exerciseType: z.enum(EXERCISE_TYPES).optional(),
     })
     .parse(json);
   const { force } = CreateOptionsSchema.parse(json);

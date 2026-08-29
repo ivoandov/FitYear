@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_EXERCISE_TYPE, EXERCISE_TYPES } from "@/lib/exercise-types";
 
 /**
  * Shape of a single-workout FitBot generation ("a workout for the day").
@@ -20,7 +21,7 @@ import { z } from "zod";
 export const GeneratedExerciseSchema = z.object({
   name: z.string().min(1).max(120),
   muscleGroups: z.array(z.string().max(100)).max(20).default([]),
-  exerciseType: z.enum(["weight_reps", "distance_time"]).default("weight_reps"),
+  exerciseType: z.enum(EXERCISE_TYPES).default(DEFAULT_EXERCISE_TYPE),
   isAssisted: z.boolean().default(false),
   sets: z.number().int().min(1).max(20),
   reps: z.string().max(40), // free-form: "8-12", "AMRAP", "30s"

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Trash2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Exercise } from "@/lib/db/schema";
+import { usesReps } from "@/lib/exercise-types";
 
 interface GoalDialogProps {
   isOpen: boolean;
@@ -61,7 +62,7 @@ export function GoalDialog({ isOpen, onClose, editGoal }: GoalDialogProps) {
     },
   });
 
-  const weightRepsExercises = (exercises as Exercise[]).filter(e => e.exerciseType !== "distance_time");
+  const weightRepsExercises = (exercises as Exercise[]).filter((e) => usesReps(e.exerciseType));
   const filtered = weightRepsExercises.filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
   const selectedExercise = exercises.find(e => e.id === selectedExerciseId);
 
