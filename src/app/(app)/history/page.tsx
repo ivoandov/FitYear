@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
 import { Button } from "@/components/ui/button";
-import { Plus, Target, Trophy, BarChart3, Medal, LineChart } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Target, Trophy, BarChart3, Medal, LineChart, Search } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -87,6 +88,8 @@ export default function HistoryPage() {
     queryKey: ["/api/analytics/records?limit=8"],
   });
 
+  const [search, setSearch] = useState("");
+
   const historyData = useMemo(() => completedWorkouts.map((workout, index) => {
     let workoutVolume = 0;
     let totalSets = 0;
@@ -146,6 +149,24 @@ export default function HistoryPage() {
       calendarEventId: workout.calendarEventId,
     };
   }), [completedWorkouts, enrichExercise]);
+
+  /**
+   * Cori: "I can never find old workouts." History rendered every session as a
+   * flat, unsearchable scroll, so anything past the first screen was reachable
+   * only by scrolling to it.
+   *
+   * Matches the workout NAME or any exercise in it, because "the day I did
+   * front squats" is how people actually look for a session.
+   */
+  const filteredHistory = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return historyData;
+    return historyData.filter(
+      (s) =>
+        s.workoutName.toLowerCase().includes(q) ||
+        s.exercises.some((ex: { name?: string }) => (ex.name ?? "").toLowerCase().includes(q)),
+    );
+  }, [historyData, search]);
 
   // Recompute the date boundaries only when the local day (or the week-start
   // setting) changes, not on every render. Previously these were fresh Date
@@ -521,9 +542,25 @@ export default function HistoryPage() {
           {historyTab === "workouts" ? (
             historyData.length > 0 ? (
               <div className="space-y-3">
-                {historyData.map((session) => (
-                  <WorkoutHistoryCard key={session.id} {...session} />
-                ))}
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search workouts or exercises"
+                    className="pl-9"
+                    data-testid="input-history-search"
+                  />
+                </div>
+                {filteredHistory.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <p className="text-muted-foreground">Nothing matches &ldquo;{search}&rdquo;</p>
+                  </div>
+                ) : (
+                  filteredHistory.map((session) => (
+                    <WorkoutHistoryCard key={session.id} {...session} />
+                  ))
+                )}
               </div>
             ) : (
               <div className="py-12 text-center">

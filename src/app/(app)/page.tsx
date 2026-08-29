@@ -46,6 +46,7 @@ import { setWorkoutPreview } from "@/lib/workout-preview";
 import { GoalsStrip } from "@/components/GoalsStrip";
 import { WorkoutCardMenu } from "@/components/WorkoutCardMenu";
 import { ScheduledWorkoutCard } from "@/components/ScheduledWorkoutCard";
+import { exercisesFromCompletedWorkout } from "@/lib/repeat-workout";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { ExerciseType } from "@/lib/exercise-types";
 
@@ -101,6 +102,9 @@ interface DBRoutineInstance {
   skippedWorkouts: number;
   status: string;
 }
+
+/** How many Library cards to render at once. Each can carry an exercise image. */
+const LIBRARY_PAGE_SIZE = 8;
 
 export default function WorkoutsPage() {
   const router = useRouter();
@@ -507,6 +511,8 @@ export default function WorkoutsPage() {
     router.push("/workout-preview");
   };
 
+  const [libraryLimit, setLibraryLimit] = useState(LIBRARY_PAGE_SIZE);
+
   const handleStartFromTemplate = (templateId: string) => {
     const template = workoutTemplates.find(t => t.id === templateId);
     if (template) {
@@ -518,6 +524,56 @@ export default function WorkoutsPage() {
       });
       router.push("/workout-preview");
     }
+  };
+
+  /**
+   * Start a workout you have already done. The Library only ever held
+   * TEMPLATES, which are made deliberately, so a finished workout never
+   * appeared there and there was no way to do one again (Cori, via Ivo,
+   * 2026-08-28).
+   */
+  /**
+   * The Library is everything you can start again: saved templates first, then
+   * the workouts you have actually done. Before this it held templates only,
+   * so most of a user's history was simply not there.
+   *
+   * Paged rather than fully rendered - each card can carry an exercise image,
+   * and a long history would load every one of them at once (Ivo: "maybe the
+   * occasional toggle button to show more workouts so not all of them have
+   * load at once").
+   */
+  const libraryItems = useMemo(
+    () => [
+      ...workoutTemplates.map((t) => ({ kind: "template" as const, key: `t-${t.id}`, template: t })),
+      ...completedWorkouts.map((w, i) => ({
+        kind: "past" as const,
+        key: `p-${w.id}-${i}`,
+        workout: w,
+      })),
+    ],
+    [workoutTemplates, completedWorkouts],
+  );
+  const visibleLibraryItems = libraryItems.slice(0, libraryLimit);
+
+  const handleRepeatCompleted = (workoutId: string) => {
+    const workout = completedWorkouts.find((w) => w.id === workoutId);
+    if (!workout) return;
+    const exercises = exercisesFromCompletedWorkout(workout.exercises as never);
+    if (exercises.length === 0) {
+      toast({
+        title: "Nothing to repeat",
+        description: "No sets were logged in that workout.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setWorkoutPreview({
+      id: workoutId,
+      displayId: `repeat-${workoutId}-${Date.now()}`,
+      name: workout.name,
+      exercises,
+    });
+    router.push("/workout-preview");
   };
 
   const handleEditTemplate = (templateId: string) => {
@@ -1141,9 +1197,55 @@ export default function WorkoutsPage() {
               Library
             </span>
           </div>
-          {workoutTemplates.length > 0 ? (
+          {libraryItems.length > 0 ? (
             <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-3 xl:grid-cols-4">
-              {workoutTemplates.map((template) => {
+              {visibleLibraryItems.map((item) => {
+                if (item.kind === "past") {
+                  const workout = item.workout;
+                  const pastImage = getWorkoutImageUrl(workout.exercises as never);
+                  return (
+                    <div key={item.key} className="aspect-square" data-testid={`card-library-past-${workout.id}`}>
+                      <div className={`relative flex h-full flex-col overflow-hidden rounded-[18px] ${pastImage ? "bg-card" : "card-elevated"}`}>
+                        {pastImage && (
+                          <>
+                            <img src={pastImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+                          </>
+                        )}
+                        <div className="relative z-10 flex items-start justify-between p-4">
+                          {pastImage ? (
+                            <div />
+                          ) : (
+                            <div className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-primary-dim">
+                              <Dumbbell className="h-[22px] w-[22px] text-primary" />
+                            </div>
+                          )}
+                          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                            {format(new Date(workout.completedAt), "MMM d")}
+                          </span>
+                        </div>
+                        <div className="relative z-10 mt-auto flex items-end justify-between gap-2 p-4">
+                          <div className="min-w-0">
+                            <div className="truncate text-[15px] font-bold leading-tight">{workout.name}</div>
+                            <div className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.06em] text-tertiary-foreground">
+                              Completed
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRepeatCompleted(workout.id)}
+                            aria-label={`Do ${workout.name} again`}
+                            data-testid={`button-repeat-workout-${workout.id}`}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-dim text-primary"
+                          >
+                            <Play className="h-4 w-4 fill-current" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                const template = item.template;
                 const templateImage = getWorkoutImageUrl(template.exercises);
                 return (
                   <div key={template.id} className="aspect-square" data-testid={`card-library-workout-${template.id}`}>
@@ -1234,6 +1336,16 @@ export default function WorkoutsPage() {
               <p>No workouts created yet</p>
               <p className="mt-1 text-sm">Tap + above to create your first workout</p>
             </div>
+          )}
+          {libraryItems.length > visibleLibraryItems.length && (
+            <button
+              type="button"
+              onClick={() => setLibraryLimit((n) => n + LIBRARY_PAGE_SIZE)}
+              className="w-full rounded-[14px] border border-strong py-3 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground transition-colors hover:text-foreground"
+              data-testid="button-library-show-more"
+            >
+              Show more ({libraryItems.length - visibleLibraryItems.length} left)
+            </button>
           )}
         </div>
 
