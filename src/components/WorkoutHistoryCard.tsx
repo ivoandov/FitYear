@@ -122,7 +122,10 @@ export function WorkoutHistoryCard({
     setEditedExercises(enrichedExercises.map(ex => {
       const sets = ex.sets.length > 0
         ? ex.sets.map(s => ({ ...s, weight: lbsToDisplay(s.weight, weightUnit) }))
-        : [{ setNumber: 1, completed: true }];
+        // Not logged: an exercise with NO rows at all was never opened, so it
+        // gets one blank row to type into rather than a set claiming to have
+        // happened. Typing in it (or ticking it) is what logs it.
+        : [{ setNumber: 1, completed: false }];
       return {
         ...ex,
         sets,
@@ -213,7 +216,30 @@ export function WorkoutHistoryCard({
       const newExercises = [...prev];
       const exercise = { ...newExercises[exerciseIdx] };
       const sets = [...exercise.sets];
-      sets[setIdx] = { ...sets[setIdx], [field]: value };
+      // Typing a value here IS logging the set. An exercise you opened but
+      // never finished keeps its PREFILLED rows (weight and reps already
+      // populated, completed:false), so before this an edit to one of those
+      // saved silently as still-not-completed: the row vanished from the card
+      // again and the workout was unchanged. Ivo hit exactly that going back to
+      // finish two exercises an hour later (2026-08-28).
+      //
+      // Scoped to rows the user actually touches, which is the distinction that
+      // matters: blanket-forcing completed on save is what once turned every
+      // abandoned prefill into a logged set and inflated the workout.
+      sets[setIdx] = { ...sets[setIdx], [field]: value, completed: true };
+      exercise.sets = sets;
+      newExercises[exerciseIdx] = exercise;
+      return newExercises;
+    });
+  };
+
+  /** Explicit control, so logging a set is never only a side effect of typing. */
+  const toggleSetLogged = (exerciseIdx: number, setIdx: number) => {
+    setEditedExercises(prev => {
+      const newExercises = [...prev];
+      const exercise = { ...newExercises[exerciseIdx] };
+      const sets = [...exercise.sets];
+      sets[setIdx] = { ...sets[setIdx], completed: !sets[setIdx].completed };
       exercise.sets = sets;
       newExercises[exerciseIdx] = exercise;
       return newExercises;
@@ -389,7 +415,24 @@ export function WorkoutHistoryCard({
                         if (isEditing) {
                           return (
                             <div key={setIdx} className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium w-12">Set {setIdx + 1}:</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleSetLogged(exIdx, originalSetIdx)}
+                                aria-label={set.completed ? `Set ${setIdx + 1} logged` : `Set ${setIdx + 1} not logged`}
+                                aria-pressed={!!set.completed}
+                                title={set.completed ? "Logged. Tap to unlog." : "Not logged. Tap to log."}
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition-colors ${
+                                  set.completed
+                                    ? "border-yellow bg-primary-dim text-primary"
+                                    : "border-strong text-transparent"
+                                }`}
+                                data-testid={`toggle-set-logged-${id}-${exIdx}-${setIdx}`}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <span className={`font-medium w-12 ${set.completed ? "" : "text-tertiary-foreground"}`}>
+                                Set {setIdx + 1}:
+                              </span>
                               {isCardioStyle ? (
                                 <>
                                   <Input

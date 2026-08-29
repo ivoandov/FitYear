@@ -196,3 +196,57 @@ export async function applyAuth(
 export async function closeDb(): Promise<void> {
   await sql.end({ timeout: 5 }).catch(() => {});
 }
+
+/**
+ * A workout finished early: one exercise fully logged, one ABANDONED with
+ * prefilled rows that were never completed.
+ *
+ * That second shape is what an exercise you opened but ran out of time for
+ * actually looks like - not zero rows, but rows carrying weight and reps with
+ * `completed=false`, because the tracker prefills from history. Editing one of
+ * those in History used to save it still-uncompleted, so the change vanished.
+ */
+export async function seedPartialWorkout(
+  userId: string,
+  name: string,
+): Promise<{ workoutId: string }> {
+  const [cw] = await sql`
+    insert into completed_workouts (user_id, display_id, name, completed_at)
+    values (${userId}::uuid, ${`e2e-partial-${Date.now()}-${counter++}`}, ${name}, now())
+    returning id`;
+  const [done] = await sql`
+    insert into workout_exercises
+      (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)
+    values (${cw.id}, 'seed-done', 0, 'Finished Lift', ${JSON.stringify(["Chest"])}::jsonb, 'weight_reps', false)
+    returning id`;
+  await sql`
+    insert into workout_sets (workout_exercise_id, set_number, weight_lbs, reps, distance, time, completed)
+    values (${done.id}, 1, 135, 5, 0, 0, true)`;
+  const [skipped] = await sql`
+    insert into workout_exercises
+      (completed_workout_id, exercise_id, position, name_snapshot, muscle_groups_snapshot, exercise_type, is_assisted)
+    values (${cw.id}, 'seed-skipped', 1, 'Ran Out Of Time', ${JSON.stringify(["Shoulders"])}::jsonb, 'weight_reps', false)
+    returning id`;
+  // Prefilled from history, never completed - exactly what the tracker leaves.
+  await sql`
+    insert into workout_sets (workout_exercise_id, set_number, weight_lbs, reps, distance, time, completed)
+    values (${skipped.id}, 1, 25, 10, 0, 0, false),
+           (${skipped.id}, 2, 25, 10, 0, 0, false)`;
+  return { workoutId: cw.id };
+}
+
+/** Completed sets for one exercise of a workout, by its snapshot name. */
+export async function completedSetsFor(
+  workoutId: string,
+  nameSnapshot: string,
+): Promise<Array<{ weight: number | null; reps: number | null }>> {
+  const rows = await sql`
+    select ws.weight_lbs as weight, ws.reps
+      from workout_sets ws
+      join workout_exercises we on we.id = ws.workout_exercise_id
+     where we.completed_workout_id = ${workoutId}
+       and we.name_snapshot = ${nameSnapshot}
+       and ws.completed
+     order by ws.set_number`;
+  return rows as unknown as Array<{ weight: number | null; reps: number | null }>;
+}
