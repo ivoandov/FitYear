@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { deriveWorkoutName, type SetData } from "@/lib/workout-stats";
 import { resolveWorkoutDuration } from "@/lib/workout-duration";
+import { buildResumeState, combinedDuration } from "@/lib/resume-workout";
 import { parseServerDate, localDateKey } from "@/lib/date";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
@@ -35,6 +36,13 @@ interface ActiveWorkout {
   name: string;
   exercises: WorkoutExercise[];
   startedAt?: string; // ISO string — set on startWorkout, used for duration on complete
+  /**
+   * Set when this session REOPENED an already-finished workout. Finishing then
+   * updates that workout instead of creating a second one, so a session picked
+   * up later stays one workout with one summary. Lives in the workout_data
+   * jsonb, so it needs no column.
+   */
+  resumedFromCompletedId?: string | null;
 }
 
 // A single exercise resolved from a FitBot generation, ready to track. `id` is
@@ -113,6 +121,8 @@ interface WorkoutContextType {
   completeWorkout: (exerciseSets?: Map<string, SetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
+  /** Reopen a finished workout and keep training it. False if there is nothing to resume. */
+  resumeWorkout: (completedWorkout: CompletedWorkoutRecord) => boolean;
   updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date, durationSeconds?: number) => Promise<boolean>;
   deleteCompletedWorkout: (id: string) => void;
   updateActiveWorkout: (name: string, exercises: Exercise[]) => void;
@@ -739,6 +749,33 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       );
     }
 
+    // A resumed session belongs to the workout it reopened: update that row
+    // rather than inserting a second one, or "continue" would silently split a
+    // single session into two workouts on the same day.
+    const resumedId = activeWorkout.resumedFromCompletedId;
+    if (resumedId) {
+      const original = completedWorkouts.find((w) => w.id === resumedId);
+      try {
+        await updateCompletedMutation.mutateAsync({
+          id: resumedId,
+          name: resolvedName,
+          exercises: exercisesWithSets,
+          // The gap between sittings is not training time, so the durations add
+          // instead of the clock running through the break.
+          durationSeconds: combinedDuration(original?.durationSeconds, durationSeconds),
+        });
+        setActiveWorkout(null);
+        setTrackingProgress(null);
+        activeWorkoutRef.current = null;
+        trackingProgressRef.current = null;
+        setLastCompletedWorkoutId(resumedId);
+        return resumedId;
+      } catch (e) {
+        console.error("[WorkoutContext] resumed completeWorkout failed:", e);
+        return null;
+      }
+    }
+
     try {
       const created = await createCompletedMutation.mutateAsync({
         displayId: activeWorkout.displayId,
@@ -774,11 +811,57 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     } finally {
       completeInFlightRef.current = null;
     }
-  }, [activeWorkout, createCompletedMutation, deleteScheduledWorkoutMutation]);
+  }, [activeWorkout, completedWorkouts, createCompletedMutation, deleteScheduledWorkoutMutation, updateCompletedMutation]);
 
   const isWorkoutCompleted = useCallback((displayId: string) => {
     return completedWorkouts.some(w => w.displayId === displayId);
   }, [completedWorkouts]);
+
+  /**
+   * Reopen a finished workout and keep training it.
+   *
+   * Distinct from restartWorkout, which starts a fresh SEPARATE session from an
+   * old one. This continues the same workout: every exercise comes back with
+   * its rows exactly as logged, and finishing updates that workout rather than
+   * creating a second one.
+   */
+  const resumeWorkout = useCallback((completedWorkout: CompletedWorkoutRecord) => {
+    const displayId = `${completedWorkout.id}-resume-${Date.now()}`;
+    const { exercises, exerciseSets } = buildResumeState(
+      completedWorkout.exercises as never,
+      displayId,
+    );
+    if (exercises.length === 0) return false;
+
+    const resumed = {
+      id: completedWorkout.id,
+      displayId,
+      scheduledWorkoutId: null,
+      name: completedWorkout.name,
+      startedAt: new Date().toISOString(),
+      resumedFromCompletedId: completedWorkout.id,
+      exercises,
+    } as unknown as ActiveWorkout;
+
+    // Progress FIRST in the refs, so the autosave that follows the state change
+    // cannot race a null progress over the restored sets.
+    const progress: TrackingProgress = {
+      workoutDisplayId: displayId,
+      exerciseSets,
+      currentExerciseIndex: 0,
+      currentSetIndex: 0,
+      restTimerDuration: 90,
+      // Stored weights are lbs; TrackPage converts on load if the user is on kg.
+      weightUnit: "lbs",
+      savedAt: Date.now(),
+    };
+    activeWorkoutRef.current = resumed;
+    trackingProgressRef.current = progress;
+    setActiveWorkout(resumed);
+    setTrackingProgress(progress);
+    hadWorkoutRef.current = true;
+    return true;
+  }, []);
 
   const restartWorkout = useCallback((completedWorkout: CompletedWorkoutRecord) => {
     const newDisplayId = `${completedWorkout.id}-restart-${Date.now()}`;
@@ -887,6 +970,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       completeWorkout,
       isWorkoutCompleted,
       restartWorkout,
+      resumeWorkout,
       updateCompletedWorkout,
       deleteCompletedWorkout,
       updateActiveWorkout,
@@ -907,6 +991,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       completeWorkout,
       isWorkoutCompleted,
       restartWorkout,
+      resumeWorkout,
       updateCompletedWorkout,
       deleteCompletedWorkout,
       updateActiveWorkout,

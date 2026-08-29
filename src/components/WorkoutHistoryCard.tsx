@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Check, X, Plus, Trash2, RefreshCw, Trophy } from "lucide-react";
+import { Pencil, Check, X, Plus, Trash2, RefreshCw, Trophy, Play } from "lucide-react";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
@@ -83,7 +83,7 @@ export function WorkoutHistoryCard({
   // client now trims an obvious idle tail automatically, but only the user
   // knows the real number when the trim cannot tell.
   const [editedDuration, setEditedDuration] = useState("");
-  const { updateCompletedWorkout } = useWorkout();
+  const { updateCompletedWorkout, completedWorkouts, resumeWorkout } = useWorkout();
   const { toast } = useToast();
   const { enrichExercises } = useExerciseDetails();
 
@@ -118,6 +118,25 @@ export function WorkoutHistoryCard({
   const completedSets = totalSets || enrichedExercises.reduce((total, ex) => 
     total + ex.sets.filter(s => s.completed).length, 0
   );
+
+  /**
+   * Pick this workout back up. Ivo runs out of time part way through, finishes,
+   * and comes back an hour later; without this the only options were to edit
+   * the numbers by hand or start a second workout for the same session.
+   */
+  const handleContinue = () => {
+    const record = completedWorkouts.find((w) => w.id === workoutId);
+    if (!record) return;
+    if (!resumeWorkout(record)) {
+      toast({
+        title: "Nothing to continue",
+        description: "That workout has no exercises to pick up.",
+        variant: "destructive",
+      });
+      return;
+    }
+    router.push("/track");
+  };
 
   const startEditing = () => {
     // Convert stored lbs → display unit when pre-filling edit inputs so the
@@ -391,6 +410,17 @@ export function WorkoutHistoryCard({
                     >
                       <RefreshCw className={`h-4 w-4 mr-1 ${syncCalendarMutation.isPending ? 'animate-spin' : ''}`} />
                       {syncCalendarMutation.isPending ? 'Syncing...' : 'Sync to Calendar'}
+                    </Button>
+                  )}
+                  {workoutId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleContinue}
+                      data-testid={`button-continue-${id}`}
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      Continue
                     </Button>
                   )}
                   {workoutId && (
