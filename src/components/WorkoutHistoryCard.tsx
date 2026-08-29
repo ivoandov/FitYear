@@ -1,11 +1,12 @@
 "use client";
 
-import { Pencil, Check, X, Plus, Trash2, RefreshCw } from "lucide-react";
+import { Pencil, Check, X, Plus, Trash2, RefreshCw, Trophy } from "lucide-react";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import { useWorkout } from "@/context/WorkoutContext";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -74,6 +75,7 @@ export function WorkoutHistoryCard({
   calendarEventId,
 }: WorkoutHistoryCardProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [editedExercises, setEditedExercises] = useState<ExerciseDetail[]>([]);
   // Duration is editable because forgetting to press Finish inflates it. The
@@ -383,6 +385,22 @@ export function WorkoutHistoryCard({
                     >
                       <RefreshCw className={`h-4 w-4 mr-1 ${syncCalendarMutation.isPending ? 'animate-spin' : ''}`} />
                       {syncCalendarMutation.isPending ? 'Syncing...' : 'Sync to Calendar'}
+                    </Button>
+                  )}
+                  {workoutId && (
+                    // The summary screen was only ever reachable by the redirect
+                    // straight after finishing, so navigating away lost it for
+                    // good even though the page loads fine from an id (Ivo,
+                    // 2026-08-28: "how does one see the workout summary from the
+                    // history of each workout again once it's clicked away").
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/workout-complete/${workoutId}`)}
+                      data-testid={`button-summary-${id}`}
+                    >
+                      <Trophy className="h-4 w-4 mr-1" />
+                      Summary
                     </Button>
                   )}
                   <Button variant="ghost" size="sm" onClick={startEditing} data-testid={`button-edit-${id}`}>
