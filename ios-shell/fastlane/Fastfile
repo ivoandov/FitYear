@@ -1,0 +1,25 @@
+# FitYear iOS lanes. Run with:  set -a; . ~/.claude/apple-developer.env; set +a; LC_ALL=en_US.UTF-8 fastlane <lane>
+default_platform(:ios)
+
+KEY_STORE = File.expand_path("~/liv-backups/apple-developer-id")
+
+def asc_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+    key_filepath: ENV.fetch("APP_STORE_CONNECT_KEY_PATH"),
+  )
+end
+
+platform :ios do
+  desc "Create (or reuse) the Apple Distribution certificate and the App Store provisioning profile"
+  lane :certs do
+    key = asc_key
+    # The cert's PRIVATE KEY is written to the same store as the Apple keys and
+    # installed into the login keychain. It is the only copy: losing it means
+    # revoking the cert and making a new one, so it goes where the backups are.
+    cert(api_key: key, development: false, output_path: KEY_STORE, keychain_path: File.expand_path("~/Library/Keychains/login.keychain-db"))
+    # sigh defaults to an App Store profile; passing adhoc/development explicitly trips its guard.
+    sigh(api_key: key, app_identifier: "ai.flyhi.fityear", output_path: KEY_STORE, filename: "FitYear_AppStore.mobileprovision")
+  end
+end

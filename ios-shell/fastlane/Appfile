@@ -1,0 +1,3 @@
+# Shared identity for every lane. Credentials come from ~/.claude/apple-developer.env, never here.
+app_identifier "ai.flyhi.fityear"
+team_id "2A48NU3MH4"
