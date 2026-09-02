@@ -75,3 +75,7 @@ next-env.d.ts
 # One-shot audit cleanup backups (2026-07-29)
 /migration/audit-cleanup-backups/
 migration/exercise-rename-backups/
+
+# fastlane writes a run report next to the lanes on every invocation
+ios-shell/fastlane/report.xml
+ios-shell/fastlane/Preview.html
