@@ -7,6 +7,11 @@ const PUBLIC_PATHS = [
   "/_next",
   "/favicon.ico",
   "/manifest.json",
+  // The legal pages must render with no session: App Review reads them, Google's
+  // OAuth consent screen links to the privacy policy, and a signed-out visitor
+  // has to be able to read both before deciding to sign up.
+  "/privacy",
+  "/terms",
   // The service worker script must stay fetchable even when the session cookie
   // has expired: the browser re-fetches /sw.js on its own schedule, and a 307
   // to the login HTML would replace the worker with a broken one.

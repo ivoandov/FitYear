@@ -7,6 +7,16 @@ import { useSettings, type WeekStart, DEFAULT_MUSCLE_GROUPS } from "@/components
 import { isCustomMuscleGroup } from "@/lib/db/schema";
 import { ArrowLeft, Sun, Moon, Monitor, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Link2, Unlink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -814,7 +824,111 @@ export default function SettingsPage() {
             </Button>
           </div>
         </div>
+
+        <DeleteAccountCard />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Account deletion. Apple requires an in-app path to it for any app with
+ * sign-in (guideline 5.1.1(v)), and it is the honest thing to offer anyway.
+ *
+ * Deliberately awkward: the button does nothing until the user has typed the
+ * word, because this is instant and irreversible and a mis-tap on a phone must
+ * not be able to reach it. The copy says what survives (shared library
+ * entries) so the outcome is not a surprise.
+ */
+function DeleteAccountCard() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const CONFIRM = "DELETE";
+
+  async function handleDelete() {
+    setBusy(true);
+    try {
+      await apiRequest("POST", "/api/account/delete", {});
+      // Full reload rather than a router push: the session is gone, every
+      // cached query belongs to a user who no longer exists, and the proxy
+      // will send an unauthenticated visitor to /login anyway.
+      window.location.href = "/login";
+    } catch (error) {
+      setBusy(false);
+      toast({
+        title: "Couldn't delete the account",
+        description: describeApiError(error),
+        variant: "destructive",
+      });
+    }
+  }
+
+  return (
+    <div className={`${CARD} border-destructive/40`} data-testid="card-danger-zone">
+      <div className={`${EYEBROW} mb-4 text-destructive`}>Danger zone</div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className={ROW_TITLE}>Delete account</div>
+          <div className={ROW_HELP}>
+            Removes your workouts, history, routines, settings and calendar
+            connection. This cannot be undone.
+          </div>
+        </div>
+        <Button
+          variant="destructive"
+          onClick={() => {
+            setTyped("");
+            setOpen(true);
+          }}
+          data-testid="button-delete-account"
+        >
+          Delete account
+        </Button>
+      </div>
+
+      <AlertDialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
+        <AlertDialogContent data-testid="dialog-confirm-delete-account">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This happens immediately and cannot be undone. Your workouts,
+              history, routines, schedules, settings, calendar connection and
+              rest alerts are all deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Exercises you added to the shared library stay in it with your name
+              removed, so other people&apos;s workouts keep working.
+            </p>
+            <p>
+              Type <span className="font-mono text-foreground">{CONFIRM}</span> to
+              confirm.
+            </p>
+          </div>
+          <Input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={CONFIRM}
+            autoComplete="off"
+            className="font-mono"
+            data-testid="input-confirm-delete-account"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Keep my account</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={typed.trim() !== CONFIRM || busy}
+              onClick={handleDelete}
+              data-testid="button-confirm-delete-account"
+            >
+              {busy ? "Deleting..." : "Delete everything"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
