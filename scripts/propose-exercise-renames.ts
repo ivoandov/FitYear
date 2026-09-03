@@ -35,10 +35,11 @@ function proposeName(original: string): { proposed: string; problem?: string } {
 async function main() {
   const onlyGroup = process.argv.find((a) => a.startsWith("--group="))?.split("=")[1];
   const sql = postgres(process.env.DATABASE_URL!, { prepare: false });
+  type CatalogRow = { id: string; name: string; muscle_groups: unknown; hist: number };
   const rows = (await sql`
     select e.id, e.name, e.muscle_groups,
       (select count(*)::int from workout_exercises we where we.exercise_id = e.id) as hist
-      from exercises e order by e.name`) as any[];
+      from exercises e order by e.name`) as CatalogRow[];
 
   const all: Proposal[] = rows.map((r) => {
     const { proposed, problem } = proposeName(r.name);

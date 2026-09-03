@@ -230,7 +230,7 @@ export function ExerciseProgressChart({
                 </div>
                 {selected.isOutlier ? (
                   <p className="text-xs text-muted-foreground">
-                    "Treat as kg" multiplies the stored weight by 2.20462. Use when this workout
+                    &quot;Treat as kg&quot; multiplies the stored weight by 2.20462. Use when this workout
                     was logged in kg but the value was stored without conversion.
                   </p>
                 ) : null}

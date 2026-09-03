@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Sparkles, X } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -12,7 +11,6 @@ const DAYS_OPTIONS = [2, 3, 4, 5, 6] as const;
 const LENGTH_OPTIONS = [30, 60, 90, 120] as const;
 
 export default function OnboardingPage() {
-  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [daysPerWeek, setDaysPerWeek] = useState<number | null>(null);
   const [programLength, setProgramLength] = useState<number | null>(null);

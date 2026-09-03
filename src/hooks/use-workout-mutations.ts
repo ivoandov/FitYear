@@ -67,7 +67,7 @@ export function useWorkoutMutations() {
         description: "The workout has been removed from your library.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       const errorMessage = error?.message || "";
       try {
         const jsonStr = errorMessage.replace(/^\d+:\s*/, "");

@@ -41,10 +41,10 @@ import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "@/hooks/use-toast";
 import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
 import { hapticImpact, keepScreenAwake } from "@/lib/native-feedback";
+import type { WorkoutExerciseInput } from "@/context/WorkoutContext";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
-const TRACKING_STORAGE_KEY = "workout_tracking_progress";
 
 // The one tall neon primary-CTA treatment of the A+ refresh (mirrors the fit-bot
 // workout page's CTA): brand gradient + strong glow, 56px touch target.
@@ -61,7 +61,6 @@ export default function TrackPage() {
     completedWorkouts,
     trackingProgress,
     saveTrackingProgress,
-    clearTrackingProgress,
     flushProgress,
   } = useWorkout();
   const { restTimerOnManualComplete, showKgConversion } = useSettings();
@@ -98,10 +97,16 @@ export default function TrackPage() {
 
   const { enrichExercises } = useExerciseDetails();
 
-  const enrichedWorkoutExercises = useMemo(() => {
-    if (!activeWorkout?.exercises) return [];
-    return enrichExercises(activeWorkout.exercises as any[]);
-  }, [activeWorkout?.exercises, enrichExercises]);
+  // Bound once rather than read as `activeWorkout?.exercises` in the deps and
+  // `activeWorkout.exercises` in the body: those two spellings are the same
+  // value but not the same expression, so the React Compiler infers a
+  // dependency that does not match the declared one and gives up optimizing
+  // the whole component.
+  const workoutExercises = activeWorkout?.exercises;
+  const enrichedWorkoutExercises = useMemo(
+    () => (workoutExercises ? enrichExercises(workoutExercises) : []),
+    [workoutExercises, enrichExercises],
+  );
 
   // Library exercises shaped for the Add Exercise picker (mid-workout add).
   const pickerExercises = useMemo<PickerExercise[]>(
@@ -193,7 +198,7 @@ export default function TrackPage() {
   // sessions keep their existing rest duration.
   useEffect(() => {
     if (!hasLoadedSavedProgress || trackingProgress) return;
-    const firstRest = (activeWorkout?.exercises?.[0] as any)?.plannedRest;
+    const firstRest = activeWorkout?.exercises?.[0]?.plannedRest;
     if (typeof firstRest === "number" && firstRest > 0) setRestTimerDuration(firstRest);
     // Seed once, right after the initial load settles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -247,11 +252,6 @@ export default function TrackPage() {
     };
   }, [activeWorkout, flushProgress]);
 
-  // Clear saved progress when workout ends
-  const clearSavedProgress = () => {
-    clearTrackingProgress();
-  };
-
   // Thin wrappers over the tested helpers in lib/track-helpers, closing over
   // the current completed workouts + display unit.
   const getLastRecordedValues = (exerciseId: string) =>
@@ -268,8 +268,27 @@ export default function TrackPage() {
   // FitBot's plannedSets/plannedReps, so an imported program's targets were
   // captured on import and then silently dropped - Ivo: "I imported a routine
   // that had that but it's not showing up anywhere" (2026-08-28).
-  const planOf = (ex: any) => {
-    const prescription = parseRepsPrescription(ex?.plannedReps ?? ex?.reps);
+  // What planOf reads. An IMPORTED program writes `sets`/`reps`; FitBot writes
+  // `plannedSets`/`plannedReps` - read both or a whole class of plan silently
+  // loses its targets. The loose members come through the exercise's index
+  // signature, so they are `unknown` here rather than absent.
+  type PlanSource = {
+    plannedSets?: number;
+    plannedReps?: unknown;
+    plannedLoadLbs?: number | null;
+    plannedRest?: number;
+    sets?: unknown;
+    reps?: unknown;
+    rest?: unknown;
+    notes?: unknown;
+  };
+
+  const planOf = (ex: PlanSource | undefined) => {
+    // Both spellings arrive as `unknown` through the exercise's index
+    // signature, and the helper does its own parsing of whatever it is handed.
+    const prescription = parseRepsPrescription(
+      (ex?.plannedReps ?? ex?.reps) as string | number | null | undefined,
+    );
     const sets = ex?.plannedSets ?? (typeof ex?.sets === "number" ? ex.sets : undefined);
     if (sets == null && prescription.label == null && ex?.plannedLoadLbs == null) return undefined;
     return {
@@ -286,7 +305,7 @@ export default function TrackPage() {
   // The prescription for the exercise ON SCREEN, shown verbatim so a range
   // ("6-8") reads as a range rather than being flattened to the number used for
   // prefill.
-  const currentPlan = planOf(enrichedWorkoutExercises[currentExerciseIndex] as any);
+  const currentPlan = planOf(enrichedWorkoutExercises[currentExerciseIndex]);
   const currentTarget = formatTargetLine(currentPlan);
   const currentPlanNotes = currentPlan?.notes ?? null;
 
@@ -294,14 +313,14 @@ export default function TrackPage() {
     getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType, plan);
 
   const getCurrentSets = (): SetData[] => {
-    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
+    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex];
     if (!currentExercise) return getDefaultSets();
     const instanceId = currentExercise.instanceId;
     return exerciseSets.get(instanceId) || getDefaultSets(currentExercise.id, currentExercise.exerciseType, planOf(currentExercise));
   };
 
   const setCurrentSets = (sets: SetData[]) => {
-    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex] as any;
+    const currentExercise = enrichedWorkoutExercises[currentExerciseIndex];
     if (!currentExercise?.instanceId) return;
     const newMap = new Map(exerciseSets);
     newMap.set(currentExercise.instanceId, sets);
@@ -311,7 +330,7 @@ export default function TrackPage() {
   useEffect(() => {
     if (!hasLoadedSavedProgress) return;
     if (enrichedWorkoutExercises.length > 0) {
-      const currentEx = enrichedWorkoutExercises[currentExerciseIndex] as any;
+      const currentEx = enrichedWorkoutExercises[currentExerciseIndex];
       if (currentEx?.instanceId) {
         setExerciseSets(prev => {
           if (prev.has(currentEx.instanceId)) return prev;
@@ -329,7 +348,7 @@ export default function TrackPage() {
     setExerciseSets(prev => {
       let changed = false;
       const newMap = new Map(prev);
-      for (const ex of enrichedWorkoutExercises as any[]) {
+      for (const ex of enrichedWorkoutExercises) {
         if (!ex?.instanceId) continue;
         const sets = newMap.get(ex.instanceId);
         if (!sets || sets.length === 0) continue;
@@ -355,8 +374,8 @@ export default function TrackPage() {
   useEffect(() => {
     if (trackingState === "resting") {
       restCloseProcessed.current = false;
-      const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex] as any;
-      const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1] as any;
+      const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex];
+      const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1];
       openTimer({
         initialSeconds: restTimerDuration,
         exerciseName: exAtIndex?.name ?? "Rest",
@@ -419,7 +438,7 @@ export default function TrackPage() {
   // heaviest set, which for an assisted lift is the easiest one - the same
   // wrinkle the exercise-page overload card has, kept consistent on purpose.
   const overloadGhost = (() => {
-    const ex = currentExercise as any;
+    const ex = currentExercise;
     if (!ex || ex.exerciseType === "distance_time") return null;
     const last = getLastRecordedValues(ex.id);
     if (!last || last.weight == null || last.reps == null) return null;
@@ -441,10 +460,10 @@ export default function TrackPage() {
   // recomputed on each render so it climbs as sets are checked or edited.
   // null = not a rep-total exercise, render nothing.
   const repTotal = (() => {
-    const ex = currentExercise as any;
+    const ex = currentExercise;
     if (!ex || ex.exerciseType === "distance_time" || !isRepTotalExercise(ex.name)) return null;
     const lists: SetData[][] = [];
-    for (const we of activeWorkout.exercises as any[]) {
+    for (const we of activeWorkout.exercises) {
       if (we.id !== ex.id) continue;
       // The current instance reads the live `sets` (fresher than the map before
       // its first state write); other instances read their tracked state.
@@ -694,8 +713,14 @@ export default function TrackPage() {
   const handleAddExercises = (picked: PickerExercise[]) => {
     if (!activeWorkout || picked.length === 0) return;
     const firstNewIndex = activeWorkout.exercises.length;
-    const merged = [...(activeWorkout.exercises as any[]), ...picked];
-    updateActiveWorkout(activeWorkout.name, merged as any);
+    const merged: WorkoutExerciseInput[] = [
+      ...activeWorkout.exercises,
+      // A picked exercise carries no description when its catalog row has
+      // none, and the workout shape requires one. Enrichment would substitute
+      // "" on read anyway, so do it here where the type says so.
+      ...picked.map((ex) => ({ ...ex, description: ex.description ?? "" })),
+    ];
+    updateActiveWorkout(activeWorkout.name, merged);
     setIsAddExerciseOpen(false);
     setCurrentExerciseIndex(firstNewIndex);
     setCurrentSetIndex(0);

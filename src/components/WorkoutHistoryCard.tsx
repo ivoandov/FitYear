@@ -106,7 +106,7 @@ export function WorkoutHistoryCard({
         description: `"${workoutName}" has been added to your Google Calendar`,
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Sync Failed",
         description: error.message || "Failed to sync workout to Google Calendar",

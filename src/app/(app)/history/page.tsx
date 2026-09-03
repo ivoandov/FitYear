@@ -26,6 +26,7 @@ import { VolumeTrendChart, type VolumePoint } from "@/components/VolumeTrendChar
 import { clientTimeZone, localDateKey } from "@/lib/date";
 import { lbsToDisplay } from "@/lib/units";
 import type { ExerciseGoal } from "@/lib/db/schema";
+import type { ExerciseInWorkout, SetData } from "@/lib/workout-stats";
 
 interface RecordRow {
   exerciseId: string;
@@ -94,7 +95,7 @@ export default function HistoryPage() {
     let workoutVolume = 0;
     let totalSets = 0;
 
-    const exercises = workout.exercises.map((ex: any) => {
+    const exercises = workout.exercises.map((ex: ExerciseInWorkout) => {
       const enrichedEx = enrichExercise({ ...ex, id: ex.id || "" });
       const sets = ex.setsData || [];
       // COMPLETED sets only. The old `hasData || completed` predicate also
@@ -103,7 +104,7 @@ export default function HistoryPage() {
       // That inflated History's sets and volume well above what the
       // workout-complete screen and the analytics endpoints report for the
       // same session (both of which gate on `completed`).
-      sets.forEach((set: any) => {
+      sets.forEach((set: SetData) => {
         if (!set.completed) return;
         if (set.weight != null && set.reps) {
           workoutVolume += set.weight * set.reps;
@@ -141,7 +142,7 @@ export default function HistoryPage() {
           : 0),
       // Trained exercises only, to match the set/volume totals beside it.
       exerciseCount: exercises.filter((ex) =>
-        (ex.sets ?? []).some((s: any) => s.completed),
+        (ex.sets ?? []).some((s: SetData) => s.completed),
       ).length,
       totalVolume: workoutVolume,
       totalSets,
@@ -196,7 +197,6 @@ export default function HistoryPage() {
   ).length;
 
   const totalWorkouts = historyData.length;
-  const totalVolume = historyData.reduce((sum, w) => sum + w.totalVolume, 0);
   const totalSetsCompleted = historyData.reduce((sum, w) => sum + w.totalSets, 0);
 
   // Sets this week rolled up to the COARSE taxonomy (the main groups are the
@@ -210,7 +210,7 @@ export default function HistoryPage() {
     historyData.forEach((workout) => {
       if (!isWithinRange(workout.date, last7DaysStart, todayEnd)) return;
       workout.exercises?.forEach((exercise) => {
-        const setCount = exercise.sets?.filter((s: any) => s.completed).length || 0;
+        const setCount = exercise.sets?.filter((s: SetData) => s.completed).length || 0;
         if (setCount === 0) return;
 
         // Resolve ALL of the exercise's tags first, then credit each distinct
@@ -272,10 +272,10 @@ export default function HistoryPage() {
   const goalProgress = useMemo(() => {
     const repsByExercise: Record<string, number> = {};
     completedWorkouts.forEach(workout => {
-      const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as any);
+      const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as string);
       if (!isWithinRange(date, last7DaysStart, todayEnd)) return;
-      workout.exercises.forEach((ex: any) => {
-        const setsData: any[] = ex.setsData || [];
+      workout.exercises.forEach((ex: ExerciseInWorkout) => {
+        const setsData: SetData[] = ex.setsData || [];
         setsData.forEach(set => {
           if (!set.completed) return;
           repsByExercise[ex.id] = (repsByExercise[ex.id] || 0) + (set.reps ?? 0);
@@ -290,16 +290,16 @@ export default function HistoryPage() {
     const repsByGoalId: Record<string, number> = {};
     goals.forEach(goal => {
       // Floor to start of day so workouts done earlier the same day as goal creation count
-      const rawStart = goal.createdAt instanceof Date ? goal.createdAt : new Date(goal.createdAt as any);
+      const rawStart = goal.createdAt instanceof Date ? goal.createdAt : new Date(goal.createdAt as string);
       const goalStart = new Date(rawStart);
       goalStart.setHours(0, 0, 0, 0);
       let total = 0;
       completedWorkouts.forEach(workout => {
-        const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as any);
+        const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as string);
         if (date < goalStart) return;
-        workout.exercises.forEach((ex: any) => {
+        workout.exercises.forEach((ex: ExerciseInWorkout) => {
           if (ex.id !== goal.exerciseId) return;
-          (ex.setsData || []).forEach((set: any) => {
+          (ex.setsData || []).forEach((set: SetData) => {
             if (!set.completed) return;
             total += set.reps ?? 0;
           });
@@ -423,7 +423,7 @@ export default function HistoryPage() {
                   const allTime = goalAllTimeProgress[goal.id] ?? 0;
                   const pct = Math.min(100, (done / goal.targetReps) * 100);
                   const isComplete = done >= goal.targetReps;
-                  const goalStart = goal.createdAt instanceof Date ? goal.createdAt : new Date(goal.createdAt as any);
+                  const goalStart = goal.createdAt instanceof Date ? goal.createdAt : new Date(goal.createdAt as string);
                   const startLabel = goalStart.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
                   return (
                     <button

@@ -23,7 +23,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { Plus, X, GripVertical, ChevronUp, ChevronDown, Calendar as CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { coarseGroupsOf, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";

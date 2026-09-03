@@ -4,5 +4,5 @@
     "noEmit": true
   },
   "exclude": ["../node_modules"],
-  "include": ["**/*.ts", "../playwright.config.ts"]
+  "include": ["**/*.ts", "../playwright.config.ts", "../store-shots/**/*.ts"]
 }

@@ -69,7 +69,8 @@ interface DBScheduledWorkout {
   id: string;
   name: string;
   date: string;
-  exercises: any;
+  // A jsonb column holding the workout's exercise array.
+  exercises: Exercise[];
   templateId?: string;
   routineInstanceId?: string | null;
 }
@@ -77,7 +78,7 @@ interface DBScheduledWorkout {
 interface DBWorkoutTemplate {
   id: string;
   name: string;
-  exercises: any;
+  exercises: Exercise[];
 }
 
 interface DBExercise {
@@ -127,7 +128,7 @@ export default function WorkoutsPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [workoutToDelete, setWorkoutToDelete] = useState<{ id: string; name: string; isTemplate?: boolean; isCompleted?: boolean } | null>(null);
   const { toast } = useToast();
-  const { startWorkout, startEmptyWorkout, isWorkoutCompleted, completedWorkouts, restartWorkout, updateCompletedWorkout, deleteCompletedWorkout } = useWorkout();
+  const { startEmptyWorkout, isWorkoutCompleted, completedWorkouts, updateCompletedWorkout, deleteCompletedWorkout } = useWorkout();
   const [editingCompletedWorkout, setEditingCompletedWorkout] = useState<{ id: string; name: string; exercises: Exercise[] } | null>(null);
   const [scheduleAgainWorkout, setScheduleAgainWorkout] = useState<{ name: string; exercises: Exercise[]; templateId?: string } | null>(null);
   const [scheduleAgainDate, setScheduleAgainDate] = useState<Date>(new Date());
@@ -138,7 +139,7 @@ export default function WorkoutsPage() {
     queryKey: ["/api/scheduled-workouts"],
   });
 
-  const { data: dbTemplates = [], isLoading: isLoadingTemplates } = useQuery<DBWorkoutTemplate[]>({
+  const { data: dbTemplates = [] } = useQuery<DBWorkoutTemplate[]>({
     queryKey: ["/api/workout-templates"],
   });
 
@@ -235,10 +236,10 @@ export default function WorkoutsPage() {
           id: w.id,
           name: w.name,
           date: localDate,
-          exercises: (w.exercises as any[]).map((ex: any) => ({
+          exercises: w.exercises.map((ex) => ({
             ...ex,
             muscleGroups: ex.muscleGroups || [],
-          })) as Exercise[],
+          })),
           templateId: w.templateId,
           routineInstanceId: w.routineInstanceId,
         };
@@ -251,10 +252,10 @@ export default function WorkoutsPage() {
       dbTemplates.map((t) => ({
         id: t.id,
         name: t.name,
-        exercises: (t.exercises as any[]).map((ex: any) => ({
+        exercises: t.exercises.map((ex) => ({
           ...ex,
           muscleGroups: ex.muscleGroups || [],
-        })) as Exercise[],
+        })),
       })),
     [dbTemplates],
   );
@@ -290,7 +291,6 @@ export default function WorkoutsPage() {
   };
 
   const {
-    createTemplateMutation,
     updateTemplateMutation,
     deleteTemplateMutation,
     createMutation,
@@ -398,7 +398,7 @@ export default function WorkoutsPage() {
         if (hasFutureScheduled) {
           setUpdateFutureTemplateId(templateId);
         }
-      } catch (error) {
+      } catch {
         toast({
           title: "Error",
           description: "Failed to update workout. Please try again.",
@@ -1367,7 +1367,7 @@ export default function WorkoutsPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Workout</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{workoutToDelete?.name}"? This action cannot be undone.
+                Are you sure you want to delete &quot;{workoutToDelete?.name}&quot;? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1388,7 +1388,7 @@ export default function WorkoutsPage() {
             <DialogHeader>
               <DialogTitle>Schedule Again</DialogTitle>
               <DialogDescription>
-                Pick a date to schedule "{scheduleAgainWorkout?.name}"
+                Pick a date to schedule &quot;{scheduleAgainWorkout?.name}&quot;
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">

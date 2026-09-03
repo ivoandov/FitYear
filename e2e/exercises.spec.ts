@@ -5,7 +5,7 @@ import { createTempUser, deleteTempUser, seedSettings, seedExercise } from "./he
 // cannot edit or delete it (owner-only) — and the default library is read-only.
 test("sees another user's custom exercise but cannot edit or delete it", async ({
   page,
-  account,
+  account: _account,
 }) => {
   const owner = await createTempUser("e2e-owner");
   const exName = `ZZShared ${Date.now()}`;

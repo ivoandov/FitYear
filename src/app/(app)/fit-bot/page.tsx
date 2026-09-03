@@ -928,7 +928,7 @@ function ChecklistRow({
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">{title}</div>
-            <div className="mt-0.5 font-mono text-[11px] text-[#E8544E]">{sub} · couldn't build</div>
+            <div className="mt-0.5 font-mono text-[11px] text-[#E8544E]">{sub} · couldn&apos;t build</div>
           </div>
           <button
             type="button"

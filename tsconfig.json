@@ -31,5 +31,5 @@
     "**/*.mts"
   ],
   "// exclude: ios-shell": "The Capacitor shell is a SEPARATE npm project with its own package.json, and Vercel only installs this one's dependencies. Without this line `capacitor.config.ts` is part of the program, its `import type { CapacitorConfig } from \"@capacitor/cli\"` cannot resolve on Vercel, and `next build` dies at Running TypeScript. It passes locally only because ios-shell/node_modules exists on the dev machine, which is why this got past the recipe.",
-  "exclude": ["node_modules", "migration", "e2e", "playwright.config.ts", "ios-shell"]
+  "exclude": ["node_modules", "migration", "e2e", "playwright.config.ts", "ios-shell", "store-shots"]
 }

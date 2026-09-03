@@ -49,7 +49,7 @@ test("create API rejects a near-duplicate name and honors force", async ({
  * constructed name be saved in its corrected form rather than fixed later, so
  * manual adds, imports and FitBot all converge on one spelling.
  */
-test("a sloppy name is stored in canonical form", async ({ page, account }) => {
+test("a sloppy name is stored in canonical form", async ({ page, account: _account }) => {
   await page.goto("/");
 
   const create = async (name: string) => {

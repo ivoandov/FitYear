@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Minus, Plus } from "lucide-react";
 import { LB_PER_KG, type WeightUnit } from "@/lib/units";
 import type { SetData } from "@/lib/workout-stats";
-import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
+import { usesDistance, usesTime } from "@/lib/exercise-types";
 
 type Field = "weight" | "reps" | "distance" | "time";
 

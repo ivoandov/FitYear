@@ -1,3 +1,4 @@
+import type { SetData } from "@/lib/workout-stats";
 export type ExerciseType = "weight_reps" | "distance_time";
 
 // App-side Exercise type. The seeded library used to live here but is now in
@@ -18,7 +19,7 @@ export interface Exercise {
   createdAt?: string | Date | null;
   // Computed/runtime-only fields used by the editor and tracking screens.
   // Not persisted as columns — sets data lives on completed_workouts.
-  setsData?: unknown[];
+  setsData?: SetData[];
   completedSets?: number;
   // Index signature to match the legacy StoredExercise interface used by
   // useExerciseDetails — allows extra properties to flow through enrichment.

@@ -10,7 +10,7 @@ import { parseServerDate, localDateKey } from "@/lib/date";
 import { type Exercise } from "@/data/exercises";
 import { useAuth } from "@/hooks/use-auth";
 
-interface WorkoutExercise extends Exercise {
+export interface WorkoutExercise extends Exercise {
   instanceId: string; // Unique ID for this exercise instance in the workout (stable across edits/reorders)
   sets: number;
   defaultWeight: number;
@@ -71,6 +71,52 @@ function parseTargetReps(reps?: string): number | null {
   return m ? parseInt(m[0], 10) : null;
 }
 
+/** What the workout and history editors hand back. Deliberately looser than
+ *  `Exercise`: those screens rebuild each row from what is on the page, so
+ *  catalog-only fields are absent, and `sets`/`defaultWeight`/`defaultReps`
+ *  are per-workout values that may or may not have been set yet. */
+/** What the WORKOUT editor and the add-exercise picker hand to
+ *  `updateActiveWorkout`: a real catalog exercise (they come from the picker,
+ *  so identity is guaranteed) whose per-workout numbers are optional, because
+ *  a freshly picked exercise has not been given any yet. `carry` below is what
+ *  fills them in without clobbering a prescription the user already has. */
+export type WorkoutExerciseInput = Exercise & {
+  instanceId?: string;
+  sets?: number;
+  defaultWeight?: number;
+  defaultReps?: number;
+  plannedSets?: number;
+  plannedReps?: number | null;
+  plannedRest?: number;
+  plannedLoadLbs?: number | null;
+};
+
+export type EditedExercise = Omit<Partial<WorkoutExercise>, "setsData"> & {
+  name: string;
+  setsData?: EditedSet[];
+};
+
+/** A set mid-edit. Every field is optional because the History editor binds its
+ *  inputs to `value ?? ""` and writes `undefined` when one is cleared - storing
+ *  0 there is what made an auto-added row impossible to clear (2026-07-16). The
+ *  save path coerces the blanks by exercise type, so the loose shape never
+ *  reaches the database; it only ever exists between a keystroke and a save. */
+export type EditedSet = Partial<SetData>;
+
+/** A completed-workout row exactly as `/api/completed-workouts` returns it,
+ *  before the mapping below turns it into a CompletedWorkoutRecord. */
+export interface CompletedWorkoutRow {
+  id: string;
+  displayId: string;
+  templateId?: string | null;
+  name: string;
+  exercises: Exercise[];
+  completedAt?: string | null;
+  startedAt?: string | null;
+  durationSeconds?: number | null;
+  calendarEventId?: string | null;
+}
+
 export interface CompletedWorkoutRecord {
   id: string;
   displayId: string;
@@ -123,9 +169,9 @@ interface WorkoutContextType {
   restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
   /** Reopen a finished workout and keep training it. False if there is nothing to resume. */
   resumeWorkout: (completedWorkout: CompletedWorkoutRecord) => boolean;
-  updateCompletedWorkout: (id: string, name: string, exercises?: any[], completedAt?: Date, durationSeconds?: number) => Promise<boolean>;
+  updateCompletedWorkout: (id: string, name: string, exercises?: EditedExercise[], completedAt?: Date, durationSeconds?: number) => Promise<boolean>;
   deleteCompletedWorkout: (id: string) => void;
-  updateActiveWorkout: (name: string, exercises: Exercise[]) => void;
+  updateActiveWorkout: (name: string, exercises: WorkoutExerciseInput[]) => void;
   saveTrackingProgress: (progress: TrackingProgress) => void;
   clearTrackingProgress: () => void;
   flushProgress: () => void;
@@ -486,11 +532,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     }
   }, [saveToLocalStorage, saveToServerImmediate]);
 
-  const { data: completedWorkoutsData = [], isLoading } = useQuery<any[]>({
+  const { data: completedWorkoutsData = [], isLoading } = useQuery<CompletedWorkoutRow[]>({
     queryKey: ["/api/completed-workouts"],
   });
 
-  const completedWorkouts: CompletedWorkoutRecord[] = completedWorkoutsData.map((w: any) => {
+  const completedWorkouts: CompletedWorkoutRecord[] = completedWorkoutsData.map((w) => {
     // Robustly parse the server timestamp (no-tz strings treated as UTC).
     const completedAt = w.completedAt ? parseServerDate(w.completedAt) : new Date();
 
@@ -499,11 +545,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       displayId: w.displayId,
       templateId: w.templateId || null,
       name: w.name,
-      exercises: (w.exercises as any[]).map((ex: any) => ({
+      exercises: w.exercises.map((ex) => ({
         ...ex,
         muscleGroups: ex.muscleGroups || [],
         setsData: ex.setsData || [],
-      })) as Exercise[],
+      })),
       completedAt,
       // Carried through so History can show (and correct) the training time.
       // These were dropped here, which is why duration_seconds was written on
@@ -560,11 +606,11 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   });
 
   const updateCompletedMutation = useMutation({
-    mutationFn: async ({ id, name, exercises, completedAt, localDate, durationSeconds }: { id: string; name: string; exercises?: any[]; completedAt?: string; localDate?: string; durationSeconds?: number }) => {
+    mutationFn: async ({ id, name, exercises, completedAt, localDate, durationSeconds }: { id: string; name: string; exercises?: EditedExercise[]; completedAt?: string; localDate?: string; durationSeconds?: number }) => {
       return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt, localDate, durationSeconds });
     },
     onSuccess: (_, variables) => {
-      queryClient.setQueryData(["/api/completed-workouts"], (oldData: any[] | undefined) => {
+      queryClient.setQueryData(["/api/completed-workouts"], (oldData: CompletedWorkoutRow[] | undefined) => {
         if (!oldData) return oldData;
         return oldData.map(workout => 
           workout.id === variables.id 
@@ -873,7 +919,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     });
   }, [startWorkout]);
 
-  const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: any[], completedAt?: Date, durationSeconds?: number): Promise<boolean> => {
+  const updateCompletedWorkout = useCallback(async (id: string, name: string, exercises?: EditedExercise[], completedAt?: Date, durationSeconds?: number): Promise<boolean> => {
     try {
       const completedAtStr = completedAt ? completedAt.toISOString() : undefined;
       // Local calendar day alongside the UTC timestamp, so the server moves the
@@ -891,13 +937,13 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     deleteCompletedMutation.mutate(id);
   }, [deleteCompletedMutation]);
 
-  const updateActiveWorkout = useCallback((name: string, exercises: Exercise[]) => {
+  const updateActiveWorkout = useCallback((name: string, exercises: WorkoutExerciseInput[]) => {
     if (activeWorkout) {
       // Build a pool of old instanceIds keyed by exercise id (in order), so we
       // can hand them out to matching exercises that somehow lost their instanceId.
       const oldInstanceIdPool = new Map<string, string[]>();
       for (const ex of activeWorkout.exercises) {
-        const iid = (ex as any).instanceId;
+        const iid = ex.instanceId;
         if (!iid) continue;
         if (!oldInstanceIdPool.has(ex.id)) oldInstanceIdPool.set(ex.id, []);
         oldInstanceIdPool.get(ex.id)!.push(iid);
@@ -906,9 +952,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
 
       // Prior state by instanceId, so an edit can keep each exercise's own
       // prescription instead of overwriting it.
-      const priorByInstance = new Map<string, any>();
+      const priorByInstance = new Map<string, WorkoutExercise>();
       for (const ex of activeWorkout.exercises) {
-        const iid = (ex as any).instanceId;
+        const iid = ex.instanceId;
         if (iid) priorByInstance.set(iid, ex);
       }
 
@@ -919,7 +965,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       // they were mid-set. Carry the exercise's own values through, fall back to
       // whatever the instance already had, and only then to the old constants
       // (which is what a genuinely new exercise from the picker still gets).
-      const carry = (ex: any, prior: any) => ({
+      const carry = (ex: WorkoutExerciseInput, prior: WorkoutExercise | undefined) => ({
         sets: ex.sets ?? prior?.sets ?? 3,
         defaultWeight: ex.defaultWeight ?? prior?.defaultWeight ?? 135,
         defaultReps: ex.defaultReps ?? prior?.defaultReps ?? 10,
@@ -929,7 +975,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
         // The editor passes exercises straight from selectedExercises, which was
         // seeded from activeWorkout.exercises, so each already carries its instanceId.
         // Honour that first – this is the correct fix for the deletion-shift bug.
-        const existingInstanceId = (ex as any).instanceId as string | undefined;
+        const existingInstanceId = ex.instanceId;
         if (existingInstanceId) {
           const prior = priorByInstance.get(existingInstanceId);
           return { ...ex, instanceId: existingInstanceId, ...carry(ex, prior) };

@@ -19,7 +19,7 @@
  * UTC on the right day is left alone.
  */
 import postgres from "postgres";
-import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { localDateKeyInZone } from "@/lib/date";
 
 const APPLY = process.argv.includes("--apply");
 const FALLBACK_TZ = "America/Los_Angeles";
@@ -62,8 +62,7 @@ async function main() {
       // The stored instant is local midnight in the creating zone, so resolving
       // it there recovers the day that was actually intended.
       const intendedKey = localDateKeyInZone(new Date(`${datePart}T${timePart}Z`), tz);
-      const next = scheduledDateFromKey(intendedKey);
-      planned.push({
+        planned.push({
         id: r.id,
         name: r.name,
         from: r.literal,

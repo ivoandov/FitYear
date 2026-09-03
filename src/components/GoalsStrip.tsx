@@ -88,9 +88,6 @@ export function GoalsStrip() {
   // `totalWorkouts` is written at routine start from the non-rest entries.
   const totalDays =
     activeRoutine?.totalWorkouts || activeRoutine?.durationDays || programLength || 0;
-  const dayNumber = activeRoutine
-    ? activeRoutine.completedWorkouts + 1
-    : null;
   const programPct =
     activeRoutine && totalDays
       ? Math.min(100, Math.round((activeRoutine.completedWorkouts / totalDays) * 100))

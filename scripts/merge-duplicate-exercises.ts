@@ -46,7 +46,6 @@ import { join } from "node:path";
 import { normalizeMuscleGroups } from "../src/lib/muscle-groups";
 import { normalizeExerciseName, matchExercise } from "../src/lib/exercise-match";
 
-type Sql = ReturnType<typeof postgres>;
 
 interface MergeSpec {
   keepId: string;

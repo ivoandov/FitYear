@@ -16,7 +16,7 @@ test("continuing a finished workout keeps ONE workout and adds to it", async ({
   page,
   account,
 }) => {
-  const { workoutId } = await seedPartialWorkout(account.id, "ZZ Resume Session");
+  await seedPartialWorkout(account.id, "ZZ Resume Session");
 
   const countWorkouts = async () => {
     const [row] = await sql`

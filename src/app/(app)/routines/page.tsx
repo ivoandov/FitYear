@@ -20,6 +20,7 @@ import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
+import type { Exercise } from "@/data/exercises";
 
 interface RoutineWithEntries extends Routine {
   entries: RoutineEntry[];
@@ -147,10 +148,25 @@ export default function RoutinesPage() {
   const [applyDuration, setApplyDuration] = useState<number>(7);
 
   const [routineName, setRoutineName] = useState("");
+  // A day in the routine builder. `exercises` is the template's jsonb array,
+  // carried verbatim so the entry can be saved without re-reading the template.
+  type RoutineUpdate = {
+    name?: string;
+    description?: string;
+    defaultDurationDays?: number;
+    isPublic?: boolean;
+    entries?: RoutineEntryDraft[];
+  };
+  type RoutineEntryDraft = {
+    dayIndex: number;
+    workoutTemplateId: string | null;
+    workoutName: string | null;
+    exercises: Exercise[] | null;
+  };
   const [routineDescription, setRoutineDescription] = useState("");
   const [routineDuration, setRoutineDuration] = useState(7);
   const [routineIsPublic, setRoutineIsPublic] = useState(false);
-  const [routineEntries, setRoutineEntries] = useState<{ dayIndex: number; workoutTemplateId: string | null; workoutName: string | null; exercises: any[] | null }[]>([]);
+  const [routineEntries, setRoutineEntries] = useState<RoutineEntryDraft[]>([]);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [updateActiveRoutineId, setUpdateActiveRoutineId] = useState<string | null>(null);
 
@@ -171,7 +187,7 @@ export default function RoutinesPage() {
   });
 
   const createRoutineMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; defaultDurationDays: number; isPublic: boolean; entries: any[] }) => {
+    mutationFn: async (data: { name: string; description?: string; defaultDurationDays: number; isPublic: boolean; entries: RoutineEntryDraft[] }) => {
       return apiRequest("POST", "/api/routines", data);
     },
     onSuccess: () => {
@@ -187,7 +203,7 @@ export default function RoutinesPage() {
   });
 
   const updateRoutineMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: RoutineUpdate }) => {
       return apiRequest("PUT", `/api/routines/${id}`, data);
     },
     onSuccess: () => {
@@ -220,7 +236,7 @@ export default function RoutinesPage() {
       const response = await apiRequest("POST", `/api/routines/${id}/start`, { startDate, durationDays });
       return response.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { createdCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/routine-instances/active"] });
       toast({
@@ -259,7 +275,7 @@ export default function RoutinesPage() {
       const response = await apiRequest("POST", `/api/routines/${routineId}/update-active-instances`);
       return response.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { updatedCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
       toast({
         title: "Active routines updated",
@@ -312,11 +328,11 @@ export default function RoutinesPage() {
         dayIndex: e.dayIndex,
         workoutTemplateId: e.workoutTemplateId,
         workoutName: e.workoutName,
-        exercises: e.exercises as any[] | null,
+        exercises: e.exercises as Exercise[] | null,
       })));
       setCurrentWeekOffset(0);
       setIsBuilderOpen(true);
-    } catch (error) {
+    } catch {
       toast({ title: "Failed to load routine", variant: "destructive" });
     }
   };
@@ -331,7 +347,7 @@ export default function RoutinesPage() {
       setApplyStartDate(new Date());
       setApplyDuration(fullRoutine.defaultDurationDays);
       setIsApplyModalOpen(true);
-    } catch (error) {
+    } catch {
       toast({ title: "Failed to load routine", variant: "destructive" });
     }
   };
@@ -372,7 +388,7 @@ export default function RoutinesPage() {
         } catch (fetchError) {
           console.error("Failed to check for active instances:", fetchError);
         }
-      } catch (error) {
+      } catch {
         // Error toast is handled by mutation onError
       }
     } else {
@@ -411,7 +427,7 @@ export default function RoutinesPage() {
         dayIndex,
         workoutTemplateId: templateId,
         workoutName: template?.name || null,
-        exercises: template?.exercises as any[] | null || null,
+        exercises: (template?.exercises as Exercise[] | null) || null,
       };
 
       if (existing) {
@@ -985,7 +1001,7 @@ export default function RoutinesPage() {
             <DialogHeader>
               <DialogTitle>Start Routine</DialogTitle>
               <DialogDescription>
-                Start "{applyingRoutine?.name}" and track your progress.
+                Start &quot;{applyingRoutine?.name}&quot; and track your progress.
               </DialogDescription>
             </DialogHeader>
 
@@ -1072,7 +1088,7 @@ export default function RoutinesPage() {
             </DialogHeader>
 
             <p className="py-2 text-sm text-muted-foreground">
-              Only future workouts that haven't been completed yet will be updated. Past and completed workouts will remain unchanged.
+              Only future workouts that haven&apos;t been completed yet will be updated. Past and completed workouts will remain unchanged.
             </p>
 
             <DialogFooter>

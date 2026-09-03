@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { useTheme } from "@/components/ThemeProvider";
 import { useSettings, type WeekStart, DEFAULT_MUSCLE_GROUPS } from "@/components/SettingsProvider";
 import { isCustomMuscleGroup } from "@/lib/db/schema";
-import { ArrowLeft, Sun, Moon, Monitor, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Link2, Unlink } from "lucide-react";
+import { ArrowLeft, Calendar, Plus, X, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Check, AlertCircle, Link2, Unlink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import {
@@ -96,7 +95,6 @@ function Segmented({
 }
 
 export default function SettingsPage() {
-  const { theme, setTheme } = useTheme();
   const { weekStart, setWeekStart, muscleGroups, addMuscleGroup, removeMuscleGroup, reorderMuscleGroups, setMuscleGroups, restTimerOnManualComplete, setRestTimerOnManualComplete, showKgConversion, setShowKgConversion } = useSettings();
   const [newMuscleGroup, setNewMuscleGroup] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -280,7 +278,7 @@ export default function SettingsPage() {
       return response.json() as Promise<SyncResult>;
     },
     onSuccess: (data) => onSyncSuccess(data, 'Past workouts'),
-    onError: (error: any) => {
+    onError: (error: Error) => {
       setSyncResults(null);
       toast({ title: "Failed to sync past workouts", description: error?.message || "Please try again.", variant: "destructive" });
     },
@@ -351,7 +349,7 @@ export default function SettingsPage() {
         description: data.message,
       });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to sync template history",
         description: error?.message || "Please try again.",
@@ -363,40 +361,6 @@ export default function SettingsPage() {
   const handleMigrateTemplateIds = () => {
     migrateTemplateIdsMutation.mutate();
   };
-
-  const themeOptions = [
-    {
-      value: "light",
-      label: "Light",
-      description: "Default light theme",
-      icon: Sun,
-    },
-    {
-      value: "dark",
-      label: "Dark",
-      description: "Dark theme for low-light environments",
-      icon: Moon,
-    },
-    {
-      value: "system",
-      label: "System",
-      description: "Follows your device settings",
-      icon: Monitor,
-    },
-  ];
-
-  const weekStartOptions = [
-    {
-      value: "sunday",
-      label: "Sunday",
-      description: "Week starts on Sunday",
-    },
-    {
-      value: "monday",
-      label: "Monday",
-      description: "Week starts on Monday",
-    },
-  ];
 
   const handleAddMuscleGroup = () => {
     if (newMuscleGroup.trim()) {
