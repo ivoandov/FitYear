@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useRouter, useSearchParams } from "next/navigation";
 import { enableRestPush, hasRestPush, pushSupported } from "@/lib/push-client";
+import { isNative } from "@/lib/native";
 
 interface CalendarInfo {
   id: string;
@@ -184,13 +185,41 @@ export default function SettingsPage() {
     queryKey: ['/api/user-settings'],
   });
 
+  // When the app returns to the foreground, re-check whether the calendar got
+  // connected. On native the consent screen happens in a SEPARATE browser, so
+  // nothing in this page would otherwise know it finished - and this also
+  // covers the case where the universal link does not hand control back.
+  useEffect(() => {
+    if (!isNative()) return;
+    let cleanup: (() => void) | undefined;
+    void (async () => {
+      const { App } = await import("@capacitor/app");
+      const sub = await App.addListener("appStateChange", ({ isActive }) => {
+        if (!isActive) return;
+        void queryClient.invalidateQueries({ queryKey: ["/api/calendar/status"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/calendar/list"] });
+      });
+      cleanup = () => void sub.remove();
+    })();
+    return () => cleanup?.();
+  }, []);
+
   // Connect calendar mutation
   const connectCalendarMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('GET', '/api/calendar/connect');
       return response.json();
     },
-    onSuccess: (data: { authUrl: string }) => {
+    onSuccess: async (data: { authUrl: string }) => {
+      // Google refuses OAuth inside a WKWebView (`disallowed_useragent`), so on
+      // native the consent screen MUST open in the system browser. The callback
+      // identifies the user from a signed state rather than a cookie, because
+      // Safari does not share the WebView's cookie jar.
+      if (isNative()) {
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.open({ url: data.authUrl });
+        return;
+      }
       window.location.href = data.authUrl;
     },
     onError: (error) => {

@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["2A48NU3MH4.ai.flyhi.fityear"],
+        "components": [
+          { "/": "/settings*", "comment": "the Google Calendar callback returns here" },
+          { "/": "/track*", "comment": "tapping a rest-alert notification" },
+          { "/": "/workout-complete/*", "comment": "a shared workout summary" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["2A48NU3MH4.ai.flyhi.fityear"]
+  }
+}

@@ -7,6 +7,10 @@ const PUBLIC_PATHS = [
   "/_next",
   "/favicon.ico",
   "/manifest.json",
+  // iOS fetches this UNAUTHENTICATED, from Apple's CDN, to decide whether this
+  // app may claim links to fityear.flyhi.ai. A 307 to the login HTML here means
+  // universal links silently never work.
+  "/.well-known/apple-app-site-association",
   // The legal pages must render with no session: App Review reads them, Google's
   // OAuth consent screen links to the privacy policy, and a signed-out visitor
   // has to be able to read both before deciding to sign up.

@@ -70,7 +70,20 @@ const nextConfig: NextConfig = {
   // confusion between the two URLs. Includes the team-suffixed alias because
   // Vercel exposes both fityear.vercel.app and fityear-<team>.vercel.app.
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      {
+        // Apple's CDN REQUIRES application/json for the app-site-association
+        // file, and it deliberately has no file extension, so Next would
+        // otherwise serve it as octet-stream and universal links would silently
+        // never associate. Also kept out of the CSP: it is data, not a document.
+        source: "/.well-known/apple-app-site-association",
+        headers: [
+          { key: "Content-Type", value: "application/json" },
+          { key: "Cache-Control", value: "public, max-age=3600" },
+        ],
+      },
+      { source: "/:path*", headers: securityHeaders },
+    ];
   },
   async redirects() {
     return [

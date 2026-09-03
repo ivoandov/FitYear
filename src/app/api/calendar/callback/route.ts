@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleCalendarCallback } from "@/lib/calendar";
 import { requireUser } from "@/lib/api/auth";
+import { verifyCalendarState } from "@/lib/calendar-state";
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
@@ -21,15 +22,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { user } = await requireUser();
-    // CSRF guard: getCalendarAuthUrl sets state = userId. Require it to match the
-    // authenticated user before exchanging the code, so an attacker can't attach
-    // their own Google tokens to a victim's session (login CSRF).
-    if (state !== user.id) {
+    // The SIGNED state is the identity, not the session cookie. Google sends the
+    // user back here through whichever browser showed the consent screen; from
+    // the native shell that is the system browser, which has none of the app's
+    // cookies. The signature proves this state was minted by this server, for
+    // that user, within the last ten minutes, and has not been edited - which
+    // is the same CSRF guarantee the old `state === user.id` check gave, minus
+    // the cookie dependency.
+    const verified = verifyCalendarState(state);
+    if (!verified.ok) {
+      settingsUrl.searchParams.set("calendar_error", `state_${verified.reason}`);
+      return NextResponse.redirect(settingsUrl);
+    }
+
+    // Belt and braces for the browser case: when a session IS present it must
+    // be the same user the state names, so a signed state cannot be used from
+    // somebody else's logged-in browser.
+    const session = await requireUser().catch(() => null);
+    if (session && session.user.id !== verified.userId) {
       settingsUrl.searchParams.set("calendar_error", "state_mismatch");
       return NextResponse.redirect(settingsUrl);
     }
-    await handleCalendarCallback(code, user.id);
+
+    await handleCalendarCallback(code, verified.userId);
     settingsUrl.searchParams.set("calendar_connected", "true");
     return NextResponse.redirect(settingsUrl);
   } catch (e) {

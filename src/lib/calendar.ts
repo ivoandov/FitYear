@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { googleCalendarTokens } from "@/lib/db/schema";
 import { encryptToken, decryptToken, isEncrypted } from "@/lib/token-crypto";
 import { localDateKey } from "@/lib/date";
+import { signCalendarState } from "@/lib/calendar-state";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
@@ -33,7 +34,11 @@ export function getCalendarAuthUrl(userId: string): string {
     access_type: "offline",
     scope: ["https://www.googleapis.com/auth/calendar"],
     prompt: "consent",
-    state: userId,
+    // SIGNED, not the bare user id. The callback has to identify the user
+    // without a session cookie: on native the consent screen opens in the
+    // system browser (Google refuses OAuth inside a WKWebView) and Safari does
+    // not share the WebView's cookies. See lib/calendar-state.
+    state: signCalendarState(userId),
   });
 }
 
