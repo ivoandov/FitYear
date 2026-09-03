@@ -45,10 +45,18 @@ const config: CapacitorConfig = {
       presentationOptions: ["badge", "sound", "banner", "list"],
     },
     SplashScreen: {
-      // Hidden from JS once the remote page has painted, so the splash covers
-      // the initial network load instead of flashing a blank WebView.
-      launchAutoHide: false,
+      // Auto-hides on a timer, and the web app ALSO calls hide() as soon as it
+      // mounts (whichever comes first wins).
+      //
+      // launchAutoHide:false was wrong here and shipped a permanently frozen
+      // logo: this app's JS comes from the NETWORK, so making the splash depend
+      // on it means a slow or failed load leaves the splash up forever - it
+      // would even cover the offline page, which is the one screen that exists
+      // for exactly that situation. A timer cannot get stuck.
+      launchAutoHide: true,
+      launchShowDuration: 3000,
       backgroundColor: "#0B0B0A",
+      showSpinner: false,
     },
     // CapacitorCookies and CapacitorHttp are deliberately NOT enabled: both
     // override WebKit's own cookie and fetch handling and both have open
