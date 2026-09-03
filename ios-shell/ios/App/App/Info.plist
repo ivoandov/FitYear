@@ -26,6 +26,19 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<!-- Google's iOS client id, REVERSED. This is how Google hands the
+			     sign-in result back to the app; without it the consent screen
+			     completes and nothing returns. It must match
+			     GOOGLE_IOS_CLIENT_ID in src/lib/native-auth.ts. -->
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.536532187380-qqbcstr3phc246jc4mic2svrfqund45i</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
