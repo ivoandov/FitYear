@@ -16,6 +16,9 @@ const PUBLIC_PATHS = [
   // has to be able to read both before deciding to sign up.
   "/privacy",
   "/terms",
+  // Apple requires a support URL reachable by anyone, including a reviewer who
+  // is not signed in.
+  "/support",
   // The service worker script must stay fetchable even when the session cookie
   // has expired: the browser re-fetches /sw.js on its own schedule, and a 307
   // to the login HTML would replace the worker with a broken one.

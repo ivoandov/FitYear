@@ -23,6 +23,9 @@ APP_TARGET    = "App"
 WIDGET_TARGET = "FitYearWidgets"
 WIDGET_DIR    = File.join(ROOT, "ios/App", WIDGET_TARGET)
 APP_BUNDLE_ID = "ai.flyhi.fityear"
+TEAM_ID       = "2A48NU3MH4"
+# Relative to SRCROOT, which is ios/App.
+ENTITLEMENTS  = "App/App.entitlements"
 # Live Activities need 16.1; ActivityContent(state:staleDate:) needs 16.2, and
 # the stale date is what swaps the countdown for "Done" with no push.
 WIDGET_MIN_IOS = "16.2"
@@ -123,6 +126,63 @@ if widget_target.nil?
   end
 else
   puts "  = target #{WIDGET_TARGET} already present"
+end
+
+# --- 3. Release signing -----------------------------------------------------
+# MANUAL, not automatic. Automatic signing asks Apple for a DEVELOPMENT profile
+# and dies with "your team has no devices from which to generate a provisioning
+# profile" - an App Store archive on a machine with no registered device cannot
+# use it. The two App Store profiles already exist (fastlane `certs` and
+# `widget_certs` made them); this points each target at its own.
+RELEASE_SIGNING = {
+  APP_TARGET => "ai.flyhi.fityear AppStore",
+  WIDGET_TARGET => "ai.flyhi.fityear.FitYearWidgets AppStore",
+}.freeze
+
+RELEASE_SIGNING.each do |target_name, profile|
+  target = project.targets.find { |t| t.name == target_name }
+  next if target.nil?
+  target.build_configurations.each do |config|
+    next unless config.name == "Release"
+    wanted = {
+      "CODE_SIGN_STYLE" => "Manual",
+      "CODE_SIGN_IDENTITY" => "Apple Distribution",
+      "PROVISIONING_PROFILE_SPECIFIER" => profile,
+      "DEVELOPMENT_TEAM" => TEAM_ID,
+    }
+    next if wanted.all? { |k, v| config.build_settings[k] == v }
+    config.build_settings.merge!(wanted)
+    puts "  + Release signing on #{target_name}"
+    changed = true
+  end
+end
+
+# --- 4. Entitlements --------------------------------------------------------
+# App/App.entitlements has existed since the push work and was never referenced
+# by any build configuration, so every signed build came out with NO
+# aps-environment and NO associated-domains: APNs rest alerts dead, and the
+# calendar's universal link unable to return to the app. Nothing catches this
+# on the simulator, which has neither push nor universal links, and the
+# entitlements only become visible once you inspect a signed .ipa.
+# The widget extension needs no entitlements of its own.
+app_target.build_configurations.each do |config|
+  next if config.build_settings["CODE_SIGN_ENTITLEMENTS"] == ENTITLEMENTS
+  config.build_settings["CODE_SIGN_ENTITLEMENTS"] = ENTITLEMENTS
+  puts "  + CODE_SIGN_ENTITLEMENTS on #{APP_TARGET} #{config.name}"
+  changed = true
+end
+
+# --- 5. Signing identity ----------------------------------------------------
+# `cap add ios` generates a project with no DEVELOPMENT_TEAM, which is fine
+# forever on the simulator (CODE_SIGNING_ALLOWED=NO) and fails the moment you
+# archive: "Signing for X requires a development team", once per target. Set at
+# the PROJECT level so both the app and the extension inherit it.
+project.build_configurations.each do |config|
+  if config.build_settings["DEVELOPMENT_TEAM"] != TEAM_ID
+    config.build_settings["DEVELOPMENT_TEAM"] = TEAM_ID
+    puts "  + DEVELOPMENT_TEAM on project #{config.name}"
+    changed = true
+  end
 end
 
 if changed

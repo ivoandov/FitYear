@@ -8,3 +8,5 @@ ios/DerivedData/
 xcuserdata/
 fastlane/report.xml
 fastlane/Preview.html
+# gym output. The signed .ipa is 10MB and is rebuilt in ~100 seconds.
+build/

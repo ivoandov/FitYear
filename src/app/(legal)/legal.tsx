@@ -35,8 +35,8 @@ export function LegalPage({
       </div>
       <p className="mt-14 border-t border-divider pt-6 text-[13px] text-tertiary-foreground">
         Questions? Email{" "}
-        <a href="mailto:ivo@marketeq.co" className="text-primary">
-          ivo@marketeq.co
+        <a href="mailto:ivo@flyhi.ai" className="text-primary">
+          ivo@flyhi.ai
         </a>
         .
       </p>

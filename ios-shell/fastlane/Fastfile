@@ -23,6 +23,50 @@ platform :ios do
     sigh(api_key: key, app_identifier: "ai.flyhi.fityear", output_path: KEY_STORE, filename: "FitYear_AppStore.mobileprovision")
   end
 
+  desc "Archive a signed App Store build (no upload). Needs no App Store record."
+  lane :archive do
+    # -allowProvisioningUpdates lets xcodebuild create and refresh the profiles
+    # it needs through the API key, which is what makes this work with nobody
+    # signed into Xcode. Both targets sign: the app AND the widget extension,
+    # which has its own App ID (see widget_certs).
+    #
+    # Signing is MANUAL and lives in the project (see add-live-activity-target.rb).
+    # `-allowProvisioningUpdates` is deliberately NOT used: it makes xcodebuild
+    # ask Apple for a DEVELOPMENT profile, which fails on a machine with no
+    # registered device ("your team has no devices..."), even though what an
+    # archive actually needs is the App Store profile that already exists.
+    gym(
+      project: "ios/App/App.xcodeproj",
+      scheme: "App",
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "FitYear.ipa",
+      clean: false,
+      export_team_id: "2A48NU3MH4",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          "ai.flyhi.fityear" => "ai.flyhi.fityear AppStore",
+          "ai.flyhi.fityear.FitYearWidgets" => "ai.flyhi.fityear.FitYearWidgets AppStore",
+        },
+      },
+    )
+  end
+
+  desc "Upload the archived build to TestFlight. REQUIRES the App Store Connect app record to exist."
+  lane :beta do
+    key = asc_key
+    pilot(
+      api_key: key,
+      ipa: "build/FitYear.ipa",
+      skip_waiting_for_build_processing: true,
+      # Internal testers get it instantly; an EXTERNAL group (Cori) needs the
+      # build to clear Beta App Review first, which is a separate submission.
+      distribute_external: false,
+    )
+  end
+
   desc "Register the widget extension's App ID and its App Store profile"
   lane :widget_certs do
     key = asc_key

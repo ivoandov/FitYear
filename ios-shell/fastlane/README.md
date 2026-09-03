@@ -23,6 +23,22 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Create (or reuse) the Apple Distribution certificate and the App Store provisioning profile
 
+### ios archive
+
+```sh
+[bundle exec] fastlane ios archive
+```
+
+Archive a signed App Store build (no upload). Needs no App Store record.
+
+### ios beta
+
+```sh
+[bundle exec] fastlane ios beta
+```
+
+Upload the archived build to TestFlight. REQUIRES the App Store Connect app record to exist.
+
 ### ios widget_certs
 
 ```sh
