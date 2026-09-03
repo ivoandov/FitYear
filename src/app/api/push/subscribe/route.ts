@@ -31,8 +31,11 @@ function isPushServiceEndpoint(raw: string): boolean {
   return PUSH_HOSTS.some((re) => re.test(url.hostname));
 }
 
-// Shape of PushSubscription.toJSON().
-const PostSchema = z.object({
+// Two shapes, because there are two delivery channels. A browser sends the
+// output of PushSubscription.toJSON(); the iOS app has no Web Push at all (it
+// does not exist inside a WKWebView) and sends an APNs device token instead.
+const WebPushSchema = z.object({
+  kind: z.literal("webpush").optional(),
   endpoint: z
     .string()
     .url()
@@ -44,24 +47,50 @@ const PostSchema = z.object({
   }),
 });
 
+// An APNs token is 32 bytes hex today, but Apple has changed the length before
+// and says not to hard-code it, so this bounds it rather than pinning it.
+const ApnsSchema = z.object({
+  kind: z.literal("apns"),
+  token: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/, "an APNs device token is hexadecimal")
+    .min(32)
+    .max(200),
+});
+
+const PostSchema = z.union([ApnsSchema, WebPushSchema]);
+
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
   const body = PostSchema.parse(await request.json());
 
-  // The endpoint IS the device identity, so re-subscribing (or a device moving
-  // between accounts) updates in place rather than accumulating rows.
+  // The endpoint (or the device token) IS the device identity, so re-subscribing
+  // - or a device moving between accounts - updates in place rather than
+  // accumulating rows that would all buzz the same phone.
+  if ("kind" in body && body.kind === "apns") {
+    await db
+      .insert(pushSubscriptions)
+      .values({ userId: user.id, kind: "apns", apnsToken: body.token })
+      .onConflictDoUpdate({
+        target: pushSubscriptions.apnsToken,
+        set: { userId: user.id, kind: "apns" },
+      });
+    return { ok: true, kind: "apns" };
+  }
+
   await db
     .insert(pushSubscriptions)
     .values({
       userId: user.id,
+      kind: "webpush",
       endpoint: body.endpoint,
       p256dh: body.keys.p256dh,
       auth: body.keys.auth,
     })
     .onConflictDoUpdate({
       target: pushSubscriptions.endpoint,
-      set: { userId: user.id, p256dh: body.keys.p256dh, auth: body.keys.auth },
+      set: { userId: user.id, kind: "webpush", p256dh: body.keys.p256dh, auth: body.keys.auth },
     });
 
-  return { ok: true };
+  return { ok: true, kind: "webpush" };
 });

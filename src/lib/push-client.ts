@@ -8,6 +8,8 @@
  * `pushSupported()` is false and the UI says so rather than silently failing.
  */
 
+import { isNative } from "@/lib/native";
+
 /** VAPID keys travel as base64url; PushManager wants raw bytes. */
 export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -21,6 +23,10 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuf
 }
 
 export function pushSupported(): boolean {
+  // The native shell has no Web Push at all - PushManager does not exist inside
+  // a WKWebView - but it CAN receive alerts, via APNs. So support is true there
+  // for a completely different reason, and the UI should offer the toggle.
+  if (isNative()) return true;
   return (
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&
@@ -55,6 +61,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 export async function enableRestPush(): Promise<
   { ok: true } | { ok: false; reason: "unsupported" | "denied" | "failed" }
 > {
+  if (isNative()) return enableNativePush();
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   if (!key) return { ok: false, reason: "unsupported" };
@@ -86,8 +93,60 @@ export async function enableRestPush(): Promise<
   }
 }
 
-/** Whether this browser already has a live push subscription. */
+/**
+ * The iOS path: ask the OS, register with APNs, and hand the DEVICE TOKEN to
+ * the same /api/push/subscribe route the browser uses. The server stores it
+ * with kind "apns" and `sendPushToUser` fans out to both channels, so the
+ * sleeping rest-alert workflow is untouched.
+ */
+async function enableNativePush(): Promise<
+  { ok: true } | { ok: false; reason: "unsupported" | "denied" | "failed" }
+> {
+  try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
+
+    const permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== "granted") return { ok: false, reason: "denied" };
+
+    // register() resolves as soon as it has ASKED Apple; the token arrives on
+    // the 'registration' event afterwards, so wait for that rather than
+    // assuming success.
+    const token = await new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), 15_000);
+      void PushNotifications.addListener("registration", (t) => {
+        clearTimeout(timer);
+        resolve(t.value);
+      });
+      void PushNotifications.addListener("registrationError", () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+      void PushNotifications.register();
+    });
+    if (!token) return { ok: false, reason: "failed" };
+
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "apns", token }),
+    });
+    return res.ok ? { ok: true } : { ok: false, reason: "failed" };
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+}
+
+/** Whether this device already has a live push subscription. */
 export async function hasRestPush(): Promise<boolean> {
+  if (isNative()) {
+    try {
+      const { PushNotifications } = await import("@capacitor/push-notifications");
+      const p = await PushNotifications.checkPermissions();
+      return p.receive === "granted";
+    } catch {
+      return false;
+    }
+  }
   if (!pushSupported() || Notification.permission !== "granted") return false;
   try {
     const registration = await navigator.serviceWorker.getRegistration();

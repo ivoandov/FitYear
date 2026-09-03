@@ -18,8 +18,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@base-ui/react": "^1.4.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/push-notifications": "^8.1.2",
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^2.14.0",
+    "@parse/node-apn": "^7.1.0",
     "@radix-ui/react-visually-hidden": "^1.2.11",
     "@sentry/nextjs": "^10.69.0",
     "@supabase/ssr": "^0.12.4",

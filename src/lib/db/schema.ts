@@ -349,9 +349,24 @@ export const pushSubscriptions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    endpoint: text("endpoint").notNull().unique(),
-    p256dh: text("p256dh").notNull(),
-    auth: text("auth").notNull(),
+    /**
+     * Which delivery channel this row is for. Web Push does not exist inside a
+     * WKWebView, so the iOS app registers an APNs device token instead; both
+     * kinds live here so `sendPushToUser` stays the single fan-out point and
+     * the sleeping rest-alert workflow needs no change at all.
+     *
+     * Defaults to 'webpush' so every pre-existing row keeps its meaning.
+     */
+    kind: text("kind").notNull().default("webpush"),
+    /**
+     * NULLABLE since 2026-09-02: an APNs row has a device token, not an
+     * endpoint URL. Still unique, so re-subscribing a browser updates in place.
+     */
+    endpoint: text("endpoint").unique(),
+    p256dh: text("p256dh"),
+    auth: text("auth"),
+    /** APNs device token (hex). Unique, so a re-registering device updates in place. */
+    apnsToken: text("apns_token").unique(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("push_subscriptions_user_id_idx").on(t.userId)],
