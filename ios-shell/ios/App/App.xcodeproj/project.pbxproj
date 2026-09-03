@@ -7,18 +7,52 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0F9D03DC95855368E94F1B63 /* RestActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050180927E65DDF2C60A45A6 /* RestActivityAttributes.swift */; };
+		11E526963711910B70DC7051 /* FitYearWidgetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F92C1587AE145E97DE92F460 /* FitYearWidgetTheme.swift */; };
+		212D2BE7415A6DA2E515B79C /* FitYearWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AACBA468343DDE09E42CFDD6 /* FitYearWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		3E18593A5ACBADD8AB877B0C /* RestLiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59332FA2BE5AF355964A152F /* RestLiveActivityPlugin.swift */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		50716CF5B1EEF39CFCC4528D /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1B48560C9126837F9ED7B8 /* MainViewController.swift */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		815A772B5357D2A79533605C /* RestActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C109D9B33F0B5CB48BBE0310 /* RestActivityWidget.swift */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		B2F34E1CDA0CDED29AD82191 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA3F5EE2B37D7A86675A7514 /* Foundation.framework */; };
+		B72D5744F7A0CE44E198A5FD /* RestActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 050180927E65DDF2C60A45A6 /* RestActivityAttributes.swift */; };
+		E942C9E5FB2C8DDD7C683690 /* FitYearWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8853D0841DE70DBE1CE4239 /* FitYearWidgetsBundle.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		E4B115B8066EBC14D2C8EF4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F372292E91AD633EECB88905;
+			remoteInfo = FitYearWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4BC0E4F2626169A29EA72C90 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				212D2BE7415A6DA2E515B79C /* FitYearWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		050180927E65DDF2C60A45A6 /* RestActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RestActivityAttributes.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -28,8 +62,16 @@
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		59332FA2BE5AF355964A152F /* RestLiveActivityPlugin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RestLiveActivityPlugin.swift; sourceTree = "<group>"; };
+		6B1B48560C9126837F9ED7B8 /* MainViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		82E59A0B288A56A9AC5E9257 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		AACBA468343DDE09E42CFDD6 /* FitYearWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FitYearWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		C109D9B33F0B5CB48BBE0310 /* RestActivityWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RestActivityWidget.swift; sourceTree = "<group>"; };
+		CA3F5EE2B37D7A86675A7514 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		E8853D0841DE70DBE1CE4239 /* FitYearWidgetsBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FitYearWidgetsBundle.swift; sourceTree = "<group>"; };
+		F92C1587AE145E97DE92F460 /* FitYearWidgetTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FitYearWidgetTheme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,15 +83,41 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AAFC1F9D54B2725ECF4E99D2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B2F34E1CDA0CDED29AD82191 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		4E48A1C5B8C537710AAB556F /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4F3D38E647CAFBEF3F9C1FC0 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		4F3D38E647CAFBEF3F9C1FC0 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				CA3F5EE2B37D7A86675A7514 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
+				4E48A1C5B8C537710AAB556F /* Frameworks */,
+				755CF27B8B0BAC8C211629C4 /* FitYearWidgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -57,6 +125,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				AACBA468343DDE09E42CFDD6 /* FitYearWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -73,8 +142,32 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
+				EBA91D7BEF1B53E4B489A788 /* LiveActivity */,
+				6B1B48560C9126837F9ED7B8 /* MainViewController.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		755CF27B8B0BAC8C211629C4 /* FitYearWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				F92C1587AE145E97DE92F460 /* FitYearWidgetTheme.swift */,
+				E8853D0841DE70DBE1CE4239 /* FitYearWidgetsBundle.swift */,
+				C109D9B33F0B5CB48BBE0310 /* RestActivityWidget.swift */,
+				82E59A0B288A56A9AC5E9257 /* Info.plist */,
+			);
+			name = FitYearWidgets;
+			path = FitYearWidgets;
+			sourceTree = "<group>";
+		};
+		EBA91D7BEF1B53E4B489A788 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				050180927E65DDF2C60A45A6 /* RestActivityAttributes.swift */,
+				59332FA2BE5AF355964A152F /* RestLiveActivityPlugin.swift */,
+			);
+			name = LiveActivity;
+			path = LiveActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -87,10 +180,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				4BC0E4F2626169A29EA72C90 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9ECCE2C0D2059263AEEDB54D /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -99,6 +194,23 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F372292E91AD633EECB88905 /* FitYearWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E7F570DD1CDE821F07B6781 /* Build configuration list for PBXNativeTarget "FitYearWidgets" */;
+			buildPhases = (
+				73B41D74218629914C68E44A /* Sources */,
+				AAFC1F9D54B2725ECF4E99D2 /* Frameworks */,
+				3DD23B1F8EC8C7139FFB213C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FitYearWidgets;
+			productName = FitYearWidgets;
+			productReference = AACBA468343DDE09E42CFDD6 /* FitYearWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -133,11 +245,19 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				F372292E91AD633EECB88905 /* FitYearWidgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		3DD23B1F8EC8C7139FFB213C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3021FED79650016851F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -160,10 +280,33 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				B72D5744F7A0CE44E198A5FD /* RestActivityAttributes.swift in Sources */,
+				3E18593A5ACBADD8AB877B0C /* RestLiveActivityPlugin.swift in Sources */,
+				50716CF5B1EEF39CFCC4528D /* MainViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		73B41D74218629914C68E44A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				11E526963711910B70DC7051 /* FitYearWidgetTheme.swift in Sources */,
+				E942C9E5FB2C8DDD7C683690 /* FitYearWidgetsBundle.swift in Sources */,
+				815A772B5357D2A79533605C /* RestActivityWidget.swift in Sources */,
+				0F9D03DC95855368E94F1B63 /* RestActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9ECCE2C0D2059263AEEDB54D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = FitYearWidgets;
+			target = F372292E91AD633EECB88905 /* FitYearWidgets */;
+			targetProxy = E4B115B8066EBC14D2C8EF4C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -338,9 +481,73 @@
 			};
 			name = Release;
 		};
+		C827A6E53855357A27EE4BFB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = FitYearWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "FitYear Rest Timer";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.flyhi.fityear.FitYearWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F52FDC547222D176D9AE6172 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				INFOPLIST_FILE = FitYearWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "FitYear Rest Timer";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.flyhi.fityear.FitYearWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3E7F570DD1CDE821F07B6781 /* Build configuration list for PBXNativeTarget "FitYearWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C827A6E53855357A27EE4BFB /* Release */,
+				F52FDC547222D176D9AE6172 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

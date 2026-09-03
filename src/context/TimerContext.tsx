@@ -16,6 +16,7 @@ import {
 } from "@/lib/rest-timer-state";
 import { restOngoingContent, REST_NOTIFICATION_TAG } from "@/lib/rest-notification";
 import { hapticRestComplete } from "@/lib/native-feedback";
+import { endRestActivity, startRestActivity } from "@/lib/live-activity";
 
 const TIMER_STATE_KEY = "rest_timer_state_v1";
 // Pre-2026-07-21 keys, read once for migration then cleared.
@@ -271,6 +272,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     // Drop the "resting until" status line before the completion alert, so the
     // shade never shows a finished rest as still running.
     clearOngoingRestNotification();
+    // Same reasoning for the lock screen: the countdown has run out, so the
+    // Live Activity is finished and must not linger there past its own rest.
+    void endRestActivity();
     if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
     // iOS Safari has no navigator.vibrate at all, so the line above is a no-op
     // on the platform this app is being built for. Complementary, not duplicate.
@@ -318,6 +322,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         restId,
       });
       scheduleRestPush(restId, remainingSecs, exerciseNameRef.current);
+      // The lock-screen countdown, armed at the same moment and from the same
+      // absolute end time. Every re-arming path (open, resume, "rest again",
+      // +30s) funnels through here, so this is the only place it starts - and
+      // the native side UPDATES a running activity rather than restarting it,
+      // which is what makes extending a rest slide instead of flicker.
+      void startRestActivity({
+        endTime,
+        exerciseName: exerciseNameRef.current,
+        nextExerciseName: nextExerciseNameRef.current,
+      });
       intervalRef.current = setInterval(tick, 500);
       tick();
     },
@@ -331,11 +345,18 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // tap on the pill expands it.
   useEffect(() => {
     const decision = decideRestore(readState(Date.now()), Date.now());
-    if (decision.status === "none") return;
+    // A Live Activity outlives the app that started it, so an app killed
+    // mid-rest can come back to a card counting down to nothing. Anything but a
+    // live rest means there is nothing for one to represent.
+    if (decision.status === "none") {
+      void endRestActivity();
+      return;
+    }
     if (decision.status === "expired") {
       // Finished while away: drop it silently. Leaving the key behind is what
       // made the NEXT rest timer open already "complete".
       clearState();
+      void endRestActivity();
       return;
     }
     const { state, remaining } = decision;
@@ -355,6 +376,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     if (decision.status === "paused") {
       endTimeRef.current = null;
       setIsPaused(true);
+      // A paused rest has no end time, so a lock-screen countdown would be
+      // inventing one. Resuming re-arms it through startCounting.
+      void endRestActivity();
       return;
     }
     endTimeRef.current = state.endTime;
@@ -481,6 +505,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     // Skipping to the next set ends the rest early - drop the pending alert so
     // it doesn't buzz mid-set.
     cancelRestPush(restIdRef.current);
+    // Skipping the rest must take the card off the lock screen too, or it keeps
+    // counting down a rest the user has already moved past.
+    void endRestActivity();
     restIdRef.current = null;
     isOpenRef.current = false;
     setIsOpen(false);
@@ -507,9 +534,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         nextExerciseName: nextExerciseNameRef.current,
         restId: restIdRef.current ?? undefined,
       });
-      // A paused rest has no end time, so retire the pending alert; resuming
-      // re-arms it with the remaining seconds.
+      // A paused rest has no end time, so retire the pending alert and the
+      // lock-screen countdown; resuming re-arms both with the remaining seconds.
       cancelRestPush(restIdRef.current);
+      void endRestActivity();
       setIsPaused(true);
     }
   }, [isPaused, seconds, startCounting, clearInterval_]);
@@ -553,8 +581,15 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           clearState();
           cancelRestPush(restIdRef.current);
           restIdRef.current = null;
-          if (endedSecondsAgo <= 60) complete();
-          else hasCompletedRef.current = true;
+          if (endedSecondsAgo <= 60) {
+            complete();
+          } else {
+            hasCompletedRef.current = true;
+            // complete() is deliberately skipped here (a stale "rest complete"
+            // buzz is noise), so this is the one path that has to clear the
+            // lock-screen card itself.
+            void endRestActivity();
+          }
         }
       }
     };
