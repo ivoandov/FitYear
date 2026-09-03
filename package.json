@@ -28,6 +28,7 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@capgo/capacitor-social-login": "^8.5.5",
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^2.14.0",
     "@parse/node-apn": "^7.1.0",

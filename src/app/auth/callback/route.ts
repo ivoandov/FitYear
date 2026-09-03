@@ -1,11 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { db } from "@/lib/db";
-import { userSettings } from "@/lib/db/schema";
-
-const ONBOARDED_COOKIE = "fy_onboarded";
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+import { hasCompletedOnboarding, setOnboardedCookie } from "@/lib/api/onboarding-cookie";
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
@@ -32,20 +27,12 @@ export async function GET(request: NextRequest) {
 
   // One-time DB read at login to decide onboarding state, then cache in a
   // cookie so the proxy can do an optimistic check on every nav without DB.
-  const [settings] = await db
-    .select({ done: userSettings.hasCompletedOnboarding })
-    .from(userSettings)
-    .where(eq(userSettings.userId, data.user.id))
-    .limit(1);
-
-  const onboarded = !!settings?.done;
+  // Shared with /api/auth/native-session, which does the same two things for a
+  // sign-in that never reaches this route.
+  const onboarded = await hasCompletedOnboarding(data.user.id);
   const dest = onboarded ? next : "/onboarding";
 
   const response = NextResponse.redirect(new URL(dest, url));
-  response.cookies.set(ONBOARDED_COOKIE, onboarded ? "1" : "0", {
-    path: "/",
-    maxAge: COOKIE_MAX_AGE,
-    sameSite: "lax",
-  });
+  setOnboardedCookie(response, onboarded);
   return response;
 }
