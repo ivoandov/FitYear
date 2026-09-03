@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- APNs. "production" works for both TestFlight and the App Store; a
+       development build falls back to the sandbox automatically. -->
+  <key>aps-environment</key>
+  <string>production</string>
+  <!-- Universal Links, so the Google Calendar callback returns to the app
+       instead of stranding the user in Safari. Backed by the
+       apple-app-site-association file served from the site. -->
+  <key>com.apple.developer.associated-domains</key>
+  <array>
+    <string>applinks:fityear.flyhi.ai</string>
+    <string>webcredentials:fityear.flyhi.ai</string>
+  </array>
+</dict>
+</plist>

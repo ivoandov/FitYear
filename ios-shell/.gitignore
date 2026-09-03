@@ -1,0 +1,10 @@
+# Capacitor / Xcode build products and dependencies. None of this is source.
+node_modules/
+ios/App/App/public/
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+fastlane/report.xml
+fastlane/Preview.html
