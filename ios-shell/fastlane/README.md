@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Create (or reuse) the Apple Distribution certificate and the App Store provisioning profile
 
+### ios widget_certs
+
+```sh
+[bundle exec] fastlane ios widget_certs
+```
+
+Register the widget extension's App ID and its App Store profile
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

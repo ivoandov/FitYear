@@ -22,4 +22,27 @@ platform :ios do
     # sigh defaults to an App Store profile; passing adhoc/development explicitly trips its guard.
     sigh(api_key: key, app_identifier: "ai.flyhi.fityear", output_path: KEY_STORE, filename: "FitYear_AppStore.mobileprovision")
   end
+
+  desc "Register the widget extension's App ID and its App Store profile"
+  lane :widget_certs do
+    key = asc_key
+    # An embedded app extension ships with its OWN App ID and profile - the
+    # app's does not cover it, and an archive fails at signing without this.
+    #
+    # The App ID itself was registered by a direct App Store Connect API call
+    # (POST /v1/bundleIds, ai.flyhi.fityear.FitYearWidgets, id 24NVC2LXTM)
+    # rather than by `produce`, which does not accept an api_key at all - it
+    # authenticates the Developer Portal through a Spaceship session needing
+    # Ivo's password and 2FA. The App ID exists now, so this lane only keeps
+    # the PROFILE fresh.
+    #
+    # It needs no capabilities: a Live Activity is gated by the HOST app's
+    # NSSupportsLiveActivities, not by an entitlement on the widget.
+    sigh(
+      api_key: key,
+      app_identifier: "ai.flyhi.fityear.FitYearWidgets",
+      output_path: KEY_STORE,
+      filename: "FitYearWidgets_AppStore.mobileprovision",
+    )
+  end
 end
