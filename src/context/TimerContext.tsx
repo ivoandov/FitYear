@@ -15,6 +15,7 @@ import {
   type RestTimerState,
 } from "@/lib/rest-timer-state";
 import { restOngoingContent, REST_NOTIFICATION_TAG } from "@/lib/rest-notification";
+import { hapticRestComplete } from "@/lib/native-feedback";
 
 const TIMER_STATE_KEY = "rest_timer_state_v1";
 // Pre-2026-07-21 keys, read once for migration then cleared.
@@ -271,6 +272,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     // shade never shows a finished rest as still running.
     clearOngoingRestNotification();
     if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+    // iOS Safari has no navigator.vibrate at all, so the line above is a no-op
+    // on the platform this app is being built for. Complementary, not duplicate.
+    void hapticRestComplete();
     sendTimerCompleteNotification(exerciseNameRef.current);
   }, []);
 

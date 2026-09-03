@@ -40,6 +40,7 @@ import { overloadSuggestion } from "@/lib/analytics";
 import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "@/hooks/use-toast";
 import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
+import { hapticImpact, keepScreenAwake } from "@/lib/native-feedback";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
@@ -129,6 +130,21 @@ export default function TrackPage() {
 
   // Recomputed from the sets as they stand, so a corrected weight drops its
   // badge and only the set that actually holds the record keeps one.
+  // Hold the screen awake while a workout is open. A phone dimming mid-set is
+  // the single most-cited annoyance with web-based trackers, and a website
+  // cannot prevent it on iOS at all - so this is also one of the clearest
+  // app-versus-bookmark differences App Review can see.
+  //
+  // ABOVE the `if (!activeWorkout)` early return, like every other hook here:
+  // placing it below changes the hook count between renders and crashes the
+  // page into its error boundary. Typecheck and build both pass either way;
+  // only the e2e suite catches it.
+  useEffect(() => {
+    if (!activeWorkout) return;
+    void keepScreenAwake(true);
+    return () => void keepScreenAwake(false);
+  }, [activeWorkout]);
+
   const prMarkedSets = useMemo(() => {
     const ex = activeWorkout?.exercises[currentExerciseIndex];
     if (!ex) return new Set<number>();
@@ -468,6 +484,7 @@ export default function TrackPage() {
     }
     setCurrentSets(newSets);
     if (!checked) return;
+    void hapticImpact("medium");
 
     if (scoresPRs) {
       // PR check (in-workout)
@@ -507,6 +524,7 @@ export default function TrackPage() {
       newSets[currentSetIndex].completed = true;
       newSets = propagateToNextSet(newSets, currentSetIndex);
       setCurrentSets(newSets);
+      void hapticImpact("medium");
 
       // PR check (in-workout)
       const completedSet = newSets[currentSetIndex];

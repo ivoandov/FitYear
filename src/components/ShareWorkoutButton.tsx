@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Share2, Loader2, Copy, Check, Download } from "lucide-react";
+import { isNative } from "@/lib/native";
 import {
   Dialog,
   DialogContent,
@@ -116,10 +117,48 @@ export function ShareWorkoutButton(props: Props) {
     }
   }
 
+  /**
+   * The native share sheet. Web Share with FILES is unreliable inside a
+   * WKWebView, so the shell writes the PNG to the cache directory and hands
+   * iOS a real file URL instead - which is also what makes "Save to Photos"
+   * and AirDrop appear in the sheet.
+   */
+  async function shareViaCapacitor(blob: Blob): Promise<boolean> {
+    try {
+      const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+        import("@capacitor/filesystem"),
+        import("@capacitor/share"),
+      ]);
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("read failed"));
+        // readAsDataURL gives "data:image/png;base64,AAAA"; Filesystem wants
+        // only the payload after the comma.
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.readAsDataURL(blob);
+      });
+      if (!base64) return false;
+
+      const name = `fityear-workout-${Date.now()}.png`;
+      const written = await Filesystem.writeFile({
+        path: name,
+        data: base64,
+        directory: Directory.Cache,
+      });
+      await Share.share({ text: summary, files: [written.uri] });
+      return true;
+    } catch {
+      // Includes the user simply dismissing the sheet. Falling through to the
+      // web path would then pop a second one, so treat it as handled.
+      return true;
+    }
+  }
+
   async function handleNativeShare() {
     setBusy(true);
     try {
       const blob = await captureAsBlob();
+      if (blob && isNative() && (await shareViaCapacitor(blob))) return;
       if (!blob) {
         if (navigator.share) {
           await navigator.share({ text: summary });

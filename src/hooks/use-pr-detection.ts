@@ -11,6 +11,7 @@ import {
   type SetData,
 } from "@/lib/workout-stats";
 import { usesDistance, usesTime } from "@/lib/exercise-types";
+import { hapticSuccess } from "@/lib/native-feedback";
 
 interface ExerciseLite {
   id: string;
@@ -176,6 +177,7 @@ export function usePrDetection(
         const prev = historicalHolds.get(exerciseId);
         if (beatsHold(secs, setWeightLbs, prev)) {
           const load = setWeightLbs > 0 ? ` at ${lbsToDisplay(setWeightLbs, weightUnit)} ${weightUnit}` : "";
+          void hapticSuccess();
           toast({
             title: `⏱️ ${exerciseName} — new hold PR!`,
             description: `${secs}s${load}${prev ? ` (was ${prev.seconds}s)` : ""}`,
@@ -228,6 +230,7 @@ export function usePrDetection(
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
           ? "—"
           : fmt(runningBestWeight);
+        void hapticSuccess();
         toast({
           title: `🏆 ${exerciseName} — new weight PR!`,
           description: assisted
@@ -240,6 +243,7 @@ export function usePrDetection(
       // ~3 reps and a re-logged prefill fired a phantom volume PR.
       if (!assisted && volume > runningMaxVolume + PR_EPSILON_LBS * Math.max(1, setReps)) {
         isPr = true;
+        void hapticSuccess();
         toast({
           title: `⭐ ${exerciseName} — new volume PR!`,
           description: `${fmt(setWeightLbs)} × ${setReps} = ${fmt(volume)} (was ${runningMaxVolume ? fmt(runningMaxVolume) : "—"})`,

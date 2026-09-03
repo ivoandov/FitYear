@@ -3,6 +3,7 @@ import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
+import { NativeShellClass } from "@/components/NativeShellClass";
 
 const dmSans = DM_Sans({
   variable: "--font-sans",
@@ -39,6 +40,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // REQUIRED for env(safe-area-inset-*) to be anything but 0. BottomNav has
+  // padded for the home indicator since it was written, but that padding was
+  // dead without this. It also lets the app draw under the status bar, which
+  // is what the native shell wants (the status bar overlays the WebView).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -52,6 +58,7 @@ export default function RootLayout({
       className={`dark ${dmSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <NativeShellClass />
         {children}
         <Analytics />
         <SpeedInsights />

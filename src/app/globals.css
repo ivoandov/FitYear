@@ -232,3 +232,33 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Native shell only (html.native, set by NativeShellClass).
+
+   The iOS status bar OVERLAYS the WebView, so the app has to inset its own
+   content or every page's header sits under the clock. One rule on the scroll
+   container rather than a safe-area class on each of the eight page headers -
+   they are all `md:hidden` blocks inside <main>, and adding this per page is
+   exactly the kind of thing that gets missed on the ninth.
+
+   The bottom is already handled: BottomNav has padded for the home indicator
+   since it was written, and viewport-fit=cover (added with this) is what makes
+   that padding resolve to anything.
+--------------------------------------------------------------------------- */
+html.native main {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* A native app should not rubber-band the whole page like a web view, and a
+   long-press on the body should not offer "Copy"/"Look Up" on chrome. Inputs
+   and real prose keep both. */
+html.native body {
+  overscroll-behavior-y: none;
+  -webkit-touch-callout: none;
+}
+html.native input,
+html.native textarea,
+html.native [contenteditable] {
+  -webkit-touch-callout: default;
+}
