@@ -35,6 +35,16 @@ platform :ios do
     # ask Apple for a DEVELOPMENT profile, which fails on a machine with no
     # registered device ("your team has no devices..."), even though what an
     # archive actually needs is the App Store profile that already exists.
+    # Build numbers must be unique per version or the upload is rejected, and
+    # the project has no agvtool versioning to bump. Asking App Store Connect
+    # what it already has is the one source that cannot drift from reality.
+    next_build = latest_testflight_build_number(
+      api_key: asc_key,
+      app_identifier: "ai.flyhi.fityear",
+      initial_build_number: 0,
+    ) + 1
+    UI.message("Building as build number #{next_build}")
+
     gym(
       project: "ios/App/App.xcodeproj",
       scheme: "App",
@@ -43,6 +53,7 @@ platform :ios do
       output_directory: "build",
       output_name: "FitYear.ipa",
       clean: false,
+      xcargs: "CURRENT_PROJECT_VERSION=#{next_build}",
       export_team_id: "2A48NU3MH4",
       export_options: {
         signingStyle: "manual",

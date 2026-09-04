@@ -6,8 +6,12 @@
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<!-- What appears under the icon on the home screen. "Beta" lives HERE and
+	     not in the App Store listing: Apple's guideline 2.2 says betas do not
+	     belong on the store, so a listing called "Beta" invites a rejection,
+	     while the bundle name is only ever seen by TestFlight installers. -->
 	<key>CFBundleDisplayName</key>
-	<string>FitYear</string>
+	<string>FitYear Beta</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
