@@ -281,6 +281,39 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
               </div>
             ) : null}
 
+            {Array.isArray(exercise.formCues) && exercise.formCues.length > 0 ? (
+              <div className="card-elevated p-4" data-testid="card-form-cues">
+                <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-tertiary-foreground">
+                  How to do it
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {(exercise.formCues as string[]).map((cue, i) => (
+                    <li key={i} className="flex gap-2.5 text-[14px] leading-snug text-foreground/90">
+                      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-primary" />
+                      {cue}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {typeof exercise.videoId === "string" && exercise.videoId ? (
+              <div className="card-elevated overflow-hidden" data-testid="card-form-video">
+                <div className="aspect-video w-full">
+                  {/* Embedded, never re-hosted: the standard player is exactly
+                      what YouTube provides for this, so nothing is licensed and
+                      nothing is stored. */}
+                  <iframe
+                    className="h-full w-full"
+                    src={`https://www.youtube-nocookie.com/embed/${exercise.videoId}`}
+                    title={`${exercise.name} demonstration`}
+                    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            ) : null}
+
             <ExerciseProgressChart
               points={points}
               weightUnit={weightUnit}

@@ -25,7 +25,7 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   // one crafted row throws during render and error-boundaries /exercises for
   // everybody.
   const body = insertExerciseSchema
-    .omit({ userId: true, isPublic: true, imageUrl: true })
+    .omit({ userId: true, isPublic: true, imageUrl: true, formCues: true, videoId: true })
     .extend({
       name: z.string().trim().min(1).max(60),
       description: z.string().max(2000),

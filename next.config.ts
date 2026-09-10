@@ -29,6 +29,12 @@ const CSP = [
   // without it here the CSP blocks the <img> and the avatar renders broken.
   "img-src 'self' data: blob: https://storage.googleapis.com https://*.supabase.co https://*.googleusercontent.com",
   "media-src 'self'",
+  // The exercise form videos are YouTube EMBEDS - nothing is re-hosted, which
+  // is the whole reason no licence is needed. Without this the iframe is
+  // blocked by `default-src 'self'` and simply renders nothing: no error, no
+  // broken image, just an empty box. nocookie is the privacy-preserving host
+  // and is what the player src uses.
+  "frame-src 'self' https://www.youtube-nocookie.com https://www.youtube.com",
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co https://*.ingest.us.sentry.io",
   "worker-src 'self' blob:",

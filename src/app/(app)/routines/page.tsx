@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
 import type { Exercise } from "@/data/exercises";
+import { RoutineEditDialog } from "@/components/RoutineEditDialog";
 
 interface RoutineWithEntries extends Routine {
   entries: RoutineEntry[];
@@ -142,6 +143,10 @@ export default function RoutinesPage() {
   const [activeTab, setActiveTab] = useState("my-routines");
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<RoutineWithEntries | null>(null);
+  // Which routine the conversational editor is open for. Separate from
+  // `editingRoutine` (the hand editor) because the two are different flows and
+  // sharing one piece of state would make opening either close the other.
+  const [aiEditRoutine, setAiEditRoutine] = useState<{ id: string; name: string } | null>(null);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [applyingRoutine, setApplyingRoutine] = useState<RoutineWithEntries | null>(null);
   const [applyStartDate, setApplyStartDate] = useState<Date>(new Date());
@@ -537,6 +542,13 @@ export default function RoutinesPage() {
                 <DropdownMenuItem onClick={() => openEditRoutine(routine)} data-testid={`button-edit-routine-${routine.id}`}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setAiEditRoutine({ id: routine.id, name: routine.name })}
+                  data-testid={`button-ai-edit-routine-${routine.id}`}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Ask FitBot to change it
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => deleteRoutineMutation.mutate(routine.id)}
@@ -1108,6 +1120,15 @@ export default function RoutinesPage() {
           </DialogContent>
         </Dialog>
       </div>
+      {aiEditRoutine && (
+        <RoutineEditDialog
+          routineId={aiEditRoutine.id}
+          routineName={aiEditRoutine.name}
+          open={aiEditRoutine !== null}
+          onOpenChange={(v) => { if (!v) setAiEditRoutine(null); }}
+        />
+      )}
+
     </div>
   );
 }

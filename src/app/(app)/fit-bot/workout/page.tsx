@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   X,
@@ -59,8 +59,12 @@ export default function FitBotWorkoutPage() {
   const router = useRouter();
   const { startGeneratedWorkout } = useWorkout();
 
+  // Home's muscle-balance nudge deep-links here with the session it is
+  // proposing already written out. Landing on an empty box and asking the user
+  // to retype what they just tapped is how a suggestion stops being one.
+  const searchParams = useSearchParams();
   const [phase, setPhase] = useState<Phase>("prompt");
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(() => searchParams.get("prompt") ?? "");
   const [options, setOptions] = useState<QuickOptions>({});
   const [workout, setWorkout] = useState<GeneratedWorkout | null>(null);
   const [name, setName] = useState("");

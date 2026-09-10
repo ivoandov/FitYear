@@ -9,6 +9,8 @@ import { PROGRAM_BUILD_DAILY_LIMIT } from "@/lib/api/ai-limits";
 import { SkeletonSchema } from "@/lib/program-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
+import { parseTimeZone } from "@/lib/api/timezone";
+import { loadTrainingHistory, trainingHistoryPromptBlock } from "@/lib/api/training-history";
 
 // Stage 1 of the segmented program builder: one fast Sonnet call that lays out
 // the whole macrocycle (the distinct workouts + their rotation cycle, phases,
@@ -62,7 +64,14 @@ export const POST = handle(async (request: NextRequest) => {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const durationWeeks = Math.ceil(input.programLength / 7);
-  const catalogBlock = await exerciseCatalogPromptBlock();
+  // A program written for somebody whose training you can see beats one
+  // written for a stranger. Empty block when there is too little history.
+  const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
+  const [catalogBlock, history] = await Promise.all([
+    exerciseCatalogPromptBlock(),
+    loadTrainingHistory(user.id, tz),
+  ]);
+  const historyBlock = trainingHistoryPromptBlock(history);
 
   const prompt = `You are an expert strength coach designing the STRUCTURE of a ${input.programLength}-day (${durationWeeks}-week) ${input.focus.join(" + ")} training program. You are laying out the macrocycle skeleton only — the per-week loads are computed deterministically afterward and per-phase accessory variety is authored later, so keep this focused and coherent.
 
@@ -83,6 +92,7 @@ Design:
 - ${durationWeeks >= 6 ? `Lay out 2-4 training PHASES (e.g. Foundation, Strength, Hypertrophy, Peak) that tile weeks 1..${durationWeeks} with no gaps or overlaps.` : `Lay out 1-2 training PHASES that tile weeks 1..${durationWeeks}.`}
 - Include a deload roughly every 4-6 weeks (list those 1-indexed week numbers in deloadWeeks; deloadLoadFactor ~0.9). ${durationWeeks < 4 ? "For a short program, deloadWeeks may be empty." : ""}
 - Every muscleGroups value (on workouts and anchorLifts) MUST use ONLY these names (a coarse group, or one of its listed specifics): ${muscleVocabularyForPrompt()}. Prefer the coarse group; do not invent other muscle names.
+${historyBlock}
 ${catalogBlock}
 
 Return ONLY valid JSON, no preamble and no markdown fences, in exactly this shape:

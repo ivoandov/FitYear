@@ -84,6 +84,23 @@ export const exercises = pgTable(
     imageUrl: text("image_url"),
     exerciseType: text("exercise_type").notNull().default("weight_reps"),
     isAssisted: boolean("is_assisted").notNull().default(false),
+    /**
+     * Two or three short coaching cues, ours rather than licensed.
+     *
+     * Chosen over a licensed video library on purpose (Ivo, 2026-09-09): no
+     * recurring cost, no third-party branding inside the app, no dependency
+     * that can be revoked, works offline, and it is the more useful thing with
+     * a bar in your hands. Written ONLY by scripts/generate-form-cues.ts, the
+     * same rule imageUrl follows - a client-writable field on a SHARED catalog
+     * is an availability bug for every user at once.
+     */
+    formCues: jsonb("form_cues"),
+    /**
+     * A YouTube video id for movements that genuinely need seeing. Optional and
+     * hand-curated; embedding is what the player is for, so nothing is
+     * re-hosted and no licence is needed.
+     */
+    videoId: text("video_id"),
     // When this exercise entered the catalog, so a freshly created one can be
     // surfaced at the top of the pickers instead of being hunted for in a
     // 117-item alphabetical list. DELIBERATELY NULLABLE with no backfill: the
@@ -164,6 +181,45 @@ export const completedWorkouts = pgTable(
     ),
   ],
 );
+
+/**
+ * Body measurements: weight, composition, circumferences and a progress photo.
+ *
+ * `measuredOn` is an AUTHORED DAY, not an instant - people think "my weight on
+ * Tuesday", not "my weight at 07:42:13Z" - so it follows the same rule as
+ * scheduled workouts: written with scheduledDateFromKey, read with
+ * scheduledDateKey, and no timezone in either. Storing it as a moment would
+ * move somebody's weigh-in across the date line and report it a day late from
+ * UTC+12, which is exactly the bug that rule exists to prevent.
+ *
+ * One row per user per day, so weighing yourself twice updates rather than
+ * producing two points on the chart.
+ */
+export const bodyMeasurements = pgTable(
+  "body_measurements",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    measuredOn: timestamp("measured_on").notNull(),
+    /** Always lbs in the database, like every other weight here. */
+    weightLbs: real("weight_lbs"),
+    bodyFatPct: real("body_fat_pct"),
+    /** { chest, waist, hips, leftArm, rightArm, leftThigh, rightThigh } in inches. */
+    circumferences: jsonb("circumferences"),
+    /** Object path in the images bucket. Served through /api/objects like exercise images. */
+    photoPath: text("photo_path"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("body_measurements_user_id_idx").on(t.userId),
+    uniqueIndex("body_measurements_user_day_unique").on(t.userId, t.measuredOn),
+  ],
+);
+
+export type BodyMeasurement = typeof bodyMeasurements.$inferSelect;
 
 export const userSettings = pgTable("user_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

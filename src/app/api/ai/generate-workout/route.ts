@@ -7,6 +7,8 @@ import { enforceDailyQuota } from "@/lib/api/rate-limit";
 import { GeneratedWorkoutSchema } from "@/lib/workout-schema";
 import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
 import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
+import { parseTimeZone } from "@/lib/api/timezone";
+import { loadTrainingHistory, trainingHistoryPromptBlock } from "@/lib/api/training-history";
 
 // A single workout is a small generation that finishes well under the Hobby 60s
 // function limit even on Opus, so this is a plain non-streaming call (no
@@ -61,7 +63,16 @@ export const POST = handle(async (request: NextRequest) => {
   const hints = hintParts.length
     ? `\n\nADDITIONAL PREFERENCES:\n- ${hintParts.join("\n- ")}`
     : "";
-  const catalogBlock = await exerciseCatalogPromptBlock();
+  // What the user has actually been training. Until this, every AI route
+  // designed for a stranger: no idea what was neglected, no idea what they
+  // already own and use. Empty when there is too little history to be worth
+  // fitting to.
+  const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
+  const [catalogBlock, history] = await Promise.all([
+    exerciseCatalogPromptBlock(),
+    loadTrainingHistory(user.id, tz),
+  ]);
+  const historyBlock = trainingHistoryPromptBlock(history);
 
   const prompt = `You are an expert strength and conditioning coach. Design ONE effective single workout for this request.
 
@@ -71,6 +82,7 @@ USER REQUEST:
 Requirements:
 - Honor the requested duration, equipment/location, target muscles, and intensity. Size the number of exercises and sets so the session realistically fits the time, including rest.
 - Be creative and effective. You are NOT limited to the user's library in WHAT you program; choose the best movements for the goal, including variations and unilateral/accessory work.
+${historyBlock}
 ${catalogBlock}
 - Respect any injuries or limitations the user mentions; never program something that would aggravate them.
 - For each exercise give: name; the muscle groups it trains; exerciseType ("weight_reps" for lifting/bodyweight strength, "distance_time" for cardio/carries measured by distance or time); isAssisted (true ONLY for assisted-machine movements such as assisted pull-ups); sets; a reps prescription as a string ("8-12", "AMRAP", "30s"); rest in seconds; and a short coaching note (may be empty).

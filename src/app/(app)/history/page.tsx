@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { WorkoutHistoryCard } from "@/components/WorkoutHistoryCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Target, Trophy, BarChart3, Medal, LineChart, Search } from "lucide-react";
+import { Plus, Target, Trophy, BarChart3, Medal, LineChart, Search, Scale } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
 import { useWorkout } from "@/context/WorkoutContext";
@@ -358,14 +358,24 @@ export default function HistoryPage() {
               Your progress at a glance
             </p>
           </div>
-          <Link
-            href="/insights"
-            data-testid="link-insights"
-            className="mt-1 flex shrink-0 items-center gap-1.5 rounded-xl border bg-white/[0.03] px-3.5 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-          >
-            <LineChart className="h-3.5 w-3.5 text-primary" />
-            Insights
-          </Link>
+          <div className="mt-1 flex shrink-0 items-center gap-2">
+            <Link
+              href="/body"
+              data-testid="link-body"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border bg-white/[0.03] px-3.5 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+            >
+              <Scale className="h-3.5 w-3.5 text-primary" />
+              Body
+            </Link>
+            <Link
+              href="/insights"
+              data-testid="link-insights"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border bg-white/[0.03] px-3.5 py-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+            >
+              <LineChart className="h-3.5 w-3.5 text-primary" />
+              Insights
+            </Link>
+          </div>
         </div>
 
         {/* Desktop dashboard: stats + goals + muscle chart on the left, the

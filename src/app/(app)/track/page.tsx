@@ -935,6 +935,19 @@ export default function TrackPage() {
                   Target {currentTarget}
                 </div>
               )}
+              {Array.isArray(currentExercise.formCues) && currentExercise.formCues.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5" data-testid="list-form-cues">
+                  {(currentExercise.formCues as string[]).slice(0, 2).map((cue, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-2 text-[12px] leading-snug text-tertiary-foreground"
+                    >
+                      <span className="mt-[6px] h-[3px] w-[3px] shrink-0 rounded-full bg-tertiary-foreground" />
+                      {cue}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {warmupLine && (
                 <div
                   className="mt-1 font-mono text-[11px] tabular-nums text-tertiary-foreground"
