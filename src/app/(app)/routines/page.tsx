@@ -174,6 +174,16 @@ export default function RoutinesPage() {
   const [routineEntries, setRoutineEntries] = useState<RoutineEntryDraft[]>([]);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
   const [updateActiveRoutineId, setUpdateActiveRoutineId] = useState<string | null>(null);
+  // What a re-sync would do to the running program, read BEFORE anything is
+  // written so the dialog can ask about removed days only when there are any.
+  const [resyncPreview, setResyncPreview] = useState<
+    { updatableCount: number; orphanedCount: number; orphanedDays: number[] } | null
+  >(null);
+  // Ivo, 2026-09-10: there is no right default for a dropped day's sessions,
+  // "it should ask for what they prefer in that moment". Keeping is the
+  // pre-selected half because a kept session can be skipped and a deleted one
+  // cannot come back.
+  const [removeOrphaned, setRemoveOrphaned] = useState(false);
 
   const { data: myRoutines = [], isLoading: loadingMine } = useQuery<Routine[]>({
     queryKey: ["/api/routines"],
@@ -276,23 +286,71 @@ export default function RoutinesPage() {
   });
 
   const updateActiveInstancesMutation = useMutation({
-    mutationFn: async (routineId: string) => {
-      const response = await apiRequest("POST", `/api/routines/${routineId}/update-active-instances`);
+    mutationFn: async (vars: { routineId: string; removeOrphaned: boolean }) => {
+      const response = await apiRequest(
+        "POST",
+        `/api/routines/${vars.routineId}/update-active-instances`,
+        { removeOrphaned: vars.removeOrphaned },
+      );
       return response.json();
     },
-    onSuccess: (data: { updatedCount: number }) => {
+    onSuccess: (data: { updatedCount: number; removedCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/routine-instances/active"] });
       toast({
         title: "Active routines updated",
-        description: `${data.updatedCount} remaining scheduled workouts have been updated.`
+        description: data.removedCount
+          ? `${data.updatedCount} scheduled workouts updated, ${data.removedCount} removed.`
+          : `${data.updatedCount} remaining scheduled workouts have been updated.`,
       });
-      setUpdateActiveRoutineId(null);
+      closeResyncPrompt();
     },
     onError: (error) => {
       toast({ title: "Failed to update active routines", description: describeApiError(error), variant: "destructive" });
-      setUpdateActiveRoutineId(null);
+      closeResyncPrompt();
     },
   });
+
+  const closeResyncPrompt = () => {
+    setUpdateActiveRoutineId(null);
+    setResyncPreview(null);
+    setRemoveOrphaned(false);
+  };
+
+  /**
+   * Offer the re-sync after a routine was written, by EITHER editor.
+   *
+   * The hand editor has always asked; the conversational one saved and said
+   * nothing, so an AI edit changed the routine and left the program the user is
+   * actually training off untouched. Both call this now.
+   */
+  const offerResync = async (routineId: string) => {
+    try {
+      const active = await queryClient.fetchQuery<RoutineInstance[]>({
+        queryKey: ["/api/routine-instances/active"],
+        staleTime: 0,
+      });
+      if (!active.some((i) => i.routineId === routineId)) return;
+
+      // Ask nothing if the edit changed nothing about the remaining sessions.
+      const res = await fetch(`/api/routines/${routineId}/update-active-instances`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const preview = (await res.json()) as {
+        updatableCount: number;
+        orphanedCount: number;
+        orphanedDays: number[];
+      };
+      if (preview.updatableCount === 0 && preview.orphanedCount === 0) return;
+
+      setResyncPreview(preview);
+      setRemoveOrphaned(false);
+      setUpdateActiveRoutineId(routineId);
+    } catch (error) {
+      console.error("Failed to check for active instances:", error);
+    }
+  };
 
   const closeBuilder = () => {
     setIsBuilderOpen(false);
@@ -378,21 +436,7 @@ export default function RoutinesPage() {
         toast({ title: "Routine updated", description: "Your changes have been saved." });
         closeBuilder();
 
-        // Refetch active instances to ensure we have the latest data
-        try {
-          const result = await queryClient.fetchQuery<RoutineInstance[]>({
-            queryKey: ["/api/routine-instances/active"],
-            staleTime: 0
-          });
-
-          // Check if this routine has active instances
-          const hasActiveInstance = result.some(i => i.routineId === routineId);
-          if (hasActiveInstance) {
-            setUpdateActiveRoutineId(routineId);
-          }
-        } catch (fetchError) {
-          console.error("Failed to check for active instances:", fetchError);
-        }
+        await offerResync(routineId);
       } catch {
         // Error toast is handled by mutation onError
       }
@@ -1090,7 +1134,7 @@ export default function RoutinesPage() {
         </Dialog>
 
         {/* Update active instances confirm */}
-        <Dialog open={!!updateActiveRoutineId} onOpenChange={(open) => { if (!open) setUpdateActiveRoutineId(null); }}>
+        <Dialog open={!!updateActiveRoutineId} onOpenChange={(open) => { if (!open) closeResyncPrompt(); }}>
           <DialogContent data-testid="dialog-update-active-instances">
             <DialogHeader>
               <DialogTitle>Update Active Routine?</DialogTitle>
@@ -1103,13 +1147,54 @@ export default function RoutinesPage() {
               Only future workouts that haven&apos;t been completed yet will be updated. Past and completed workouts will remain unchanged.
             </p>
 
+            {/* The removed-day question, asked only when the edit actually
+                dropped a day that still has sessions on the calendar. */}
+            {resyncPreview && resyncPreview.orphanedCount > 0 && (
+              <div className="space-y-2 rounded-xl border-strong bg-white/[0.03] p-3" data-testid="orphaned-days-choice">
+                <p className="text-sm text-foreground">
+                  You removed {resyncPreview.orphanedDays.length === 1 ? "day" : "days"}{" "}
+                  {resyncPreview.orphanedDays.join(", ")} from this routine.{" "}
+                  {resyncPreview.orphanedCount} upcoming{" "}
+                  {resyncPreview.orphanedCount === 1 ? "workout is" : "workouts are"} still
+                  scheduled for {resyncPreview.orphanedDays.length === 1 ? "it" : "them"}.
+                </p>
+                <div className="space-y-1.5">
+                  {[
+                    { value: false, label: "Keep them on my calendar" },
+                    { value: true, label: "Remove them" },
+                  ].map((opt) => (
+                    <label
+                      key={String(opt.value)}
+                      className="flex cursor-pointer items-center gap-2.5 text-sm text-muted-foreground"
+                    >
+                      <input
+                        type="radio"
+                        name="orphaned-days"
+                        checked={removeOrphaned === opt.value}
+                        onChange={() => setRemoveOrphaned(opt.value)}
+                        className="h-4 w-4 accent-primary"
+                        data-testid={`radio-orphaned-${opt.value ? "remove" : "keep"}`}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
-              <button type="button" onClick={() => setUpdateActiveRoutineId(null)} className={BTN_SECONDARY} data-testid="button-skip-update-active">
+              <button type="button" onClick={closeResyncPrompt} className={BTN_SECONDARY} data-testid="button-skip-update-active">
                 Skip
               </button>
               <button
                 type="button"
-                onClick={() => updateActiveRoutineId && updateActiveInstancesMutation.mutate(updateActiveRoutineId)}
+                onClick={() =>
+                  updateActiveRoutineId &&
+                  updateActiveInstancesMutation.mutate({
+                    routineId: updateActiveRoutineId,
+                    removeOrphaned,
+                  })
+                }
                 disabled={updateActiveInstancesMutation.isPending}
                 className={CTA_DIALOG}
                 data-testid="button-confirm-update-active"
@@ -1126,6 +1211,7 @@ export default function RoutinesPage() {
           routineName={aiEditRoutine.name}
           open={aiEditRoutine !== null}
           onOpenChange={(v) => { if (!v) setAiEditRoutine(null); }}
+          onSaved={offerResync}
         />
       )}
 

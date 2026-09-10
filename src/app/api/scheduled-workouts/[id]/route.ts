@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
+import { scheduledWorkouts } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
@@ -10,18 +10,10 @@ import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
+  getSelectedCalendarId,
   isCalendarConnected,
   updateCalendarEvent,
 } from "@/lib/calendar";
-
-async function getSelectedCalendarId(userId: string): Promise<string | undefined> {
-  const [s] = await db
-    .select({ id: userSettings.selectedCalendarId })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
-  return s?.id ?? undefined;
-}
 
 type Ctx = { params: Promise<{ id: string }> };
 

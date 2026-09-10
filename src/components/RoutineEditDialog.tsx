@@ -48,11 +48,19 @@ export function RoutineEditDialog({
   routineName,
   open,
   onOpenChange,
+  onSaved,
 }: {
   routineId: string;
   routineName: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /**
+   * Fired after the routine is written, so the page can offer the same
+   * "update the remaining scheduled workouts?" prompt the hand editor does.
+   * Without it an AI edit rewrote the routine and silently left the program
+   * the user is actually training off on the old plan.
+   */
+  onSaved?: (routineId: string) => void;
 }) {
   const [instruction, setInstruction] = useState("");
   const [proposal, setProposal] = useState<EditResponse | null>(null);
@@ -88,6 +96,7 @@ export function RoutineEditDialog({
       toast({ title: "Routine updated" });
       reset();
       onOpenChange(false);
+      onSaved?.(routineId);
     },
     onError: (e: Error) =>
       toast({ title: "Couldn't save", description: describeApiError(e), variant: "destructive" }),
@@ -204,8 +213,8 @@ export function RoutineEditDialog({
               </Button>
             </div>
             <p className="text-[12px] leading-snug text-tertiary-foreground">
-              Saving replaces this routine&apos;s days. Workouts already scheduled from it
-              are not rewritten - use Update active routines afterwards if you want them to follow.
+              Saving replaces this routine&apos;s days. If it is running, you will be asked
+              whether the workouts already on your calendar should follow the change.
             </p>
           </div>
         )}

@@ -2,7 +2,7 @@ import { google, type calendar_v3 } from "googleapis";
 import * as Sentry from "@sentry/nextjs";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { googleCalendarTokens } from "@/lib/db/schema";
+import { googleCalendarTokens, userSettings } from "@/lib/db/schema";
 import { encryptToken, decryptToken, isEncrypted } from "@/lib/token-crypto";
 import { localDateKey } from "@/lib/date";
 import { signCalendarState } from "@/lib/calendar-state";
@@ -131,6 +131,23 @@ async function getClientForUser(userId: string): Promise<calendar_v3.Calendar> {
   });
 
   return google.calendar({ version: "v3", auth: oauth2 });
+}
+
+/**
+ * The calendar the user picked in Settings, or undefined for their primary.
+ *
+ * Lives here rather than beside one route because every write that touches a
+ * Google event needs it, and a second copy would be free to drift from this one.
+ */
+export async function getSelectedCalendarId(
+  userId: string,
+): Promise<string | undefined> {
+  const [s] = await db
+    .select({ id: userSettings.selectedCalendarId })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  return s?.id ?? undefined;
 }
 
 export async function isCalendarConnected(userId: string): Promise<boolean> {
