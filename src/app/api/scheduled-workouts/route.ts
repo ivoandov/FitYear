@@ -11,13 +11,12 @@ import {
   createCalendarEvent,
   isCalendarConnected,
 } from "@/lib/calendar";
+import { loadScheduledWorkouts } from "@/lib/api/home-payload";
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
-  const rows = await db
-    .select()
-    .from(scheduledWorkouts)
-    .where(eq(scheduledWorkouts.userId, user.id));
+  // Shared with the server-rendered Home payload so the two cannot drift.
+  const rows = await loadScheduledWorkouts(user.id);
   return rows;
   // NOTE: original Replit route has an "auto-reschedule" pass that creates
   // missing scheduled rows when an active routine instance has remaining

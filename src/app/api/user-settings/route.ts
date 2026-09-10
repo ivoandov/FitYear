@@ -5,30 +5,15 @@ import { db } from "@/lib/db";
 import { userSettings } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { loadUserSettings } from "@/lib/api/home-payload";
 
 const ONBOARDED_COOKIE = "fy_onboarded";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 export const GET = handle(async () => {
   const { user } = await requireUser();
-  const [row] = await db
-    .select()
-    .from(userSettings)
-    .where(eq(userSettings.userId, user.id))
-    .limit(1);
-  return (
-    row ?? {
-      userId: user.id,
-      selectedCalendarId: null,
-      selectedCalendarName: null,
-      weightUnit: "lbs",
-      monthlyWorkoutGoal: 16,
-      fitbotDefaultFocus: "strength",
-      hasCompletedOnboarding: false,
-      onboardingDaysPerWeek: null,
-      onboardingProgramLength: null,
-    }
-  );
+  // Shared with the server-rendered Home payload so the two cannot drift.
+  return loadUserSettings(user.id);
 });
 
 const PatchSchema = z.object({
