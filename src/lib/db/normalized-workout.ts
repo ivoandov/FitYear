@@ -20,6 +20,7 @@ type ExerciseLike = {
   name?: string;
   muscleGroups?: unknown;
   exerciseType?: string;
+  supersetGroup?: string | null;
   isAssisted?: boolean;
   setsData?: SetLike[];
 };
@@ -82,6 +83,7 @@ export async function writeNormalizedRows(
         muscleGroupsSnapshot: (ex.muscleGroups ?? null) as never,
         exerciseType: ex.exerciseType ?? null,
         isAssisted: ex.isAssisted ?? (ex.id ? assistedById.get(ex.id) : undefined) ?? false,
+        supersetGroup: ex.supersetGroup ?? null,
       })
       .returning({ id: workoutExercises.id });
 
@@ -116,6 +118,7 @@ export interface AssembledExercise {
   name: string | null;
   muscleGroups: unknown;
   exerciseType: string | null;
+  supersetGroup: string | null;
   isAssisted: boolean | null;
   completedSets: number;
   setsData: Array<{
@@ -178,6 +181,7 @@ export async function assembleNormalizedExercises(
       name: we.nameSnapshot,
       muscleGroups: we.muscleGroupsSnapshot,
       exerciseType: we.exerciseType,
+      supersetGroup: we.supersetGroup,
       isAssisted: we.isAssisted,
       completedSets: setsData.filter((s) => s.completed).length,
       setsData,

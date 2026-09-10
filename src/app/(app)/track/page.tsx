@@ -43,6 +43,7 @@ import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
 import { hapticImpact, keepScreenAwake } from "@/lib/native-feedback";
 import type { WorkoutExerciseInput } from "@/context/WorkoutContext";
 import { solvePlates, formatPerSide, equipmentFor, showsPlateMath, warmupSets } from "@/lib/plate-math";
+import { nextInSuperset, supersetLabel } from "@/lib/superset";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
@@ -443,6 +444,7 @@ export default function TrackPage() {
       ? `${perSide} / side (${plan.achievable})`
       : `${perSide} / side`;
   };
+  const supersetBadge = supersetLabel(enrichedWorkoutExercises, currentExerciseIndex);
   const sets = getCurrentSets();
   // The ramp up to today's working weight, shown only while the exercise is
   // still untouched - once you are working, a warm-up line is clutter. The
@@ -558,6 +560,26 @@ export default function TrackPage() {
         }
       }
     }
+    // A SUPERSET goes straight into the next movement without resting; you rest
+    // only once you have been round the group. `nextInSuperset` returns null for
+    // an ordinary exercise, so every solo workout takes exactly the path it
+    // always did - this branch cannot change behaviour it does not apply to.
+    const superset = nextInSuperset(enrichedWorkoutExercises, currentExerciseIndex);
+    if (superset) {
+      if (superset.restFirst) {
+        // Round complete. Rest, then come back to the top of the group. The set
+        // pointer advances because the whole group shares a round.
+        if (restTimerOnManualComplete) setTrackingState("resting");
+        else setTrackingState("not_started");
+        setCurrentExerciseIndex(superset.nextIndex);
+        if (currentSetIndex < sets.length - 1) setCurrentSetIndex(currentSetIndex + 1);
+      } else {
+        setCurrentExerciseIndex(superset.nextIndex);
+        setTrackingState("not_started");
+      }
+      return;
+    }
+
     if (restTimerOnManualComplete) {
       setTrackingState("resting");
     }
@@ -927,6 +949,15 @@ export default function TrackPage() {
                 groups={currentExercise.muscleGroups ?? []}
                 className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
               />
+              {supersetBadge && (
+                <div
+                  className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-yellow bg-primary-dim px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-primary"
+                  data-testid="badge-superset"
+                >
+                  Superset {supersetBadge}
+                  <span className="text-tertiary-foreground">no rest until the round ends</span>
+                </div>
+              )}
               {currentTarget && (
                 <div
                   className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-primary"

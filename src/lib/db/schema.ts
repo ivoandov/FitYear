@@ -465,6 +465,15 @@ export const workoutExercises = pgTable(
     muscleGroupsSnapshot: jsonb("muscle_groups_snapshot"),
     exerciseType: text("exercise_type"),
     isAssisted: boolean("is_assisted"),
+    /**
+     * Shared label ("A", "B") marking consecutive exercises as a superset.
+     * A LABEL rather than a nested structure on purpose: the tracker indexes
+     * exercises flat, progress is keyed by instanceId and history is a flat
+     * array, so nesting would have changed the shape of a workout everywhere.
+     * Null for the overwhelming majority of rows, and anything that does not
+     * understand supersets still reads a grouped workout as a plain list.
+     */
+    supersetGroup: text("superset_group"),
   },
   (t) => [index("workout_exercises_completed_workout_id_idx").on(t.completedWorkoutId)],
 );

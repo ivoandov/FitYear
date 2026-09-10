@@ -21,13 +21,14 @@ import {
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import { Plus, X, GripVertical, ChevronUp, ChevronDown, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, X, GripVertical, ChevronUp, ChevronDown, Calendar as CalendarIcon , Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { coarseGroupsOf, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { isRecentlyAdded, sortForPicker } from "@/lib/recent-exercises";
 import { type Exercise } from "@/data/exercises";
+import { supersetLabel, nextGroupLabel } from "@/lib/superset";
 
 export interface WorkoutData {
   id?: string;
@@ -134,6 +135,37 @@ export function WorkoutEditorDialog({
 
   // Remove by POSITION, not by exercise id. Filtering by id deleted every copy
   // of a duplicated movement instead of the row the user tapped.
+  /**
+   * Link this exercise with the one BELOW it into a superset, or unlink it.
+   *
+   * Only ever pairs ADJACENT rows, because a superset is by definition
+   * movements you alternate between back to back - and `lib/superset` reads a
+   * group as a contiguous run for exactly that reason. Linking into an
+   * existing group extends it into a giant set rather than starting a second.
+   */
+  const handleToggleSuperset = (index: number) => {
+    const next = [...selectedExercises] as Array<Exercise & { supersetGroup?: string | null }>;
+    const me = next[index];
+    const below = next[index + 1];
+    if (!me || !below) return;
+    if (me.supersetGroup && me.supersetGroup === below.supersetGroup) {
+      const group = me.supersetGroup;
+      next[index] = { ...me, supersetGroup: null };
+      // A group of one is not a superset, so a leftover single label goes too.
+      if (next.filter((e) => e.supersetGroup === group).length < 2) {
+        for (let j = 0; j < next.length; j++) {
+          if (next[j].supersetGroup === group) next[j] = { ...next[j], supersetGroup: null };
+        }
+      }
+    } else {
+      const group = below.supersetGroup ?? me.supersetGroup ?? nextGroupLabel(next);
+      next[index] = { ...me, supersetGroup: group };
+      next[index + 1] = { ...below, supersetGroup: group };
+    }
+    setSelectedExercises(next as typeof selectedExercises);
+  };
+
+
   const handleRemoveExercise = (index: number) => {
     setSelectedExercises(selectedExercises.filter((_, i) => i !== index));
   };
@@ -328,7 +360,14 @@ export function WorkoutEditorDialog({
                           {canDrag && (
                             <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 cursor-grab active:cursor-grabbing" />
                           )}
-                          <span className="flex-1 text-sm line-clamp-2 leading-snug">{exercise.name}</span>
+                          <span className="flex-1 text-sm line-clamp-2 leading-snug">
+                            {supersetLabel(selectedExercises as Array<{ instanceId?: string; supersetGroup?: string | null }>, index) && (
+                              <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-primary">
+                                {supersetLabel(selectedExercises as Array<{ instanceId?: string; supersetGroup?: string | null }>, index)}
+                              </span>
+                            )}
+                            {exercise.name}
+                          </span>
                           <Badge variant="outline" className="text-xs hidden sm:flex">
                             {coarseGroupsOf(exercise.muscleGroups)[0] || ""}
                           </Badge>
@@ -352,6 +391,20 @@ export function WorkoutEditorDialog({
                               data-testid={`button-move-down-${exercise.id}`}
                             >
                               <ChevronDown className="h-[18px] w-[18px]" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-9 w-9 ${
+                                (exercise as { supersetGroup?: string | null }).supersetGroup ? "text-primary" : ""
+                              }`}
+                              onClick={() => handleToggleSuperset(index)}
+                              disabled={index === selectedExercises.length - 1}
+                              aria-label={`Superset ${exercise.name} with the exercise below`}
+                              title="Superset with the exercise below"
+                              data-testid={`button-superset-${exercise.id}`}
+                            >
+                              <Link2 className="h-[18px] w-[18px]" />
                             </Button>
                             <Button
                               variant="ghost"

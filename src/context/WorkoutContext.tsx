@@ -27,6 +27,8 @@ export interface WorkoutExercise extends Exercise {
   // scheduled workout). Threaded through startWorkout so the Track screen can
   // prefill the weight column. Does NOT change row count (see planOf on Track).
   plannedLoadLbs?: number | null;
+  /** Shared label marking consecutive exercises as a superset. See lib/superset. */
+  supersetGroup?: string | null;
 }
 
 interface ActiveWorkout {
@@ -82,6 +84,7 @@ function parseTargetReps(reps?: string): number | null {
  *  fills them in without clobbering a prescription the user already has. */
 export type WorkoutExerciseInput = Exercise & {
   instanceId?: string;
+  supersetGroup?: string | null;
   sets?: number;
   defaultWeight?: number;
   defaultReps?: number;

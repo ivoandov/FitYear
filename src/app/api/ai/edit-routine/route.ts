@@ -111,7 +111,7 @@ ${catalogBlock}
 
 RULES.
 - Apply what they asked and nothing else. Days and exercises they did not ask about keep their name, order, sets, reps and rest exactly.
-- dayIndex is a position in the ROTATION, starting at 1. Rest days are simply absent from the list - do not emit an entry for one. If they ask for fewer training days per week, remove or merge days and RENUMBER the remaining ones so they stay consecutive from 1, then set cycleLength to the rotation period (7 for a weekly cycle).
+- dayIndex is a position in the ROTATION, starting at 1, and the GAPS ARE THE REST DAYS. A 4-day week inside a 7-day cycle is dayIndex 1, 3, 5, 6 with cycleLength 7 - NOT 1, 2, 3, 4, which would stack four training days back to back and rest for three. Rest days are simply absent from the list; never emit an entry for one. When you change how many days a week they train, place the remaining days so the rest falls sensibly between them, and set cycleLength to the rotation period.
 - Reps are free text and stay free text: "6-8", "AMRAP", "30s" are all valid. Never convert a range into a single number.
 - targetLoadLbs is a deterministic per-week target the app computes for anchor lifts. Carry it through unchanged on any exercise that already had one, and do NOT invent one for an exercise that did not.
 - When adding work for an under-trained muscle group, prefer exercises from THEIR MOST-USED list for that group. Reach outside it only when nothing there fits the day.
