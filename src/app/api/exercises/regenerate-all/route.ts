@@ -24,7 +24,11 @@ import { regenerateExerciseImage } from "@/lib/imagen";
  *
  * Returns: { regenerated, failed, skipped, remaining }
  */
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 const HARD_CAP = 3;
 const DAILY_LIMIT = 10;

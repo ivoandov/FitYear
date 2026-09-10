@@ -12,7 +12,11 @@ import {
 
 // One conversational refine = one small, fast Opus call. Preview-only: nothing
 // is persisted until Start. See FITBOT_TECH_SPEC.md section 1.4.
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 const InputSchema = z.object({
   workout: GeneratedWorkoutSchema,

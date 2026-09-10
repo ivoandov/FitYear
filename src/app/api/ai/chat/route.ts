@@ -30,44 +30,50 @@ import { ALL_TOOLS, buildProposalRequest, isWriteTool } from "@/lib/ai/fitbot-to
  * alternative was a server session store, which is a database table and a
  * cleanup job to solve a problem the stateless API does not have.
  *
- * **It streams.** Hobby gives this function 60 seconds and the edge proxy has
- * its own patience; a multi-step tool loop that returns nothing until it is
- * finished can hit both. Streaming keeps bytes moving, and the iteration cap
- * keeps the whole turn inside the budget.
+ * **It streams.** The edge proxy has its own patience and a multi-step tool loop
+ * that returns nothing until it is finished can exhaust it. Streaming keeps
+ * bytes moving.
+ *
+ * The budget here is 300 seconds, not 60: this project is on Vercel PRO, which
+ * the repo docs had wrong as Hobby for long enough that the mistake was shaping
+ * real decisions - this route's reasoning depth among them.
  */
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * How many model round trips one user message may cost.
  *
- * Not a cost control - Ivo asked for this uncapped for now - but a latency
- * one: every iteration is a model call plus tool reads, and the function has 60
- * seconds total. Hitting the cap ends the turn with whatever was said, which is
- * recoverable; running past the limit is a 504 with nothing to show.
+ * Not a cost control - Ivo asked for this uncapped for now - but a guard
+ * against a loop that will not settle. There is real room now (300s), so this
+ * is back to where it was before a 60-second limit that did not exist forced it
+ * down.
  */
-const MAX_ITERATIONS = 4;
+const MAX_ITERATIONS = 6;
 
 /**
- * Effort is pinned WELL below the default, and this was measured, not guessed.
+ * Reasoning depth, chosen against a MEASURED turn rather than a guess.
  *
- * At `medium` a real question took 56.9 seconds end to end against a hard
- * 60-second limit: three model calls, the last of which spent 47 seconds
- * producing 4,068 output tokens. The user saw the nine-word opening line, then
- * the function was killed mid-thought and the answer never arrived. Thinking is
- * the bulk of that time and it emits no visible text, so the screen simply sat
- * there.
+ * This was dropped to `low` when the budget was believed to be 60 seconds - a
+ * measured turn took 56.9s and the user watched it get killed mid-thought. The
+ * budget is actually 300s (Pro, not Hobby), so the depth is back.
  *
- * `low` is the setting that fits the budget. Raise it the day these routes stop
- * living on Hobby, and re-measure rather than assuming.
+ * `medium` rather than the `high` default on purpose: this is a CHAT, and a
+ * reply that takes two minutes is its own kind of broken however good it is.
+ * The two changes that came out of that investigation - summarised tool
+ * payloads and asking for all lookups in one batch - cut the same turn to
+ * roughly 37s at `low`, so `medium` now lands comfortably inside a minute.
  */
-const EFFORT = "low" as const;
+const EFFORT = "medium" as const;
 
 /**
- * When to stop starting new work. The platform kills the function at 60s with
- * no chance to say anything, so the turn gives itself a margin and ends on its
- * own terms while it still can.
+ * When to stop starting new work.
+ *
+ * The platform kills the function with no chance to say anything, so the turn
+ * ends on its own terms while it still can. Well inside the 300s ceiling: the
+ * point is a conversation that answers, not one that is allowed to think for
+ * five minutes.
  */
-const SOFT_DEADLINE_MS = 38_000;
+const SOFT_DEADLINE_MS = 150_000;
 
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -84,7 +90,7 @@ const SYSTEM = `You are FitBot, the coach inside FitYear, talking to the person 
 
 WHO YOU ARE TALKING TO. One person, about their own training. You can see everything in their FitYear account through your tools. Look things up rather than asking them to tell you what you could read yourself.
 
-GATHER IN ONE GO. Ask for every tool you need in a SINGLE batch rather than looking one thing up, thinking, then looking up another. Each extra round trip costs the user several seconds of staring at nothing, and this whole reply has to finish inside one minute.
+GATHER IN ONE GO. Ask for every tool you need in a SINGLE batch rather than looking one thing up, thinking, then looking up another. Each extra round trip costs the user several seconds of staring at nothing.
 
 HOW TO OPEN A CONVERSATION ABOUT THEIR TRAINING. Read before you talk. get_active_program tells you what they are running AND how their completed sessions differ from the plan; get_training_summary tells you which muscle groups are behind their own baseline. Lead with what you actually noticed, specifically, with numbers. "You have added biceps work on 2 of your last 3 Day 1 sessions" is useful. "How is your training going?" wastes their time.
 

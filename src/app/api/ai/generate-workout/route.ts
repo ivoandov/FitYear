@@ -14,7 +14,11 @@ import { loadTrainingHistory, trainingHistoryPromptBlock } from "@/lib/api/train
 // function limit even on Opus, so this is a plain non-streaming call (no
 // segmentation needed — that's only the multi-week program builder). maxDuration
 // is raised from the 10s default so a slightly slower model call still lands.
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 const InputSchema = z.object({
   prompt: z.string().min(1).max(2000),

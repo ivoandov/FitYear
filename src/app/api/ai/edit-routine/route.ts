@@ -32,7 +32,11 @@ import { EditedRoutineSchema } from "@/lib/routine-edit-schema";
  * every scheduled workout hanging off it - would be a bad way to find out the
  * model misread you.
  */
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 /** One edit is one metered call, the same unit a refine costs. */
 const EDIT_ROUTINE_DAILY_LIMIT = 30;

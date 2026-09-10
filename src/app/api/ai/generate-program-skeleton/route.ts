@@ -21,7 +21,11 @@ import { loadTrainingHistory, trainingHistoryPromptBlock } from "@/lib/api/train
 // this finishes well under the 60s Hobby budget as a plain non-streaming call.
 // This is ALSO where the whole build is counted against the daily quota — the
 // per-phase calls do NOT re-charge, so a segmented build costs one unit.
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 // Every free-text field is capped: the quota counts CALLS, not tokens, so an
 // uncapped field let one quota unit buy an arbitrarily large prompt.

@@ -23,7 +23,11 @@ import { exerciseCatalogPromptBlock } from "@/lib/api/exercise-catalog-prompt";
 // charged build behind it. The daily ceiling below is a second line of defence
 // sized so a legitimate builder can never reach it (see the invariant test in
 // src/lib/api/__tests__/build-quota.test.ts).
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 const InputSchema = z.object({
   skeleton: SkeletonSchema,

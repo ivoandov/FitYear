@@ -31,7 +31,11 @@ import { muscleVocabularyForPrompt } from "@/lib/muscle-groups";
  * route's job, where lib/exercise-match does it deterministically at a 0.8
  * threshold; that needs the author's ORIGINAL wording to work from.
  */
-export const maxDuration = 60;
+// 300s, the project's real ceiling: this is Vercel PRO. The repo documented
+// it as Hobby/60s for months, and that wrong number shaped how these routes
+// were budgeted. The segmented program build is still segmented for its own
+// reasons; this is headroom, not a redesign.
+export const maxDuration = 300;
 
 /** Import parses per user per UTC day. Counts CALLS, so the input is capped. */
 const IMPORT_PARSE_DAILY_LIMIT = 30;
