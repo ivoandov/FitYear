@@ -197,10 +197,19 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
         <div className="grid grid-cols-2 gap-3">
           <Stat label="Duration" value={formatDuration(summary.durationSeconds)} />
           <Stat label="Sets" value={summary.totalSets.toString()} />
-          <Stat
-            label="Volume"
-            value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
-          />
+          {/* Volume is weight x reps, so a bodyweight session scores zero
+              however hard it was. Ivo, after a pull-up workout: "the workout
+              summary shows 0 lbs for volume because it's bodyweight. I wish in
+              these instances it would show the total amount of pullups or
+              pushups, not just a fat zero." Reps are the honest unit there. */}
+          {summary.totalVolumeLbs > 0 || summary.totalReps === 0 ? (
+            <Stat
+              label="Volume"
+              value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
+            />
+          ) : (
+            <Stat label="Total reps" value={summary.totalReps.toLocaleString()} />
+          )}
           <Stat label="Exercises" value={summary.exerciseCount.toString()} />
         </div>
 
@@ -294,6 +303,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
             durationLabel={formatDuration(summary.durationSeconds)}
             totalSets={summary.totalSets}
             totalVolumeLbs={summary.totalVolumeLbs}
+            totalReps={summary.totalReps}
             weightUnit={weightUnit}
             exerciseCount={summary.exerciseCount}
             muscleGroups={muscleEntries}

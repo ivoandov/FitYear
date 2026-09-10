@@ -439,3 +439,41 @@ describe("hold PRs - a duration axis for weight_time", () => {
     expect(after.size).toBe(0);
   });
 })
+
+describe("summarizeWorkout totalReps", () => {
+  it("counts reps so a bodyweight session is not reported as zero", () => {
+    // Volume is weight x reps, so a pull-up workout scores 0 lbs however hard
+    // it was. Reps are what the summary shows instead.
+    const summary = summarizeWorkout({
+      completedAt: new Date("2026-09-10T18:00:00Z"),
+      startedAt: new Date("2026-09-10T17:00:00Z"),
+      durationSeconds: 3600,
+      exercises: [
+        {
+          id: "pull",
+          name: "Pull-ups",
+          setsData: [
+            { completed: true, reps: 8, weight: 0 },
+            { completed: true, reps: 7, weight: 0 },
+            { completed: false, reps: 6, weight: 0 },
+          ],
+        },
+      ],
+    } as Parameters<typeof summarizeWorkout>[0]);
+
+    expect(summary.totalVolumeLbs).toBe(0);
+    // Completed sets only: the abandoned third set is prefilled, not performed.
+    expect(summary.totalReps).toBe(15);
+  });
+
+  it("still counts reps on a loaded session", () => {
+    const summary = summarizeWorkout({
+      completedAt: new Date("2026-09-10T18:00:00Z"),
+      exercises: [
+        { id: "bench", name: "Bench", setsData: [{ completed: true, reps: 5, weight: 100 }] },
+      ],
+    } as Parameters<typeof summarizeWorkout>[0]);
+    expect(summary.totalVolumeLbs).toBe(500);
+    expect(summary.totalReps).toBe(5);
+  });
+});

@@ -19,6 +19,8 @@ interface Props {
   durationLabel: string;
   totalSets: number;
   totalVolumeLbs: number;
+  /** Reps across every completed set, for bodyweight sessions where volume is 0. */
+  totalReps: number;
   /** Viewer's display unit; the card renders converted values, not raw lbs. */
   weightUnit: "lbs" | "kg";
   exerciseCount: number;
@@ -81,13 +83,22 @@ export function ShareWorkoutButton(props: Props) {
     lbsToDisplay(props.totalVolumeLbs, props.weightUnit) ?? 0,
   );
 
+  // A bodyweight session has zero volume however hard it was, and "Volume 0 lb"
+  // is the worst thing to put on a card you are about to share. Reps are the
+  // honest unit for that work. Same rule as the summary screen it opens from.
+  const useReps = props.totalVolumeLbs <= 0 && props.totalReps > 0;
+  const effortLabel = useReps ? "Reps" : "Volume";
+  const effortValue = useReps
+    ? props.totalReps.toLocaleString()
+    : `${volumeDisplay.toLocaleString()} ${props.weightUnit}`;
+
   const summary = [
     `💪 ${props.workoutName}`,
     `${props.date}`,
     "",
     `Duration: ${props.durationLabel}`,
     `Sets: ${props.totalSets}`,
-    `Volume: ${volumeDisplay.toLocaleString()} ${props.weightUnit}`,
+    `${effortLabel}: ${effortValue}`,
     `Exercises: ${props.exerciseCount}`,
     props.prCount > 0 ? `🏆 ${props.prCount} new PR${props.prCount !== 1 ? "s" : ""}` : null,
     props.streakDays > 0 ? `🔥 ${props.streakDays} day streak` : null,
@@ -336,11 +347,7 @@ export function ShareWorkoutButton(props: Props) {
             {/* 2x2 stats */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <StatBox label="Duration" value={props.durationLabel} />
-              <StatBox
-                label="Volume"
-                value={`${volumeDisplay.toLocaleString()} ${props.weightUnit}`}
-                accent
-              />
+              <StatBox label={effortLabel} value={effortValue} accent />
               <StatBox label="Sets" value={String(props.totalSets)} />
               <StatBox label="Exercises" value={String(props.exerciseCount)} />
             </div>

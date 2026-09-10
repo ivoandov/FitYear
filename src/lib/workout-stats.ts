@@ -37,6 +37,15 @@ export interface WorkoutSummary {
   durationSeconds: number | null;
   totalSets: number;
   totalVolumeLbs: number;
+  /**
+   * Reps across every completed set.
+   *
+   * Volume is `weight x reps`, so a bodyweight session is worth ZERO however
+   * hard it was: Ivo finished a pull-up workout and the summary reported "0
+   * lbs". Reps are the honest unit for that work, and this is what lets the
+   * screen say so instead of a fat zero.
+   */
+  totalReps: number;
   exerciseCount: number;
   muscleGroups: Map<string, number>; // muscleGroup → sets count
 }
@@ -47,6 +56,7 @@ export function summarizeWorkout(
   const exercises = (workout.exercises as ExerciseInWorkout[]) || [];
   let totalSets = 0;
   let totalVolume = 0;
+  let totalReps = 0;
   const muscleGroups = new Map<string, number>();
 
   for (const ex of exercises) {
@@ -55,6 +65,7 @@ export function summarizeWorkout(
     totalSets += completedSets.length;
     for (const s of completedSets) {
       totalVolume += (s.weight || 0) * (s.reps || 0);
+      totalReps += s.reps || 0;
     }
     if (ex.muscleGroups?.length && completedSets.length) {
       for (const mg of ex.muscleGroups) {
@@ -80,6 +91,7 @@ export function summarizeWorkout(
     durationSeconds,
     totalSets,
     totalVolumeLbs: totalVolume,
+    totalReps,
     // Exercises actually TRAINED. Counting every row meant a workout where you
     // opened 9 exercises but logged 5 reported "Exercises 9" next to a set
     // count that only included the 5.
