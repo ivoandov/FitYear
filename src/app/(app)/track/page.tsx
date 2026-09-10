@@ -11,6 +11,7 @@ import { RestTimer } from "@/components/RestTimer";
 import { SetRow } from "@/components/track/SetRow";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
+import { countsTowardGoal, familyOf } from "@/lib/exercise-family";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
 import {
   AlertDialog,
@@ -92,6 +93,12 @@ export default function TrackPage() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [hasLoadedSavedProgress, setHasLoadedSavedProgress] = useState(false);
   const restCloseProcessed = useRef(false);
+
+  // Goal standing for the live counter. Cheap and server-computed: the tracker
+  // has no business pulling the user's whole history mid-workout.
+  const { data: goalProgressData = [] } = useQuery<
+    { goalId: string; exerciseId: string; exerciseName: string; targetReps: number; repsThisWeek: number }[]
+  >({ queryKey: ["/api/exercise-goals/progress"] });
 
   const { data: exercises = [] } = useQuery<Exercise[]>({
     queryKey: ["/api/exercises"],
@@ -496,15 +503,46 @@ export default function TrackPage() {
   const repTotal = (() => {
     const ex = currentExercise;
     if (!ex || ex.exerciseType === "distance_time" || !isRepTotalExercise(ex.name)) return null;
+    const family = familyOf(ex.name);
     const lists: SetData[][] = [];
     for (const we of activeWorkout.exercises) {
-      if (we.id !== ex.id) continue;
+      // Family-wide, not id-wide: chin-ups and pull-ups in one session are the
+      // same movement and belong in one running total. Falls back to the exact
+      // exercise when it has no family, which is every other lift.
+      const sameMovement = family
+        ? familyOf(String(we.name ?? "")) === family
+        : we.id === ex.id;
+      if (!sameMovement) continue;
       // The current instance reads the live `sets` (fresher than the map before
       // its first state write); other instances read their tracked state.
       const list = we.instanceId === ex.instanceId ? sets : exerciseSets.get(we.instanceId);
       if (list) lists.push(list);
     }
     return totalCompletedReps(lists);
+  })();
+
+  // Where this movement stands against a goal, live.
+  //
+  // The server total covers SAVED workouts in the rolling week; the session
+  // total is what has been checked off here and is not saved yet. Adding them
+  // is what makes the number climb as you go, and cannot double count.
+  const goalStanding = (() => {
+    const ex = currentExercise;
+    if (!ex || repTotal === null) return null;
+    const goal = goalProgressData.find((g) =>
+      countsTowardGoal(
+        { exerciseId: g.exerciseId, exerciseName: g.exerciseName },
+        { id: ex.id, name: String(ex.name ?? "") },
+      ),
+    );
+    if (!goal) return null;
+    const done = goal.repsThisWeek + repTotal;
+    return {
+      name: goal.exerciseName,
+      done,
+      target: goal.targetReps,
+      pct: Math.min(100, Math.round((done / Math.max(goal.targetReps, 1)) * 100)),
+    };
   })();
 
   // Copy weight+reps from a completed set into the next uncompleted set (if still empty)
@@ -1004,6 +1042,21 @@ export default function TrackPage() {
                   <span className="font-semibold text-primary" data-testid="text-rep-total-value">
                     {repTotal}
                   </span>
+                </div>
+              )}
+              {goalStanding && (
+                <div
+                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
+                  data-testid="text-goal-standing"
+                >
+                  {goalStanding.name} goal{" "}
+                  <span
+                    className={goalStanding.done >= goalStanding.target ? "font-semibold text-primary" : "font-semibold text-foreground"}
+                    data-testid="text-goal-standing-value"
+                  >
+                    {goalStanding.done}/{goalStanding.target}
+                  </span>{" "}
+                  this week
                 </div>
               )}
             </div>

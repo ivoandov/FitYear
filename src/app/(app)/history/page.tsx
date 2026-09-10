@@ -27,6 +27,7 @@ import { clientTimeZone, localDateKey } from "@/lib/date";
 import { lbsToDisplay } from "@/lib/units";
 import type { ExerciseGoal } from "@/lib/db/schema";
 import type { ExerciseInWorkout, SetData } from "@/lib/workout-stats";
+import { countsTowardGoal, familyOf, familyLabel } from "@/lib/exercise-family";
 
 interface RecordRow {
   exerciseId: string;
@@ -268,22 +269,31 @@ export default function HistoryPage() {
     }
   };
 
-  // Calculate rolling 7-day reps per exercise for goals (weekly progress)
+  // Rolling 7-day reps per GOAL (weekly progress).
+  //
+  // Keyed by goal rather than by exercise id since 2026-09-10: a push-up or
+  // pull-up goal is fed by every variation of the movement, so several
+  // exercises can pour into one goal and an exercise-keyed tally cannot express
+  // that. See lib/exercise-family.
   const goalProgress = useMemo(() => {
-    const repsByExercise: Record<string, number> = {};
-    completedWorkouts.forEach(workout => {
-      const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as string);
-      if (!isWithinRange(date, last7DaysStart, todayEnd)) return;
-      workout.exercises.forEach((ex: ExerciseInWorkout) => {
-        const setsData: SetData[] = ex.setsData || [];
-        setsData.forEach(set => {
-          if (!set.completed) return;
-          repsByExercise[ex.id] = (repsByExercise[ex.id] || 0) + (set.reps ?? 0);
+    const repsByGoalId: Record<string, number> = {};
+    goals.forEach(goal => {
+      let total = 0;
+      completedWorkouts.forEach(workout => {
+        const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as string);
+        if (!isWithinRange(date, last7DaysStart, todayEnd)) return;
+        workout.exercises.forEach((ex: ExerciseInWorkout) => {
+          if (!countsTowardGoal(goal, { id: ex.id, name: ex.name })) return;
+          (ex.setsData || []).forEach((set: SetData) => {
+            if (!set.completed) return;
+            total += set.reps ?? 0;
+          });
         });
       });
+      repsByGoalId[goal.id] = total;
     });
-    return repsByExercise;
-  }, [completedWorkouts, last7DaysStart, todayEnd]);
+    return repsByGoalId;
+  }, [completedWorkouts, goals, last7DaysStart, todayEnd]);
 
   // Calculate all-time reps per exercise since each goal's createdAt
   const goalAllTimeProgress = useMemo(() => {
@@ -298,7 +308,7 @@ export default function HistoryPage() {
         const date = workout.completedAt instanceof Date ? workout.completedAt : new Date(workout.completedAt as string);
         if (date < goalStart) return;
         workout.exercises.forEach((ex: ExerciseInWorkout) => {
-          if (ex.id !== goal.exerciseId) return;
+          if (!countsTowardGoal(goal, { id: ex.id, name: ex.name })) return;
           (ex.setsData || []).forEach((set: SetData) => {
             if (!set.completed) return;
             total += set.reps ?? 0;
@@ -429,7 +439,8 @@ export default function HistoryPage() {
             ) : (
               <div className="space-y-4">
                 {goals.map(goal => {
-                  const done = goalProgress[goal.exerciseId] ?? 0;
+                  const done = goalProgress[goal.id] ?? 0;
+                  const family = familyOf(goal.exerciseName);
                   const allTime = goalAllTimeProgress[goal.id] ?? 0;
                   const pct = Math.min(100, (done / goal.targetReps) * 100);
                   const isComplete = done >= goal.targetReps;
@@ -456,6 +467,14 @@ export default function HistoryPage() {
                       <p className="font-mono text-[10px] tracking-[0.04em] text-tertiary-foreground" data-testid={`text-goal-alltime-${goal.id}`}>
                         {allTime.toLocaleString()} total since {startLabel}
                       </p>
+                      {/* Say what is being counted, or the number looks wrong:
+                          a Pull-ups goal that silently includes chin-ups and
+                          assisted reps is a surprise the first time you see it. */}
+                      {family && (
+                        <p className="font-mono text-[10px] tracking-[0.04em] text-tertiary-foreground" data-testid={`text-goal-family-${goal.id}`}>
+                          Counting all {familyLabel(family)}
+                        </p>
+                      )}
                     </button>
                   );
                 })}

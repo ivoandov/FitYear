@@ -1,5 +1,6 @@
 import { localDateKey, localDateKeyInZone } from "@/lib/date";
 import { usesDistance, usesTime } from "@/lib/exercise-types";
+import { familyOf } from "@/lib/exercise-family";
 
 // These operate on the ASSEMBLED workout shape (exercises[] built from the
 // normalized tables), not a raw DB row — so they're typed locally rather than
@@ -122,15 +123,17 @@ export function deriveWorkoutName(
 
 /**
  * True when an exercise is a pull-up / push-up movement in any naming variant
- * ("Pull-ups", "Pull Ups Assisted", "Pushups", "Knee Pushups") — the high-rep
- * bodyweight lifts where a running session total is meaningful, so the Track
- * screen shows a live total-reps counter for them. Deliberately does NOT match
- * pulldowns, push downs, pull-aparts, or pull-throughs.
+ * — the high-rep bodyweight lifts where a running session total is meaningful,
+ * so the Track screen shows a live total-reps counter for them.
+ *
+ * Delegates to `lib/exercise-family` since 2026-09-10 rather than keeping its
+ * own regex. There were two rules for the same question and they disagreed:
+ * this one excluded CHIN-UPS, so a chin-up set got no counter while the goals
+ * card counted it. One rule, one place, and both surfaces move together.
  */
 export function isRepTotalExercise(name: string | null | undefined): boolean {
   if (!name) return false;
-  const norm = name.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-  return /\bpull ?ups?\b|\bpush ?ups?\b/.test(norm);
+  return familyOf(name) !== null;
 }
 
 /**

@@ -193,6 +193,12 @@ describe("isRepTotalExercise", () => {
   });
 
   it("handles empty and missing names", () => {
+    // Chin-ups now get the counter too (2026-09-10). They are the same
+    // movement as a pull-up with a different grip, and they used to be the one
+    // variation the tracker ignored while the goals card counted them.
+    expect(isRepTotalExercise("Chin-ups")).toBe(true);
+    expect(isRepTotalExercise("Chin Ups")).toBe(true);
+
     expect(isRepTotalExercise("")).toBe(false);
     expect(isRepTotalExercise(null)).toBe(false);
     expect(isRepTotalExercise(undefined)).toBe(false);
