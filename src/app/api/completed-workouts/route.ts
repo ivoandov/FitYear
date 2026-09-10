@@ -118,6 +118,13 @@ export const POST = handle(async (request: NextRequest) => {
   const templateId = body.templateId ?? scheduledWorkoutRow?.templateId ?? null;
   const scheduledRoutineInstanceId =
     scheduledWorkoutRow?.routineInstanceId ?? null;
+  // Which ROUTINE DAY this session was. The column has existed since the
+  // routine work landed and nothing ever wrote it, so every "did I follow my
+  // plan" question had to guess from the workout NAME - and the name lies: a
+  // session called "Day 4: Muscle-Up" sits at dayIndex 5, because dayIndex is a
+  // position in the rotation and the gaps are the rest days. Copy it from the
+  // scheduled row, which is where start/[id] wrote the truth.
+  const scheduledRoutineDayIndex = scheduledWorkoutRow?.routineDayIndex ?? null;
 
   // Phase 4d: insert the workout and its normalized exercises/sets in ONE
   // transaction — the normalized tables are the sole store, so a failure to
@@ -137,6 +144,7 @@ export const POST = handle(async (request: NextRequest) => {
           startedAt: body.startedAt ? new Date(body.startedAt) : null,
           durationSeconds: body.durationSeconds ?? null,
           routineInstanceId: scheduledRoutineInstanceId,
+          routineDayIndex: scheduledRoutineDayIndex,
         })
         .returning();
       await writeNormalizedRows(tx, row.id, body.exercises);

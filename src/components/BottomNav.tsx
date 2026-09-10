@@ -12,7 +12,13 @@ export function BottomNav() {
   // FitBot flows (single-workout + program-builder wizard) are immersive
   // takeovers with their own fixed bottom CTAs; this z-50 nav would otherwise
   // render on top of and obscure those buttons on mobile.
-  if (pathname === "/workout-preview" || pathname.startsWith("/fit-bot")) return null;
+  // Same rule as AppSidebar, and it must stay the same: /fit-bot/chat is a
+  // destination that keeps the chrome, the wizard flows are takeovers.
+  if (
+    pathname === "/workout-preview" ||
+    (pathname.startsWith("/fit-bot") && pathname !== "/fit-bot/chat")
+  )
+    return null;
 
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-divider bg-card/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">

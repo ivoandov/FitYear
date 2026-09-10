@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Settings, Loader2, LineChart, ClipboardPaste } from "lucide-react";
+import { LogOut, Settings, Loader2, LineChart, ClipboardPaste, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/components/nav-items";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -29,7 +29,15 @@ export function AppSidebar() {
   // Hide on fullscreen pages (matches AppHeader + BottomNav) so the workout
   // preview + both FitBot flows (single-workout + program-builder wizard) render
   // edge-to-edge as the immersive takeovers they were designed as.
-  if (pathname === "/workout-preview" || pathname.startsWith("/fit-bot")) return null;
+  //
+  // /fit-bot/chat is deliberately NOT one of them: it is a destination you come
+  // back to, like Insights, so it keeps the chrome. Without this exception the
+  // desktop rail vanished and the page had no way back at md+.
+  if (
+    pathname === "/workout-preview" ||
+    (pathname.startsWith("/fit-bot") && pathname !== "/fit-bot/chat")
+  )
+    return null;
 
   const userName =
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Account";
@@ -52,7 +60,15 @@ export function AppSidebar() {
         F
       </Link>
 
-      <nav className="flex w-full flex-col items-center gap-1.5">
+      {/* The rail SCROLLS and the account avatar below it stays pinned.
+          Without this the nav grows to its natural height and pushes the
+          account button off the bottom of the viewport: adding the FitBot item
+          took the rail to 800px in a 720px-tall window, putting Settings and
+          Log out out of reach entirely. `mt-auto` on the avatar cannot help
+          while its sibling is free to be taller than the container, so the
+          constraint belongs here. Caught by e2e/privacy.spec, which logs out
+          through that menu; typecheck and build both passed. */}
+      <nav className="flex w-full min-h-0 flex-1 flex-col items-center gap-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {NAV_ITEMS.map((item) => {
           const isActive =
             pathname === item.url ||
@@ -96,6 +112,40 @@ export function AppSidebar() {
             </Link>
           );
         })}
+
+        {/* FitBot chat, desktop-rail only for the same reason as Insights and
+            Import: NAV_ITEMS feeds BOTH navs and a 6th entry would break the
+            5-slot bottom nav. Mobile reaches it from the Home card. */}
+        {(() => {
+          const chatActive = pathname === "/fit-bot/chat";
+          return (
+            <Link
+              href="/fit-bot/chat"
+              data-testid="side-fitbot-chat"
+              className={cn(
+                "flex w-[76px] flex-col items-center justify-center gap-1.5 rounded-[14px] px-2 py-2.5 transition-colors hover:bg-white/[0.03]",
+                chatActive && "bg-white/[0.04]",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-11 w-11 items-center justify-center rounded-full transition-colors",
+                  chatActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                <Sparkles className="h-[22px] w-[22px]" />
+              </div>
+              <span
+                className={cn(
+                  "font-mono text-[10px] font-semibold uppercase leading-none tracking-[0.04em]",
+                  chatActive ? "text-foreground" : "text-muted-foreground",
+                )}
+              >
+                FitBot
+              </span>
+            </Link>
+          );
+        })()}
 
         {/* Insights lives on the desktop rail only (per design: no 6th bottom-nav
             slot). NAV_ITEMS feeds BOTH navs, so this is hand-added here rather
@@ -172,7 +222,7 @@ export function AppSidebar() {
           <button
             type="button"
             aria-label="Account menu"
-            className="mt-auto rounded-full outline-none ring-offset-2 ring-offset-card focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-4 shrink-0 rounded-full outline-none ring-offset-2 ring-offset-card focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Avatar className="h-11 w-11 border border-border">
               <AvatarImage

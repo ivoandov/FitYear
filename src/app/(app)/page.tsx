@@ -1057,6 +1057,28 @@ export default function WorkoutsPage() {
           </div>
         )}
 
+        {/* Talk to FitBot. OUTSIDE the active-routine conditional on purpose:
+            the two older FitBot entries only exist in the empty state, and the
+            person most worth talking to a coach about their plan is the one
+            currently running one. */}
+        <button
+          type="button"
+          onClick={() => router.push("/fit-bot/chat")}
+          data-testid="button-fitbot-chat"
+          className="card-elevated mt-4 flex w-full items-center gap-3.5 p-4 text-left"
+        >
+          <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-[13px] bg-primary-dim text-primary">
+            <Sparkles className="h-[22px] w-[22px]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold text-foreground">Talk to FitBot</div>
+            <div className="mt-0.5 text-[13px] text-muted-foreground">
+              Ask about your training, or have it change your plan
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-tertiary-foreground" />
+        </button>
+
         {upcomingWorkouts.length > 0 && (
           <div className="space-y-3">
             <span className="font-mono text-[12px] uppercase tracking-[0.2em] text-tertiary-foreground">
