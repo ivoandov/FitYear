@@ -43,6 +43,10 @@ export function VoiceInputButton({
   const [listening, setListening] = useState(false);
   const recRef = useRef<InstanceType<RecognitionCtor> | null>(null);
   const baseRef = useRef("");
+  // Whether the USER still wants to be dictating. The engine ends a session on
+  // its own after a pause even with `continuous` set, so this is what tells an
+  // automatic end (restart it) apart from a deliberate stop (leave it alone).
+  const wantRef = useRef(false);
 
   useEffect(() => {
     const w = window as unknown as {
@@ -51,6 +55,7 @@ export function VoiceInputButton({
     };
     setSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
     return () => {
+      wantRef.current = false;
       try {
         recRef.current?.stop();
       } catch {
@@ -71,7 +76,11 @@ export function VoiceInputButton({
     const rec = new Ctor();
     rec.lang = navigator.language || "en-US";
     rec.interimResults = true;
-    rec.continuous = false;
+    // Keep listening across pauses. It used to be false, which ends the session
+    // at the first breath: dictating a long instruction captured the opening
+    // few words and silently stopped, which reads exactly like the app losing
+    // the rest of the sentence.
+    rec.continuous = true;
     // Snapshot the field so speech appends to (not replaces) what's typed.
     baseRef.current = value ? value.trimEnd() : "";
     rec.onresult = (e) => {
@@ -81,18 +90,38 @@ export function VoiceInputButton({
       if (!heard) return;
       onChange(baseRef.current ? `${baseRef.current} ${heard}` : heard);
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onend = () => {
+      // An engine-initiated end while the user still holds the mic open: fold
+      // what was heard into the base and start a fresh session, so a long
+      // dictation survives the pauses inside it.
+      if (!wantRef.current) {
+        setListening(false);
+        return;
+      }
+      try {
+        rec.start();
+      } catch {
+        wantRef.current = false;
+        setListening(false);
+      }
+    };
+    rec.onerror = () => {
+      wantRef.current = false;
+      setListening(false);
+    };
     recRef.current = rec;
     try {
+      wantRef.current = true;
       rec.start();
       setListening(true);
     } catch {
+      wantRef.current = false;
       setListening(false);
     }
   };
 
   const stop = () => {
+    wantRef.current = false;
     try {
       recRef.current?.stop();
     } catch {

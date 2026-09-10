@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Loader2, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, Check, Loader2, Sparkles, Square, X } from "lucide-react";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { toast } from "@/hooks/use-toast";
@@ -29,6 +29,9 @@ import { buildProposalRequest } from "@/lib/ai/fitbot-tools";
 const CTA_SEND =
   "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-primary-foreground shadow-cta disabled:opacity-40";
 
+const CTA_STOP =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-strong bg-white/[0.06] text-foreground";
+
 const OPENERS = [
   "What should I train today?",
   "Look at how I've been doing my routine and tell me what you see",
@@ -50,6 +53,7 @@ type Proposal = {
 type Turn =
   | { kind: "user"; text: string }
   | { kind: "bot"; text: string }
+  | { kind: "thinking"; text: string }
   | { kind: "tools"; names: string[] }
   | { kind: "proposal"; proposal: Proposal };
 
@@ -73,6 +77,24 @@ export default function FitBotChatPage() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  // Lets Stop abort the in-flight turn. Held in a ref because the click handler
+  // must reach the CURRENT request, not the one captured when it rendered.
+  const abortRef = useRef<AbortController | null>(null);
+
+  /**
+   * Grow the composer with its content, from two lines up to a ceiling.
+   * Dictation is the case that needs it: a long transcript lands all at once
+   * and a fixed-height box hides everything but the last line.
+   */
+  const autoGrow = () => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  };
+
+  useEffect(autoGrow, [input]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -86,11 +108,19 @@ export default function FitBotChatPage() {
     setTurns((t) => [...t, { kind: "user", text: message }]);
     setBusy(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // A turn that ends without its "done" event did not finish: the platform
+    // killed the function, the network dropped, or the user pressed Stop. That
+    // used to leave the last sentence sitting there looking complete.
+    let finished = false;
+
     try {
       const res = await fetch(`/api/ai/chat?tz=${encodeURIComponent(clientTimeZone())}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: controller.signal,
         body: JSON.stringify({ message, history: transcript }),
       });
       if (!res.ok || !res.body) {
@@ -157,7 +187,18 @@ export default function FitBotChatPage() {
                 },
               },
             ]);
+          } else if (event.type === "thinking") {
+            streamingText = "";
+            const text = String(event.text ?? "");
+            setTurns((t) => {
+              const last = t[t.length - 1];
+              if (last?.kind === "thinking") {
+                return [...t.slice(0, -1), { kind: "thinking", text: last.text + text }];
+              }
+              return [...t, { kind: "thinking", text }];
+            });
           } else if (event.type === "done") {
+            finished = true;
             setTranscript((event.history ?? []) as Transcript);
           } else if (event.type === "error") {
             toast({
@@ -168,15 +209,36 @@ export default function FitBotChatPage() {
           }
         }
       }
+      if (!finished) {
+        // Say so in the transcript, not just a toast: the half-written answer
+        // stays on screen and has to be labelled, or it reads as the whole
+        // reply. Being stopped by the user is not a failure worth shouting about.
+        setTurns((t) => [
+          ...t,
+          {
+            kind: "bot",
+            text: controller.signal.aborted
+              ? "(stopped)"
+              : "(That answer was cut off before it finished. Ask me to continue and I will pick up where I left off.)",
+          },
+        ]);
+      }
     } catch (e) {
-      toast({
-        title: "Couldn't reach FitBot",
-        description: describeApiError(e),
-        variant: "destructive",
-      });
+      if ((e as Error)?.name !== "AbortError") {
+        toast({
+          title: "Couldn't reach FitBot",
+          description: describeApiError(e),
+          variant: "destructive",
+        });
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
+  }
+
+  function stop() {
+    abortRef.current?.abort();
   }
 
   /**
@@ -291,6 +353,17 @@ export default function FitBotChatPage() {
                 </div>
               );
             }
+            if (turn.kind === "thinking") {
+              return (
+                <p
+                  key={i}
+                  className="whitespace-pre-wrap text-[13px] leading-relaxed text-tertiary-foreground"
+                  data-testid="chat-thinking"
+                >
+                  {turn.text}
+                </p>
+              );
+            }
             if (turn.kind === "tools") {
               return (
                 <div key={i} className="space-y-1" data-testid="chat-tools">
@@ -379,6 +452,7 @@ export default function FitBotChatPage() {
             Offset on mobile only; at md+ there is no bottom bar. */}
         <div className="sticky bottom-20 flex items-end gap-2 bg-background pb-2 pt-2 md:bottom-0">
           <textarea
+            ref={boxRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -387,22 +461,36 @@ export default function FitBotChatPage() {
                 void send(input);
               }
             }}
-            rows={1}
+            rows={2}
             placeholder="Ask FitBot…"
             data-testid="input-chat"
-            className="max-h-32 min-h-[44px] flex-1 resize-none rounded-[14px] border-strong bg-white/[0.03] px-4 py-3 text-[15px] text-foreground outline-none placeholder:text-tertiary-foreground"
+            className="max-h-[220px] flex-1 resize-none overflow-y-auto rounded-[14px] border-strong bg-white/[0.03] px-4 py-3 text-[15px] leading-[1.45] text-foreground outline-none placeholder:text-tertiary-foreground"
           />
-          <VoiceInputButton value={input} onChange={setInput} disabled={busy} tone="ghost" />
-          <button
-            type="button"
-            onClick={() => void send(input)}
-            disabled={!input.trim() || busy}
-            aria-label="Send"
-            data-testid="button-send-chat"
-            className={CTA_SEND}
-          >
-            <ArrowUp className="h-5 w-5" />
-          </button>
+          {/* Dictation stays enabled while FitBot is answering, so the next
+              question can be composed without waiting for this one. */}
+          <VoiceInputButton value={input} onChange={setInput} tone="ghost" />
+          {busy ? (
+            <button
+              type="button"
+              onClick={stop}
+              aria-label="Stop"
+              data-testid="button-stop-chat"
+              className={CTA_STOP}
+            >
+              <Square className="h-4 w-4 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void send(input)}
+              disabled={!input.trim()}
+              aria-label="Send"
+              data-testid="button-send-chat"
+              className={CTA_SEND}
+            >
+              <ArrowUp className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </div>

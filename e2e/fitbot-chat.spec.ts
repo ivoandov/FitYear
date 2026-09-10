@@ -21,7 +21,19 @@ test("the chat page renders with its openers", async ({ page, account }) => {
   const openers = page.getByTestId("button-chat-opener");
   await expect(openers.first()).toBeVisible();
   expect(await openers.count()).toBeGreaterThan(0);
-  await expect(page.getByTestId("input-chat").first()).toBeVisible();
+  const box = page.getByTestId("input-chat").first();
+  await expect(box).toBeVisible();
+  // Two lines, not one: dictation lands a long transcript all at once and a
+  // single-line box hides everything but its tail.
+  await expect(box).toHaveAttribute("rows", "2");
+
+  // Send is what shows while idle; Stop replaces it only during a turn.
+  // `.first()` for the same reason as above: for a second or two after any
+  // navigation this app can hold two copies of a route's tree (Home shows the
+  // same churn), so a bare locator trips strict mode for reasons that have
+  // nothing to do with what is being tested.
+  await expect(page.getByTestId("button-send-chat").first()).toBeVisible();
+  await expect(page.getByTestId("button-stop-chat")).toHaveCount(0);
 });
 
 test("the chat page KEEPS the app chrome, unlike the FitBot wizards", async ({

@@ -152,7 +152,9 @@ async function getRoutine(userId: string, routineId: string) {
 }
 
 async function listRecentWorkouts(userId: string, limit: number) {
-  const capped = Math.min(Math.max(limit || 10, 1), 30);
+  // Default and ceiling both cut: ten workouts of full detail was the single
+  // biggest input to a turn that did not fit in the function's time budget.
+  const capped = Math.min(Math.max(limit || 6, 1), 15);
   const workouts = await db
     .select({
       id: completedWorkouts.id,
@@ -187,18 +189,30 @@ async function listRecentWorkouts(userId: string, limit: number) {
         ),
       );
 
-    const byName = new Map<string, { name: string; sets: { weightLbs?: number; reps?: number; seconds?: number }[] }>();
+    // SUMMARIZED, not transcribed. Returning every set of every exercise made
+    // this one tool answer 16,000 characters, and the whole turn then could not
+    // finish inside the function's 60 seconds. A coach needs how much was done
+    // and how heavy it got, not a row-by-row replay.
+    const acc = new Map<
+      string,
+      { name: string; sets: number; topWeightLbs: number | null; minReps: number | null; maxReps: number | null }
+    >();
     for (const r of rows) {
       const name = r.name ?? "";
       if (!name) continue;
-      const entry = byName.get(name) ?? { name, sets: [] };
-      entry.sets.push({
-        weightLbs: num(r.weightLbs),
-        reps: num(r.reps),
-        seconds: num(r.time),
-      });
-      byName.set(name, entry);
+      const e =
+        acc.get(name) ?? { name, sets: 0, topWeightLbs: null, minReps: null, maxReps: null };
+      e.sets += 1;
+      const w = num(r.weightLbs);
+      if (w != null) e.topWeightLbs = Math.max(e.topWeightLbs ?? 0, w);
+      const reps = num(r.reps);
+      if (reps != null) {
+        e.minReps = e.minReps == null ? reps : Math.min(e.minReps, reps);
+        e.maxReps = e.maxReps == null ? reps : Math.max(e.maxReps, reps);
+      }
+      acc.set(name, e);
     }
+    const byName = acc;
 
     out.push({
       id: w.id,

@@ -45,17 +45,29 @@ export const maxDuration = 60;
  * seconds total. Hitting the cap ends the turn with whatever was said, which is
  * recoverable; running past the limit is a 504 with nothing to show.
  */
-const MAX_ITERATIONS = 6;
+const MAX_ITERATIONS = 4;
 
 /**
- * Effort is pinned BELOW the default for the same reason.
+ * Effort is pinned WELL below the default, and this was measured, not guessed.
  *
- * `high` (the default) is the better coach, and on an unbounded runtime it is
- * the right call. Inside a 60-second function that also has to make several
- * tool round trips, it is how you get a turn that never finishes. Raise this
- * the day these routes stop living on Hobby.
+ * At `medium` a real question took 56.9 seconds end to end against a hard
+ * 60-second limit: three model calls, the last of which spent 47 seconds
+ * producing 4,068 output tokens. The user saw the nine-word opening line, then
+ * the function was killed mid-thought and the answer never arrived. Thinking is
+ * the bulk of that time and it emits no visible text, so the screen simply sat
+ * there.
+ *
+ * `low` is the setting that fits the budget. Raise it the day these routes stop
+ * living on Hobby, and re-measure rather than assuming.
  */
-const EFFORT = "medium" as const;
+const EFFORT = "low" as const;
+
+/**
+ * When to stop starting new work. The platform kills the function at 60s with
+ * no chance to say anything, so the turn gives itself a margin and ends on its
+ * own terms while it still can.
+ */
+const SOFT_DEADLINE_MS = 38_000;
 
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -72,6 +84,8 @@ const SYSTEM = `You are FitBot, the coach inside FitYear, talking to the person 
 
 WHO YOU ARE TALKING TO. One person, about their own training. You can see everything in their FitYear account through your tools. Look things up rather than asking them to tell you what you could read yourself.
 
+GATHER IN ONE GO. Ask for every tool you need in a SINGLE batch rather than looking one thing up, thinking, then looking up another. Each extra round trip costs the user several seconds of staring at nothing, and this whole reply has to finish inside one minute.
+
 HOW TO OPEN A CONVERSATION ABOUT THEIR TRAINING. Read before you talk. get_active_program tells you what they are running AND how their completed sessions differ from the plan; get_training_summary tells you which muscle groups are behind their own baseline. Lead with what you actually noticed, specifically, with numbers. "You have added biceps work on 2 of your last 3 Day 1 sessions" is useful. "How is your training going?" wastes their time.
 
 CHANGING ANYTHING. You do not make changes yourself. When you want something changed, call the matching propose_ tool: the app shows the user exactly what you are asking for and they approve, reject, or tell you to adjust it. So propose concrete, complete changes rather than describing them vaguely, and never claim something is done - say what you are proposing.
@@ -86,7 +100,7 @@ RULES THAT KEEP THE DATA HONEST.
 - A muscle group being "behind" is measured against THEIR OWN average, not an ideal. Never nudge about Cardio or PT: somebody with no physio logged does not have an injury.
 - When a routine change would affect a program they are currently running, follow it with propose_program_resync so the workouts already on their calendar can follow the change. If the change dropped a day, ask whether its scheduled sessions should be removed or left alone before choosing removeOrphaned.
 
-HOW TO WRITE. Plain, direct, and short. You are a knowledgeable training partner, not a wellness brand: no hype, no emoji, no exclamation marks, no "great question". Give a recommendation rather than a menu of options, and say when you are unsure. Never invent a number - if you did not read it from a tool, you do not know it.`;
+HOW TO WRITE. Plain, direct, and SHORT: a few tight paragraphs or a short list, not an essay. Lead with the finding. Say the two or three things that matter and stop; the user can always ask for more.  You are a knowledgeable training partner, not a wellness brand: no hype, no emoji, no exclamation marks, no "great question". Give a recommendation rather than a menu of options, and say when you are unsure. Never invent a number - if you did not read it from a tool, you do not know it.`;
 
 type Event = Record<string, unknown>;
 
@@ -113,12 +127,29 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       };
 
+      const startedAt = Date.now();
+
       try {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
+          // Stop BEFORE starting a round trip we cannot finish. Being killed by
+          // the platform mid-thought is what produced the original symptom: an
+          // opening sentence, then nothing, with no error anywhere.
+          if (i > 0 && Date.now() - startedAt > SOFT_DEADLINE_MS) {
+            send({
+              type: "text",
+              text: "\n\n(I ran out of time before I could finish that. Ask me to continue and I will pick up where I left off.)",
+            });
+            break;
+          }
           const modelStream = client.messages.stream({
             model: "claude-opus-5",
             max_tokens: 8192,
-            thinking: { type: "adaptive" },
+            // Summarized, not omitted (the default). While the model thinks it
+            // emits no text, so on a long turn the page showed a finished
+            // sentence and then nothing for the better part of a minute, which
+            // is indistinguishable from being broken. A visible summary is the
+            // difference between "working" and "hung".
+            thinking: { type: "adaptive", display: "summarized" },
             output_config: { effort: EFFORT },
             // The system prompt and the tool list are byte-identical on every
             // turn, so they are the stable prefix worth caching. The transcript
@@ -131,6 +162,12 @@ export async function POST(request: NextRequest) {
           });
 
           modelStream.on("text", (text) => send({ type: "text", text }));
+          // Thinking is where the seconds go on a hard question, and it emits
+          // no text of its own. Forwarding the summary is what keeps the page
+          // from looking hung while the model works.
+          modelStream.on("thinking", (thinking) =>
+            send({ type: "thinking", text: thinking }),
+          );
 
           const final = await modelStream.finalMessage();
           messages.push({ role: "assistant", content: final.content });
