@@ -17,7 +17,7 @@ import {
   lbsToDisplay as lbsToDisplayShared,
   displayToLbs as displayToLbsShared,
 } from "@/lib/units";
-import { type SetData } from "@/lib/workout-stats";
+import { preferRepsOverVolume, type SetData } from "@/lib/workout-stats";
 import { localDateKey } from "@/lib/date";
 import { formatDuration, parseDurationInput } from "@/lib/workout-duration";
 import { usesDistance, usesTime } from "@/lib/exercise-types";
@@ -58,6 +58,8 @@ interface WorkoutHistoryCardProps {
   duration: number;
   exerciseCount: number;
   totalVolume: number;
+  /** Reps across completed sets, for sessions where volume says nothing. */
+  totalReps?: number;
   totalSets?: number;
   exercises?: ExerciseDetail[];
   calendarEventId?: string | null;
@@ -71,6 +73,7 @@ export function WorkoutHistoryCard({
   duration,
   exerciseCount,
   totalVolume,
+  totalReps = 0,
   totalSets = 0,
   exercises = [],
   calendarEventId,
@@ -341,7 +344,20 @@ export function WorkoutHistoryCard({
                 Sets
               </div>
             </div>
-            {totalVolume > 0 && (
+            {/* The volume box becomes a REPS box when volume says nothing
+                about the session (bodyweight, or so lightly loaded that the
+                number misleads). It used to vanish entirely at zero, so a
+                pull-up workout showed a gap where its hardest number belongs. */}
+            {preferRepsOverVolume(totalVolume, totalReps) ? (
+              <div>
+                <div className="font-mono text-[17px] font-bold" data-testid={`text-history-reps-${id}`}>
+                  {totalReps.toLocaleString()}
+                </div>
+                <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                  reps
+                </div>
+              </div>
+            ) : totalVolume > 0 ? (
               <div>
                 <div className="font-mono text-[17px] font-bold" data-testid={`text-history-volume-${id}`}>
                   {Math.round(lbsToDisplay(totalVolume, weightUnit) ?? 0).toLocaleString()}
@@ -350,7 +366,7 @@ export function WorkoutHistoryCard({
                   {weightUnit} vol
                 </div>
               </div>
-            )}
+            ) : null}
             {duration > 0 && (
               <div>
                 <div className="font-mono text-[17px] font-bold" data-testid={`text-history-duration-${id}`}>

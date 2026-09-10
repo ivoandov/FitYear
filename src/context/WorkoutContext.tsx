@@ -190,6 +190,12 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   const [activeWorkout, setActiveWorkout] = useState<ActiveWorkout | null>(null);
   const [trackingProgress, setTrackingProgress] = useState<TrackingProgress | null>(null);
   const [hasLoadedFromServer, setHasLoadedFromServer] = useState(false);
+  // Set SYNCHRONOUSLY before the load starts, unlike the state flag above,
+  // which only flips once the request resolves. The effect depends on `user`
+  // and two callbacks, so anything that changed their identity inside that
+  // window re-ran it and fired a second identical request - which is why every
+  // page in the app fetched /api/active-workout twice.
+  const loadStartedRef = useRef(false);
   const [lastCompletedWorkoutId, setLastCompletedWorkoutId] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // True once this session has held a real active workout, so a subsequent null
@@ -275,12 +281,23 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
   // Load active workout - from server for authenticated users, localStorage for guests
   useEffect(() => {
     if (hasLoadedFromServer) return;
-    
+
     console.log("[WorkoutContext] Loading workout, user:", user ? user.id : "guest");
     
     if (user) {
       // Authenticated user: reconcile the server copy with localStorage so a
       // reload / app restart can never lose progress.
+      //
+      // The ref is checked and set SYNCHRONOUSLY here, and only here. The state
+      // flag below flips when the request resolves, so anything that re-ran
+      // this effect inside that window - `user` or either callback changing
+      // identity - fired a second identical request, and every page in the app
+      // was fetching this twice. The guest branch is deliberately NOT guarded:
+      // `user` is null while auth resolves, and blocking that re-run would
+      // strand a signed-in user on their local copy.
+      if (loadStartedRef.current) return;
+      loadStartedRef.current = true;
+
       fetch("/api/active-workout", { credentials: "include" })
         .then(res => {
           // An HTTP error is a LOAD FAILURE, not "you have no workout". Treating
@@ -348,6 +365,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
           loadFromLocalStorage();
           setHasLoadedFromServer(true);
         });
+      return;
     } else {
       // Guest user: load from localStorage only
       console.log("[WorkoutContext] Guest user, loading from localStorage");

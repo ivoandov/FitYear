@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { lbsToDisplay } from "@/lib/units";
+import { preferRepsOverVolume } from "@/lib/workout-stats";
 
 interface Props {
   workoutName: string;
@@ -86,7 +87,7 @@ export function ShareWorkoutButton(props: Props) {
   // A bodyweight session has zero volume however hard it was, and "Volume 0 lb"
   // is the worst thing to put on a card you are about to share. Reps are the
   // honest unit for that work. Same rule as the summary screen it opens from.
-  const useReps = props.totalVolumeLbs <= 0 && props.totalReps > 0;
+  const useReps = preferRepsOverVolume(props.totalVolumeLbs, props.totalReps);
   const effortLabel = useReps ? "Reps" : "Volume";
   const effortValue = useReps
     ? props.totalReps.toLocaleString()

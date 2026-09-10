@@ -50,6 +50,39 @@ export interface WorkoutSummary {
   muscleGroups: Map<string, number>; // muscleGroup → sets count
 }
 
+/**
+ * Below this average load per rep, volume stops describing the session.
+ *
+ * Not an absolute floor on purpose. "Super low" (Ivo's words) has to scale with
+ * the size of the workout: 300 lbs of volume is nothing across 60 pull-up-ish
+ * reps and is a perfectly ordinary single set of curls. Load per rep asks the
+ * question that actually matters - was this mostly bodyweight work?
+ */
+export const LOW_LOAD_LBS_PER_REP = 15;
+
+/**
+ * Should a surface show REPS instead of volume for this workout?
+ *
+ * Volume is `weight x reps`, so a bodyweight session is worth zero however hard
+ * it was, and a mostly-bodyweight one is worth almost nothing. Ivo, after a
+ * pull-up workout: "it should just replace that box if it's 0 or super low with
+ * the reps counts."
+ *
+ * Lives here, next to the summary, so the workout-complete screen, the share
+ * card and the History row cannot disagree about which unit a workout is
+ * measured in - which they would within a month as three separate `> 0` checks.
+ */
+export function preferRepsOverVolume(
+  totalVolumeLbs: number,
+  totalReps: number,
+): boolean {
+  // Nothing to show instead: a hold or a distance session has no reps either,
+  // and an empty box is worse than a zero.
+  if (totalReps <= 0) return false;
+  if (totalVolumeLbs <= 0) return true;
+  return totalVolumeLbs / totalReps < LOW_LOAD_LBS_PER_REP;
+}
+
 export function summarizeWorkout(
   workout: WorkoutForSummary,
 ): WorkoutSummary {

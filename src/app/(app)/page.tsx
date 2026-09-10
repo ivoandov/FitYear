@@ -173,9 +173,16 @@ export default function WorkoutsPage() {
     enabled: deferSecondary,
   });
 
+  // NOT deferred, unlike the usage badges above it. This query decides WHICH
+  // hero renders - the "start a workout" empty state or the active-program card
+  // - so deferring it meant a cold load painted the empty hero and then swapped
+  // it for the program card about a second later. Measured on Home as the entry
+  // button appearing, vanishing and reappearing. A visible swap of the main
+  // content is the jankiest thing on the page, and it is worth one request in
+  // the first wave to avoid it. The badges stay deferred; they change nothing
+  // about layout.
   const { data: dbRoutineInstances = [] } = useQuery<DBRoutineInstance[]>({
     queryKey: ["/api/routine-instances"],
-    enabled: deferSecondary,
   });
 
   const routineInstanceMap = new Map<string, string>(

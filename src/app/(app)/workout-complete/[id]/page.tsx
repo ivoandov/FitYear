@@ -12,6 +12,7 @@ import {
   formatDuration,
   calcStreak,
   detectPRs,
+  preferRepsOverVolume,
 } from "@/lib/workout-stats";
 import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 import { viewerTimeZone } from "@/lib/server-timezone";
@@ -202,7 +203,7 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
               summary shows 0 lbs for volume because it's bodyweight. I wish in
               these instances it would show the total amount of pullups or
               pushups, not just a fat zero." Reps are the honest unit there. */}
-          {summary.totalVolumeLbs > 0 || summary.totalReps === 0 ? (
+          {!preferRepsOverVolume(summary.totalVolumeLbs, summary.totalReps) ? (
             <Stat
               label="Volume"
               value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}

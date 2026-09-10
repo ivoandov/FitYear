@@ -146,6 +146,16 @@ export default function HistoryPage() {
         (ex.sets ?? []).some((s: SetData) => s.completed),
       ).length,
       totalVolume: workoutVolume,
+      // Completed sets only, matching every other total on the row.
+      totalReps: exercises.reduce(
+        (sum: number, ex) =>
+          sum +
+          (ex.sets ?? []).reduce(
+            (n: number, sset: SetData) => n + (sset.completed ? sset.reps ?? 0 : 0),
+            0,
+          ),
+        0,
+      ),
       totalSets,
       exercises,
       calendarEventId: workout.calendarEventId,

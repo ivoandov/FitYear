@@ -7,6 +7,7 @@ import {
   detectPRs,
   epley1RM,
   isRepTotalExercise,
+  preferRepsOverVolume,
   prSetIndices,
   summarizeWorkout,
   totalCompletedReps,
@@ -475,5 +476,36 @@ describe("summarizeWorkout totalReps", () => {
     } as Parameters<typeof summarizeWorkout>[0]);
     expect(summary.totalVolumeLbs).toBe(500);
     expect(summary.totalReps).toBe(5);
+  });
+});
+
+describe("preferRepsOverVolume", () => {
+  it("prefers reps for a pure bodyweight session", () => {
+    expect(preferRepsOverVolume(0, 60)).toBe(true);
+  });
+
+  it("prefers reps when the load is so light that volume misleads", () => {
+    // Ivo: "replace that box if it's 0 or super low with the reps counts."
+    // 40 pull-up reps plus one light set is not a 300 lb workout in any
+    // meaningful sense.
+    expect(preferRepsOverVolume(300, 50)).toBe(true);
+  });
+
+  it("keeps volume for a genuinely loaded session", () => {
+    // Bench 135 x 5 x 3 = 2,025 lbs across 15 reps.
+    expect(preferRepsOverVolume(2025, 15)).toBe(false);
+  });
+
+  it("scales with the size of the workout rather than a fixed floor", () => {
+    // The same 300 lbs is ordinary across one set of curls and meaningless
+    // across fifty bodyweight reps, which is why the rule is per rep.
+    expect(preferRepsOverVolume(300, 10)).toBe(false);
+    expect(preferRepsOverVolume(300, 50)).toBe(true);
+  });
+
+  it("keeps volume when there are no reps to show instead", () => {
+    // A hold or a distance session has no rep count; an empty box would be
+    // worse than the zero it replaced.
+    expect(preferRepsOverVolume(0, 0)).toBe(false);
   });
 });
