@@ -656,16 +656,44 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       scheduledWorkoutId: workout.scheduledWorkoutId || null,
       name: workout.name,
       startedAt: new Date().toISOString(),
-      exercises: workout.exercises.map((ex, index) => ({
-        ...ex,
-        instanceId: `${workout.displayId}-${index}-${Date.now()}`,
-        sets: 3,
-        defaultWeight: 135,
-        defaultReps: 10,
-        // Surface a FitBot program day's per-anchor target load to Track (weight
-        // prefill only; row count stays the historic default). Absent -> null.
-        plannedLoadLbs: (ex as { targetLoadLbs?: number | null }).targetLoadLbs ?? null,
-      })),
+      exercises: workout.exercises.map((ex, index) => {
+        // A scheduled workout that came from a ROUTINE carries a real
+        // prescription on each exercise - `sets`, `reps` and `rest` written by
+        // ai/save-program or the import commit. This used to hardcode `sets: 3`
+        // over the top of it, so a programmed 5x5 opened as 3 sets and the
+        // Target line read "3 sets" no matter what the program said. A
+        // quick-start or a hand-made scheduled workout has no prescription and
+        // still gets the historic default.
+        //
+        // `reps` is deliberately NOT parsed into plannedReps here. The
+        // prescription is a STRING ("6-8", "AMRAP") and the tracker shows it
+        // verbatim, reading it through planOf's fallback; turning it into a
+        // number would collapse a range to its low end on the Target line.
+        const prescribed = ex as {
+          sets?: unknown;
+          rest?: unknown;
+          targetLoadLbs?: number | null;
+        };
+        const plannedSets =
+          typeof prescribed.sets === "number" && prescribed.sets > 0
+            ? prescribed.sets
+            : undefined;
+        const plannedRest =
+          typeof prescribed.rest === "number" && prescribed.rest > 0
+            ? prescribed.rest
+            : undefined;
+        return {
+          ...ex,
+          instanceId: `${workout.displayId}-${index}-${Date.now()}`,
+          sets: plannedSets ?? 3,
+          defaultWeight: 135,
+          defaultReps: 10,
+          plannedSets,
+          plannedRest,
+          // Surface a FitBot program day's per-anchor target load to Track.
+          plannedLoadLbs: prescribed.targetLoadLbs ?? null,
+        };
+      }),
     };
     setActiveWorkout(workoutWithSets);
     setLastCompletedWorkoutId(null);

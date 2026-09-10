@@ -28,6 +28,12 @@ interface SetRowProps {
   // 155 × 8"). Shown under the weight pill on the untouched prefilled current
   // set only; TrackPage clears it the moment the row is edited.
   ghostTarget?: string;
+  /**
+   * Per-side plate breakdown for this row's weight, already formatted (e.g.
+   * "45, 25 / side"). TrackPage decides whether the exercise is bar-loaded at
+   * all and does the arithmetic; SetRow stays presentational.
+   */
+  plateHint?: string;
   onFieldChange: (field: Field, value: number | null) => void;
   onToggleComplete: (checked: boolean) => void;
 }
@@ -64,6 +70,7 @@ export function SetRow({
   weightUnit,
   weightIncrement,
   showKgConversion,
+  plateHint,
   ghostTarget,
   onFieldChange,
   onToggleComplete,
@@ -156,6 +163,14 @@ export function SetRow({
             data-testid={`text-overload-ghost-${set.setNumber}`}
           >
             {ghostTarget}
+          </p>
+        ) : null}
+        {plateHint ? (
+          <p
+            className="whitespace-nowrap text-center font-mono text-[9px] tabular-nums text-tertiary-foreground"
+            data-testid={`text-plate-hint-${set.setNumber}`}
+          >
+            {plateHint}
           </p>
         ) : null}
       </div>

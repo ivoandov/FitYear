@@ -42,6 +42,7 @@ import { toast } from "@/hooks/use-toast";
 import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
 import { hapticImpact, keepScreenAwake } from "@/lib/native-feedback";
 import type { WorkoutExerciseInput } from "@/context/WorkoutContext";
+import { solvePlates, formatPerSide, equipmentFor, showsPlateMath, warmupSets } from "@/lib/plate-math";
 
 type TrackingState = "not_started" | "in_set" | "resting";
 
@@ -424,7 +425,38 @@ export default function TrackPage() {
   }
 
   const currentExercise = enrichedWorkoutExercises[currentExerciseIndex];
+  // Plate maths for the current exercise, when it is loaded on a plain barbell.
+  // Plain consts, deliberately BELOW the early return and not hooks - the hook
+  // order above that return is load-bearing and has crashed this page twice.
+  const plateEquipment = equipmentFor(weightUnit);
+  const showPlates =
+    currentExercise != null &&
+    showsPlateMath(String(currentExercise.name ?? ""), currentExercise.exerciseType);
+  const plateHintFor = (weight: number | null | undefined): string | undefined => {
+    if (!showPlates || weight == null || !Number.isFinite(weight)) return undefined;
+    if (weight <= plateEquipment.bar) return undefined;
+    const plan = solvePlates(weight, plateEquipment.bar, plateEquipment.plates);
+    const perSide = formatPerSide(plan, weightUnit);
+    // An unbuildable target says so rather than quietly showing the load below
+    // it, which would have somebody put 315 on for a 317.5 target.
+    return plan.approximate
+      ? `${perSide} / side (${plan.achievable})`
+      : `${perSide} / side`;
+  };
   const sets = getCurrentSets();
+  // The ramp up to today's working weight, shown only while the exercise is
+  // still untouched - once you are working, a warm-up line is clutter. The
+  // working weight is whatever the first row says, which is the plan's target
+  // before you edit it and your own number after.
+  const warmupLine = (() => {
+    if (!showPlates) return null;
+    if (sets.some((x) => x.completed)) return null;
+    const working = sets[0]?.weight;
+    if (working == null || !Number.isFinite(working)) return null;
+    const ramp = warmupSets(working, plateEquipment.bar, plateEquipment.plates);
+    if (!ramp.length) return null;
+    return ramp.map((r) => `${r.weight} x ${r.reps}`).join("   ");
+  })();
   const progress = ((currentExerciseIndex + 1) / enrichedWorkoutExercises.length) * 100;
   const allSetsCompleted = sets.every(s => s.completed);
   const isLastExercise = currentExerciseIndex === enrichedWorkoutExercises.length - 1;
@@ -903,6 +935,14 @@ export default function TrackPage() {
                   Target {currentTarget}
                 </div>
               )}
+              {warmupLine && (
+                <div
+                  className="mt-1 font-mono text-[11px] tabular-nums text-tertiary-foreground"
+                  data-testid="text-warmup-ramp"
+                >
+                  Warm-up {warmupLine}
+                </div>
+              )}
               {currentPlanNotes && (
                 <div
                   className="mt-1 text-[12px] leading-snug text-tertiary-foreground"
@@ -980,6 +1020,7 @@ export default function TrackPage() {
                     weightIncrement={weightIncrement}
                     showKgConversion={showKgConversion}
                     ghostTarget={ghostTarget}
+                    plateHint={plateHintFor(set.weight)}
                     onFieldChange={(field, value) => {
                       const newSets = [...sets];
                       newSets[index][field] = value;

@@ -49,6 +49,7 @@ import { ScheduledWorkoutCard } from "@/components/ScheduledWorkoutCard";
 import { exercisesFromCompletedWorkout } from "@/lib/repeat-workout";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { ExerciseType } from "@/lib/exercise-types";
+import { MuscleBalanceCard } from "@/components/MuscleBalanceCard";
 
 interface ScheduledWorkout {
   id: string;
@@ -1028,6 +1029,12 @@ export default function WorkoutsPage() {
                 </button>
               </div>
             </div>
+
+            {/* What you have been neglecting. Renders nothing when nothing
+                is behind, and only reachable here - this whole block is the
+                no-active-routine state, and somebody mid-program has already
+                answered the question it asks. */}
+            <MuscleBalanceCard />
 
             {/* Start a program (→ /fit-bot program builder). */}
             <button

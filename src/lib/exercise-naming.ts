@@ -207,6 +207,27 @@ function applySpellings(s: string): string {
  */
 const OVERRIDE_VALUES = new Set(Object.values(OVERRIDES).map((v) => v.toLowerCase()));
 
+/**
+ * The equipment this exercise's NAME declares, or null when it names none.
+ *
+ * Exported so the plate calculator can ask "is this loaded on a bar" without
+ * keeping a second copy of the equipment vocabulary. One table, one answer:
+ * a synonym added here (another spelling of dumbbell, say) is understood
+ * everywhere at once, which is the whole reason canonicalisation lives in one
+ * module in the first place.
+ */
+export function detectEquipment(name: string): string | null {
+  // Abbreviations first, so "DB Bench Press" and "BB Row" are understood. The
+  // EQUIPMENT patterns already accept the short forms too; expanding is belt
+  // and braces for names the table's own aliases do not cover.
+  let expanded = name;
+  for (const [re, to] of ABBREVIATIONS) expanded = expanded.replace(re, to);
+  for (const [pattern, label] of EQUIPMENT) {
+    if (pattern.test(expanded)) return label;
+  }
+  return null;
+}
+
 export function canonicalExerciseName(raw: string): string {
   const input = (raw ?? "").trim();
   if (!input) return input;
