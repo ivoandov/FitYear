@@ -778,20 +778,31 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     const startedAt = activeWorkout.startedAt
       ? new Date(activeWorkout.startedAt)
       : null;
-    const completedAt = new Date();
+    const pressedFinishAt = new Date();
     // Forgetting to press Finish used to record the idle tail as training time
     // (a one-hour session logged as four). The last real interaction is the
     // honest end of the workout; resolveWorkoutDuration only trims when the
     // idle gap is unambiguous, so genuine long rests are untouched.
-    const { durationSeconds, trimmed, rawSeconds } = resolveWorkoutDuration({
+    const {
+      durationSeconds,
+      trimmed,
+      rawSeconds,
+      effectiveCompletedAt,
+    } = resolveWorkoutDuration({
       startedAt,
-      completedAt,
+      completedAt: pressedFinishAt,
       lastActivityAt: lastActivityAtRef.current,
     });
+    // The TIMESTAMP is trimmed too, not just the span. `completed_at` decides
+    // which DAY the workout belongs to, so finishing a late-evening session
+    // after midnight used to file it on the wrong date and take the streak, the
+    // consistency chart and the calendar event with it.
+    const completedAt = effectiveCompletedAt;
     if (trimmed) {
       console.log(
         `[WorkoutContext] duration trimmed: ${rawSeconds}s elapsed -> ${durationSeconds}s of training ` +
-          `(idle tail after the last logged set)`,
+          `(idle tail after the last logged set); recorded end ${completedAt.toISOString()} ` +
+          `rather than ${pressedFinishAt.toISOString()}`,
       );
     }
 

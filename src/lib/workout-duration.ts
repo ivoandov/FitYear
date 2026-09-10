@@ -37,6 +37,18 @@ export interface DurationResult {
   trimmed: boolean;
   /** The raw untrimmed duration, for explaining the correction to the user. */
   rawSeconds: number | null;
+  /**
+   * When the workout should be RECORDED as having ended.
+   *
+   * The same answer as the duration, applied to the timestamp instead of the
+   * span, and it matters for more than tidiness: `completed_at` decides which
+   * DAY a workout belongs to. Train at 11pm, forget to press Finish, tap it at
+   * 1am, and an untrimmed timestamp files the session on the wrong date - which
+   * then moves it in History, breaks the streak, puts the wrong day in the
+   * consistency chart and creates the calendar event a day late. Trimming the
+   * duration alone left every one of those wrong.
+   */
+  effectiveCompletedAt: Date;
 }
 
 export function resolveWorkoutDuration({
@@ -44,12 +56,24 @@ export function resolveWorkoutDuration({
   completedAt,
   lastActivityAt,
 }: DurationInput): DurationResult {
-  if (!startedAt) return { durationSeconds: null, trimmed: false, rawSeconds: null };
+  if (!startedAt) {
+    return {
+      durationSeconds: null,
+      trimmed: false,
+      rawSeconds: null,
+      effectiveCompletedAt: completedAt,
+    };
+  }
 
   const startMs = startedAt.getTime();
   const endMs = completedAt.getTime();
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-    return { durationSeconds: null, trimmed: false, rawSeconds: null };
+    return {
+      durationSeconds: null,
+      trimmed: false,
+      rawSeconds: null,
+      effectiveCompletedAt: completedAt,
+    };
   }
 
   const rawSeconds = Math.max(0, Math.floor((endMs - startMs) / 1000));
@@ -57,22 +81,27 @@ export function resolveWorkoutDuration({
   // No usable activity stamp (legacy progress, or a workout completed without
   // ever logging a set) - fall back to the raw span.
   if (lastActivityAt == null || !Number.isFinite(lastActivityAt)) {
-    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds };
+    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds, effectiveCompletedAt: completedAt };
   }
 
   // An activity stamp before the start, or after the finish, is nonsense
   // (clock skew, a restored older blob). Ignore it rather than trust it.
   if (lastActivityAt <= startMs || lastActivityAt > endMs) {
-    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds };
+    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds, effectiveCompletedAt: completedAt };
   }
 
   const idleSeconds = Math.floor((endMs - lastActivityAt) / 1000);
   if (idleSeconds < IDLE_TRIM_THRESHOLD_SECONDS) {
-    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds };
+    return { durationSeconds: rawSeconds, trimmed: false, rawSeconds, effectiveCompletedAt: completedAt };
   }
 
   const trimmedSeconds = Math.max(0, Math.floor((lastActivityAt - startMs) / 1000));
-  return { durationSeconds: trimmedSeconds, trimmed: true, rawSeconds };
+  return {
+    durationSeconds: trimmedSeconds,
+    trimmed: true,
+    rawSeconds,
+    effectiveCompletedAt: new Date(lastActivityAt),
+  };
 }
 
 /** "1h 12m" / "48m" / "45s". Used in history and on the complete screen. */
