@@ -241,3 +241,68 @@ test("removeOrphaned deletes the dropped day's sessions and rebases the planned 
     await sql`delete from routine_instances where id = ${instanceId}`;
   }
 });
+
+test("a day the edit ADDED gets a session created, and counted onto the plan", async ({
+  page,
+  account,
+}) => {
+  // A routine mid-run whose day 4 was just ADDED: entries for 1, 2 and 4, but
+  // only days 1 and 2 have ever been placed on the calendar. Before this the
+  // re-sync only walked sessions that already existed, so "make it 3 days
+  // instead of 2" changed the routine and left the calendar at two.
+  const [routine] = await sql`
+    insert into routines (user_id, name)
+    values (${account.id}::uuid, ${`ZZ Added ${Date.now()}`})
+    returning id`;
+  const [instance] = await sql`
+    insert into routine_instances
+      (routine_id, user_id, routine_name, start_date, end_date, duration_days,
+       total_workouts, completed_workouts, status)
+    values (${routine.id}, ${account.id}::uuid, 'ZZ Added',
+            now(), now() + interval '7 days', 7, 2, 0, 'active')
+    returning id, start_date`;
+
+  try {
+    for (const day of [1, 2, 4]) {
+      await sql`
+        insert into routine_entries (routine_id, day_index, workout_name, exercises)
+        values (${routine.id}, ${day}, ${`Day ${day}`},
+                ${sql.json([{ id: `ex-${day}`, name: `Exercise ${day}` }])})`;
+    }
+    // Only days 1 and 2 are on the calendar, both in the future so the update
+    // path reaches them.
+    for (const day of [1, 2]) {
+      await sql`
+        insert into scheduled_workouts
+          (user_id, name, date, exercises, routine_instance_id, routine_day_index)
+        values (${account.id}::uuid, ${`Old Day ${day}`}, now() + interval '1 day',
+                ${sql.json([])}, ${instance.id}, ${day})`;
+    }
+
+    await page.goto("/");
+    const preview = await apiGet(page, `/api/routines/${routine.id}/update-active-instances`);
+    expect(preview.status).toBe(200);
+    expect(preview.json?.missingCount).toBe(1);
+    expect(preview.json?.missingDays?.[0]?.dayIndex).toBe(4);
+
+    const res = await apiPost(page, `/api/routines/${routine.id}/update-active-instances`);
+    expect(res.status).toBe(200);
+    expect(res.json?.createdCount).toBe(1);
+
+    const created = await sql`
+      select routine_day_index, name from scheduled_workouts
+      where routine_instance_id = ${instance.id} and routine_day_index = 4`;
+    expect(created.length).toBe(1);
+    expect(created[0].name).toBe("Day 4");
+
+    // The planned count is the denominator of every progress readout, so a new
+    // session has to be counted onto it just as a removed one comes off.
+    const [inst] = await sql`
+      select total_workouts from routine_instances where id = ${instance.id}`;
+    expect(inst.total_workouts).toBe(3);
+  } finally {
+    await sql`delete from routines where id = ${routine.id}`;
+    await sql`delete from scheduled_workouts where routine_instance_id = ${instance.id}`;
+    await sql`delete from routine_instances where id = ${instance.id}`;
+  }
+});

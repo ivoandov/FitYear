@@ -177,7 +177,13 @@ export default function RoutinesPage() {
   // What a re-sync would do to the running program, read BEFORE anything is
   // written so the dialog can ask about removed days only when there are any.
   const [resyncPreview, setResyncPreview] = useState<
-    { updatableCount: number; orphanedCount: number; orphanedDays: number[] } | null
+    {
+      updatableCount: number;
+      orphanedCount: number;
+      orphanedDays: number[];
+      missingCount: number;
+      missingDays: { dayIndex: number; date: string }[];
+    } | null
   >(null);
   // Ivo, 2026-09-10: there is no right default for a dropped day's sessions,
   // "it should ask for what they prefer in that moment". Keeping is the
@@ -294,14 +300,18 @@ export default function RoutinesPage() {
       );
       return response.json();
     },
-    onSuccess: (data: { updatedCount: number; removedCount: number }) => {
+    onSuccess: (data: { updatedCount: number; removedCount: number; createdCount: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-workouts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/routine-instances/active"] });
       toast({
         title: "Active routines updated",
-        description: data.removedCount
-          ? `${data.updatedCount} scheduled workouts updated, ${data.removedCount} removed.`
-          : `${data.updatedCount} remaining scheduled workouts have been updated.`,
+        description: [
+          `${data.updatedCount} updated`,
+          data.createdCount ? `${data.createdCount} added` : null,
+          data.removedCount ? `${data.removedCount} removed` : null,
+        ]
+          .filter(Boolean)
+          .join(", "),
       });
       closeResyncPrompt();
     },
@@ -341,8 +351,15 @@ export default function RoutinesPage() {
         updatableCount: number;
         orphanedCount: number;
         orphanedDays: number[];
+        missingCount: number;
+        missingDays: { dayIndex: number; date: string }[];
       };
-      if (preview.updatableCount === 0 && preview.orphanedCount === 0) return;
+      if (
+        preview.updatableCount === 0 &&
+        preview.orphanedCount === 0 &&
+        preview.missingCount === 0
+      )
+        return;
 
       setResyncPreview(preview);
       setRemoveOrphaned(false);
@@ -1146,6 +1163,21 @@ export default function RoutinesPage() {
             <p className="py-2 text-sm text-muted-foreground">
               Only future workouts that haven&apos;t been completed yet will be updated. Past and completed workouts will remain unchanged.
             </p>
+
+            {/* A day the edit ADDED gets a session created. Stated rather than
+                asked: unlike a removed day there is no dilemma here - somebody
+                who adds a training day to a running program wants to train it,
+                and this dialog is already the opt-in. */}
+            {resyncPreview && resyncPreview.missingCount > 0 && (
+              <div className="rounded-xl border-yellow bg-primary-dim p-3" data-testid="missing-days-note">
+                <p className="text-sm text-foreground">
+                  {resyncPreview.missingCount === 1 ? "A new workout" : `${resyncPreview.missingCount} new workouts`}{" "}
+                  will be added to your calendar for the{" "}
+                  {resyncPreview.missingDays.length === 1 ? "day" : "days"} you added:{" "}
+                  {resyncPreview.missingDays.map((d) => d.date).join(", ")}.
+                </p>
+              </div>
+            )}
 
             {/* The removed-day question, asked only when the edit actually
                 dropped a day that still has sessions on the calendar. */}

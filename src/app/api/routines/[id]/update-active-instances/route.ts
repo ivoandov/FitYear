@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { addDaysToDateKey, scheduledDateFromKey, scheduledDateKey } from "@/lib/date";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -20,6 +21,13 @@ type Ctx = { params: Promise<{ id: string }> };
 
 const PostSchema = z.object({
   /**
+   * Whether to put a day the edit ADDED onto the calendar. Defaults to true:
+   * unlike a removed day, there is no dilemma here - somebody who adds a
+   * training day to a running program wants to train it, and the confirm
+   * dialog is itself the opt-in.
+   */
+  createMissing: z.boolean().optional(),
+  /**
    * What to do with sessions whose routine day no longer exists. Defaults to
    * KEEPING them, which is the behaviour this route has always had and the
    * safer half of the choice: an unwanted session can be skipped, a deleted
@@ -33,6 +41,14 @@ type Pending = {
   routineDayIndex: number | null;
   routineInstanceId: string | null;
   calendarEventId: string | null;
+};
+
+/** A routine day with no session on the calendar, and where it would go. */
+type Missing = {
+  dayIndex: number;
+  dateKey: string;
+  workoutName: string | null;
+  exercises: unknown;
 };
 
 /**
@@ -60,7 +76,12 @@ type Entry = typeof routineEntries.$inferSelect;
 async function loadState(
   routineId: string,
   userId: string,
-): Promise<{ entryByDay: Map<number, Entry>; pending: Pending[] }> {
+): Promise<{
+  entryByDay: Map<number, Entry>;
+  pending: Pending[];
+  missing: Missing[];
+  instanceId: string | null;
+}> {
   const [routine] = await db
     .select()
     .from(routines)
@@ -69,7 +90,11 @@ async function loadState(
   if (!routine) throw new ApiError(404, "Routine not found");
 
   const activeInstances = await db
-    .select({ id: routineInstances.id })
+    .select({
+      id: routineInstances.id,
+      startDate: routineInstances.startDate,
+      durationDays: routineInstances.durationDays,
+    })
     .from(routineInstances)
     .where(
       and(
@@ -79,7 +104,12 @@ async function loadState(
       ),
     );
   if (activeInstances.length === 0) {
-    return { entryByDay: new Map<number, Entry>(), pending: [] };
+    return {
+      entryByDay: new Map<number, Entry>(),
+      pending: [],
+      missing: [],
+      instanceId: null,
+    };
   }
 
   const entries = await db
@@ -111,7 +141,65 @@ async function loadState(
       ),
     );
 
-  return { entryByDay, pending };
+  // A day the edit ADDED has no session anywhere, so it is invisible to the
+  // pending query above - which is why "make it 5 days instead of 4" used to
+  // change the routine and leave the calendar at four.
+  //
+  // Placement copies routines/[id]/start EXACTLY: start day + (dayIndex - 1),
+  // bounded by the program's own duration. Any other rule would put the new
+  // session somewhere the rest of the program never would.
+  const instance = activeInstances[0];
+  const startKey = scheduledDateKey(instance.startDate);
+  const todayKey = scheduledDateKey(todayStart);
+
+  const scheduledDays = await db
+    .select({ dayIndex: scheduledWorkouts.routineDayIndex })
+    .from(scheduledWorkouts)
+    .where(
+      and(
+        eq(scheduledWorkouts.userId, userId),
+        inArray(
+          scheduledWorkouts.routineInstanceId,
+          activeInstances.map((i) => i.id),
+        ),
+      ),
+    );
+  // Every day that already has a session, INCLUDING ones already trained. A
+  // past session still means that day is placed, and re-creating it would
+  // double-book a day the user has finished.
+  const placed = new Set(
+    scheduledDays.map((r) => r.dayIndex).filter((d): d is number => d != null),
+  );
+
+  // Any workout on a date, from any source: the start route refuses to
+  // double-book a day and so does this.
+  const occupied = new Set(
+    (
+      await db
+        .select({ date: scheduledWorkouts.date })
+        .from(scheduledWorkouts)
+        .where(eq(scheduledWorkouts.userId, userId))
+    ).map((r) => scheduledDateKey(r.date)),
+  );
+
+  const missing: Missing[] = [];
+  for (const entry of entries) {
+    if (placed.has(entry.dayIndex)) continue;
+    if (!entry.workoutName) continue;
+    if (entry.dayIndex > instance.durationDays) continue;
+    const dateKey = addDaysToDateKey(startKey, entry.dayIndex - 1);
+    // Never create a session in the past, and never on a day already spoken for.
+    if (dateKey < todayKey) continue;
+    if (occupied.has(dateKey)) continue;
+    missing.push({
+      dayIndex: entry.dayIndex,
+      dateKey,
+      workoutName: entry.workoutName,
+      exercises: entry.exercises,
+    });
+  }
+
+  return { entryByDay, pending, missing, instanceId: instance.id };
 }
 
 /**
@@ -125,7 +213,7 @@ async function loadState(
 export const GET = handle(async (_request: NextRequest, ctx: Ctx) => {
   const { user } = await requireUser();
   const { id } = await ctx.params;
-  const { entryByDay, pending } = await loadState(id, user.id);
+  const { entryByDay, pending, missing } = await loadState(id, user.id);
   const { updatable, orphaned } = splitPending(pending, new Set(entryByDay.keys()));
 
   return {
@@ -134,6 +222,8 @@ export const GET = handle(async (_request: NextRequest, ctx: Ctx) => {
     orphanedDays: [
       ...new Set(orphaned.map((r) => r.routineDayIndex as number)),
     ].sort((a, b) => a - b),
+    missingCount: missing.length,
+    missingDays: missing.map((m) => ({ dayIndex: m.dayIndex, date: m.dateKey })),
   };
 });
 
@@ -160,9 +250,10 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   const raw = await request.text();
   const body = raw ? PostSchema.parse(JSON.parse(raw)) : {};
 
-  const { entryByDay, pending } = await loadState(id, user.id);
-  if (pending.length === 0) {
-    return { ok: true, updatedCount: 0, removedCount: 0 };
+  const { entryByDay, pending, missing, instanceId } = await loadState(id, user.id);
+  const toCreate = body.createMissing === false ? [] : missing;
+  if (pending.length === 0 && toCreate.length === 0) {
+    return { ok: true, updatedCount: 0, removedCount: 0, createdCount: 0 };
   }
 
   const { updatable, orphaned } = splitPending(pending, new Set(entryByDay.keys()));
@@ -225,6 +316,35 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
           );
       }
     }
+
+    if (toCreate.length > 0 && instanceId) {
+      await tx.insert(scheduledWorkouts).values(
+        toCreate.map((m) => ({
+          userId: user.id,
+          name: m.workoutName ?? `Day ${m.dayIndex}`,
+          // Anchored at noon UTC by the same helper the start route uses, so a
+          // viewer east of UTC+12 reads the day the user actually chose.
+          date: scheduledDateFromKey(m.dateKey),
+          exercises: m.exercises ?? [],
+          templateId: null,
+          routineInstanceId: instanceId,
+          routineDayIndex: m.dayIndex,
+        })),
+      );
+      // The same counter the removal path decrements: it is the denominator of
+      // every progress readout, so a new session has to be counted onto it.
+      await tx
+        .update(routineInstances)
+        .set({
+          totalWorkouts: sql`${routineInstances.totalWorkouts} + ${toCreate.length}`,
+        })
+        .where(
+          and(
+            eq(routineInstances.id, instanceId),
+            eq(routineInstances.userId, user.id),
+          ),
+        );
+    }
   });
 
   // Calendar cleanup is best-effort and deliberately OUTSIDE the transaction:
@@ -251,5 +371,6 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
     ok: true,
     updatedCount: updatable.length,
     removedCount: toRemove.length,
+    createdCount: toCreate.length,
   };
 });
