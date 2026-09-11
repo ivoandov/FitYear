@@ -144,10 +144,6 @@ export default function WorkoutsPage() {
     queryKey: ["/api/workout-templates"],
   });
 
-  const { data: dbExercises = [] } = useQuery<DBExercise[]>({
-    queryKey: ["/api/exercises"],
-  });
-
   // Defer secondary/below-fold queries (routine-usage badges + routine
   // instances) until the page is idle, so the primary content — scheduled
   // workouts, templates, history — wins network bandwidth first on a cold
@@ -167,6 +163,18 @@ export default function WorkoutsPage() {
     const id = setTimeout(() => setDeferSecondary(true), 600);
     return () => clearTimeout(id);
   }, []);
+
+  // Deferred to idle like the usage badges below. All 154 catalog rows are
+  // pulled here for exactly two things - the id-to-image map used when drawing
+  // workout cards, and the picker inside the workout editor dialog - and
+  // neither is needed in the first wave: the dialog is closed on load, and an
+  // image arriving a beat later is not worth a cold request competing with the
+  // page's own content. Cached values still render immediately; this gates the
+  // network fetch, not the read.
+  const { data: dbExercises = [] } = useQuery<DBExercise[]>({
+    queryKey: ["/api/exercises"],
+    enabled: deferSecondary,
+  });
 
   const { data: templateRoutineUsage = {} } = useQuery<Record<string, string[]>>({
     queryKey: ["/api/workout-templates/routine-usage"],
