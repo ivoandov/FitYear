@@ -83,13 +83,18 @@ interface DBWorkoutTemplate {
   exercises: Exercise[];
 }
 
+/**
+ * The SLIM catalog row. Home asks for `?slim=1`: it needs an id-to-image map
+ * and the editor picker's labels, and renders neither the description (22KB
+ * across the catalog) nor the form cues (16KB).
+ */
 interface DBExercise {
   id: string;
   name: string;
   muscleGroups: string[];
-  description: string;
   imageUrl: string | null;
   exerciseType: string | null;
+  isAssisted?: boolean;
 }
 
 interface DBRoutineInstance {
@@ -148,7 +153,7 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
   });
 
   const { data: dbExercises = [] } = useQuery<DBExercise[]>({
-    queryKey: ["/api/exercises"],
+    queryKey: ["/api/exercises?slim=1"],
   });
 
   // Defer secondary/below-fold queries (routine-usage badges + routine
@@ -229,7 +234,9 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
         id: ex.id,
         name: ex.name,
         muscleGroups: ex.muscleGroups,
-        description: ex.description,
+        // The picker shows a name and muscle groups; nothing on Home renders
+        // a catalog description, which is why the slim row omits it.
+        description: "",
         imageUrl: ex.imageUrl || undefined,
         exerciseType: (ex.exerciseType as ExerciseType) || "weight_reps",
       })),

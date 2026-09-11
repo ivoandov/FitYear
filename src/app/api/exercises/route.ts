@@ -26,9 +26,36 @@ export const dynamic = "force-dynamic";
  * The DB is not mutated — this is a presentation-layer translation.
  */
 
-export const GET = handle(async () => {
+/**
+ * The shared exercise catalog.
+ *
+ * `?slim=1` omits the two heavy text columns and the server-only bookkeeping.
+ * Measured over the real 154-row catalog: 88KB full, of which `description` is
+ * 22KB and `formCues` 16KB - and neither is rendered by a picker or by Home,
+ * which wants this only for an id-to-image map. The library page (whose cards
+ * show the description) and the tracker (which shows two form cues for the
+ * exercise you are on) ask for the full rows.
+ *
+ * Same route rather than a second endpoint so there is one place where the
+ * catalog's shape and its image-URL rewriting live.
+ */
+export const GET = handle(async (request: NextRequest) => {
   await requireUser();
-  const rows = await db.select().from(exercises);
+  const slim = request.nextUrl.searchParams.get("slim") === "1";
+
+  const rows = slim
+    ? await db
+        .select({
+          id: exercises.id,
+          name: exercises.name,
+          muscleGroups: exercises.muscleGroups,
+          imageUrl: exercises.imageUrl,
+          exerciseType: exercises.exerciseType,
+          isAssisted: exercises.isAssisted,
+        })
+        .from(exercises)
+    : await db.select().from(exercises);
+
   return rows.map((r) => ({ ...r, imageUrl: rewriteImageUrl(r.imageUrl) }));
 });
 
