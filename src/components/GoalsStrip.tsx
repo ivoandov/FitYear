@@ -39,14 +39,16 @@ const DAYS_OPTIONS = [2, 3, 4, 5, 6, 7] as const;
  *
  * Hidden if neither goal is set (user skipped onboarding).
  */
-export function GoalsStrip() {
+export function GoalsStrip({ initialSettings, initialActiveRoutines }: { initialSettings?: unknown; initialActiveRoutines?: unknown } = {}) {
   const { weekStart } = useSettings();
   const { completedWorkouts } = useWorkout();
   const { data: settings } = useQuery<UserSettingsResponse>({
     queryKey: ["/api/user-settings"],
+    ...(initialSettings ? { initialData: initialSettings as UserSettingsResponse } : {}),
   });
   const { data: activeRoutines = [] } = useQuery<RoutineInstance[]>({
     queryKey: ["/api/routine-instances/active"],
+    ...(initialActiveRoutines ? { initialData: initialActiveRoutines as RoutineInstance[] } : {}),
   });
 
   const [editOpen, setEditOpen] = useState(false);
