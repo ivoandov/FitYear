@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Plus, Target, Trophy, BarChart3, Medal, LineChart, Search, Scale } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { startOfWeek, startOfMonth, isAfter, isBefore, isEqual, endOfDay } from "date-fns";
-import { useWorkout } from "@/context/WorkoutContext";
+import { type CompletedWorkoutFullRow } from "@/context/WorkoutContext";
+import { parseServerDate } from "@/lib/date";
 import { useSettings } from "@/components/SettingsProvider";
 import {
   COARSE_MUSCLE_GROUPS,
@@ -53,7 +54,27 @@ function isWithinRange(date: Date, start: Date, end: Date): boolean {
 }
 
 export default function HistoryPage() {
-  const { completedWorkouts } = useWorkout();
+  // History is the ONE page that renders sets, so it fetches the full rows
+  // itself rather than making every other page carry them. The app-wide
+  // context now holds metadata only - see CompletedWorkoutRecord.
+  const { data: fullRows = [] } = useQuery<CompletedWorkoutFullRow[]>({
+    queryKey: ["/api/completed-workouts"],
+  });
+  const completedWorkouts = useMemo(
+    () =>
+      fullRows.map((w) => ({
+        ...w,
+        templateId: w.templateId ?? null,
+        // Same parse the context applied: a no-timezone server string is UTC.
+        completedAt: w.completedAt ? parseServerDate(w.completedAt) : new Date(),
+        exercises: (w.exercises ?? []).map((ex) => ({
+          ...ex,
+          muscleGroups: ex.muscleGroups || [],
+          setsData: ex.setsData || [],
+        })),
+      })),
+    [fullRows],
+  );
   const { weekStart: weekStartDay } = useSettings();
   const { enrichExercise } = useExerciseDetails();
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);

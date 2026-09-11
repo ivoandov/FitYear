@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Pencil, Check, X } from "lucide-react";
-import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
+import { apiRequest, describeApiError, invalidateCompletedWorkouts } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
 
 /**
@@ -40,7 +40,7 @@ export function WorkoutNameEditor({
     setName(trimmed); // optimistic
     try {
       await apiRequest("PUT", `/api/completed-workouts/${workoutId}`, { name: trimmed });
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
       setEditing(false);
     } catch (e) {
       setName(prev);

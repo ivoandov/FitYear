@@ -11,6 +11,7 @@ import { RestTimer } from "@/components/RestTimer";
 import { SetRow } from "@/components/track/SetRow";
 import { useTimer } from "@/context/TimerContext";
 import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDialog";
+import type { LastRecorded } from "@/lib/track-helpers";
 import { countsTowardGoal, familyOf } from "@/lib/exercise-family";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
 import {
@@ -34,7 +35,6 @@ import { type SetData, isRepTotalExercise, totalCompletedReps } from "@/lib/work
 import {
   formatTargetLine,
   getDefaultSets as getDefaultSetsHelper,
-  getLastRecordedValues as getLastRecordedValuesHelper,
   parseRepsPrescription,
 } from "@/lib/track-helpers";
 import { overloadSuggestion } from "@/lib/analytics";
@@ -96,6 +96,37 @@ export default function TrackPage() {
 
   // Goal standing for the live counter. Cheap and server-computed: the tracker
   // has no business pulling the user's whole history mid-workout.
+  // The ids in the workout being tracked. Both server lookups below are scoped
+  // to these, which is what replaced walking the user's entire history in the
+  // browser (and with it, every page carrying that history).
+  const trackedExerciseIds = useMemo(() => {
+    const ids = (activeWorkout?.exercises ?? [])
+      .map((e) => (e as { id?: string }).id)
+      .filter((id): id is string => !!id);
+    return [...new Set(ids)].sort().join(",");
+  }, [activeWorkout]);
+
+  const { data: lastValues = {} } = useQuery<Record<string, LastRecorded>>({
+    queryKey: ["/api/exercises/last-values", trackedExerciseIds],
+    enabled: trackedExerciseIds.length > 0,
+  });
+
+  const { data: personalBests } = useQuery<{
+    bests: Record<string, { bestWeight: number; maxVolume: number; assisted: boolean }>;
+    holds: Record<string, { seconds: number; weightLbs: number }>;
+  }>({
+    queryKey: ["/api/exercises/personal-bests", trackedExerciseIds],
+    enabled: trackedExerciseIds.length > 0,
+  });
+
+  const historical = useMemo(
+    () => ({
+      bests: new Map(Object.entries(personalBests?.bests ?? {})),
+      holds: new Map(Object.entries(personalBests?.holds ?? {})),
+    }),
+    [personalBests],
+  );
+
   const { data: goalProgressData = [] } = useQuery<
     { goalId: string; exerciseId: string; exerciseName: string; targetReps: number; repsThisWeek: number }[]
   >({ queryKey: ["/api/exercise-goals/progress"] });
@@ -137,7 +168,7 @@ export default function TrackPage() {
   // the badge is DERIVED from the current sets, so editing a set re-evaluates
   // which one holds the record instead of leaving a stale marker behind.
   const { prSetMarkersFor, checkForPRs } = usePrDetection(
-    completedWorkouts,
+    historical,
     exercises,
     weightUnit,
   );
@@ -263,8 +294,9 @@ export default function TrackPage() {
 
   // Thin wrappers over the tested helpers in lib/track-helpers, closing over
   // the current completed workouts + display unit.
-  const getLastRecordedValues = (exerciseId: string) =>
-    getLastRecordedValuesHelper(completedWorkouts, exerciseId);
+  // Answered by the server now, for this workout's exercises only.
+  const getLastRecordedValues = (exerciseId: string): LastRecorded | null =>
+    lastValues[exerciseId] ?? null;
 
   // A FitBot single-workout exercise carries plannedSets/plannedReps; a routine
   // day carries plannedLoadLbs (the deterministic per-week target). Normal
@@ -319,7 +351,12 @@ export default function TrackPage() {
   const currentPlanNotes = currentPlan?.notes ?? null;
 
   const getDefaultSets = (exerciseId?: string, exerciseType?: string, plan?: { sets?: number; reps?: number | null; targetLoadLbs?: number | null }): SetData[] =>
-    getDefaultSetsHelper(completedWorkouts, weightUnit, exerciseId, exerciseType, plan);
+    getDefaultSetsHelper(
+      exerciseId ? lastValues[exerciseId] ?? null : null,
+      weightUnit,
+      exerciseType,
+      plan,
+    );
 
   const getCurrentSets = (): SetData[] => {
     const currentExercise = enrichedWorkoutExercises[currentExerciseIndex];

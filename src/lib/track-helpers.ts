@@ -35,26 +35,42 @@ export function getLastRecordedValues(
       (ex) => (ex as { id?: string }).id === exerciseId,
     ) as { setsData?: Array<Record<string, number | null>> } | undefined;
     if (exercise?.setsData && exercise.setsData.length > 0) {
-      const completedSets = exercise.setsData.filter((s) => s.completed);
-      if (completedSets.length > 0) {
-        const bestSet = completedSets.reduce((best, s) => {
-          const sWeight = s.weight ?? 0;
-          const bestWeight = best.weight ?? 0;
-          const sDistance = s.distance ?? 0;
-          const bestDistance = best.distance ?? 0;
-          if (sWeight !== bestWeight) return sWeight > bestWeight ? s : best;
-          return sDistance > bestDistance ? s : best;
-        });
-        return {
-          weight: bestSet.weight ?? null,
-          reps: bestSet.reps ?? null,
-          distance: bestSet.distance ?? null,
-          time: bestSet.time ?? null,
-        };
-      }
+      const best = pickLastRecorded(exercise.setsData);
+      if (best) return best;
     }
   }
   return null;
+}
+
+/**
+ * The best set out of one exercise's sets: highest weight, tie-broken by
+ * longest distance so a distance/time exercise still surfaces something
+ * sensible. Completed sets only.
+ *
+ * Extracted so `/api/exercises/last-values` ranks identically. The tracker used
+ * to answer this in the browser by walking the user's entire history, which is
+ * why every page loaded every set ever logged; the server answers it now, and
+ * sharing this function is what stops the prefilled number from drifting.
+ */
+export function pickLastRecorded(
+  setsData: Array<Record<string, number | null>>,
+): LastRecorded | null {
+  const completedSets = setsData.filter((s) => s.completed);
+  if (completedSets.length === 0) return null;
+  const bestSet = completedSets.reduce((best, s) => {
+    const sWeight = s.weight ?? 0;
+    const bestWeight = best.weight ?? 0;
+    const sDistance = s.distance ?? 0;
+    const bestDistance = best.distance ?? 0;
+    if (sWeight !== bestWeight) return sWeight > bestWeight ? s : best;
+    return sDistance > bestDistance ? s : best;
+  });
+  return {
+    weight: bestSet.weight ?? null,
+    reps: bestSet.reps ?? null,
+    distance: bestSet.distance ?? null,
+    time: bestSet.time ?? null,
+  };
 }
 
 /**
@@ -82,16 +98,20 @@ export interface SetPlan {
  * there's no recorded history, the first row's reps are pre-filled from the
  * plan's target reps.
  */
+/**
+ * Takes the last recorded values DIRECTLY rather than the whole history.
+ *
+ * It used to accept every completed workout and find them itself, which is why
+ * the tracker needed the user's entire set history in memory.
+ * `/api/exercises/last-values` answers that for the workout's exercises now,
+ * and the caller passes the answer in.
+ */
 export function getDefaultSets(
-  completedWorkouts: CompletedForTrack[],
+  lastValues: LastRecorded | null,
   weightUnit: WeightUnit,
-  exerciseId?: string,
   exerciseType?: string,
   plan?: SetPlan,
 ): SetData[] {
-  const lastValues = exerciseId
-    ? getLastRecordedValues(completedWorkouts, exerciseId)
-    : null;
 
   const isDistanceTime = usesDistance(exerciseType);
   // A loaded hold is a normal multi-set exercise, so it gets the usual 3 rows;

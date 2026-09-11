@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, invalidateCompletedWorkouts } from "@/lib/queryClient";
 import { deriveWorkoutName, type SetData } from "@/lib/workout-stats";
 import { resolveWorkoutDuration } from "@/lib/workout-duration";
 import { buildResumeState, combinedDuration } from "@/lib/resume-workout";
@@ -113,11 +113,39 @@ export interface CompletedWorkoutRow {
   displayId: string;
   templateId?: string | null;
   name: string;
-  exercises: Exercise[];
+  totalSets: number;
+  totalReps: number;
+  exerciseIds?: string[] | null;
   completedAt?: string | null;
   startedAt?: string | null;
   durationSeconds?: number | null;
   calendarEventId?: string | null;
+  routineInstanceId?: string | null;
+  routineDayIndex?: number | null;
+}
+
+/**
+ * A completed workout as the APP-WIDE context carries it: metadata and two
+ * counts, deliberately WITHOUT its exercises and sets.
+ *
+ * This context lives in the app layout, so whatever it loads is loaded on every
+ * page. It used to carry every set the user had ever logged - 1,678 of them,
+ * ~208KB and ~375ms of database assembly, growing forever - and almost nothing
+ * read them. History, the one page that renders sets, fetches the full rows
+ * itself; the tracker's prefill is answered by `/api/exercises/last-values`.
+ *
+ * `exercises` is ABSENT rather than empty on purpose: an empty array would let
+ * a consumer quietly compute zero where it used to compute a real number, and
+ * a wrong total is worse than a slow page. Leaving the field off makes the
+ * compiler point at anything that still needs it.
+ */
+/**
+ * A completed workout WITH its exercises and sets, as `/api/completed-workouts`
+ * still returns it. Only History fetches this - it is the one page that renders
+ * the sets. Everything else uses the summary above.
+ */
+export interface CompletedWorkoutFullRow extends Omit<CompletedWorkoutRow, "totalSets" | "totalReps"> {
+  exercises: Exercise[];
 }
 
 export interface CompletedWorkoutRecord {
@@ -125,7 +153,12 @@ export interface CompletedWorkoutRecord {
   displayId: string;
   templateId?: string | null;
   name: string;
-  exercises: Exercise[];
+  /** Completed sets in this workout, counted in SQL. */
+  totalSets: number;
+  /** Reps across completed sets, counted in SQL. */
+  totalReps: number;
+  /** The exercises' catalog ids, in order. Cheap, unlike their sets. */
+  exerciseIds: string[];
   completedAt: Date;
   // Training time in seconds. Null on legacy rows that predate the column, and
   // on rows saved without a start time; History falls back to the timestamp
@@ -169,9 +202,9 @@ interface WorkoutContextType {
   discardActiveWorkout: () => void;
   completeWorkout: (exerciseSets?: Map<string, SetData[]>) => Promise<string | null>;
   isWorkoutCompleted: (displayId: string) => boolean;
-  restartWorkout: (completedWorkout: CompletedWorkoutRecord) => void;
+  restartWorkout: (completedWorkout: { id: string; name: string; exercises: Exercise[] }) => void;
   /** Reopen a finished workout and keep training it. False if there is nothing to resume. */
-  resumeWorkout: (completedWorkout: CompletedWorkoutRecord) => boolean;
+  resumeWorkout: (completedWorkout: { id: string; name: string; exercises: Exercise[] }) => boolean;
   updateCompletedWorkout: (id: string, name: string, exercises?: EditedExercise[], completedAt?: Date, durationSeconds?: number) => Promise<boolean>;
   deleteCompletedWorkout: (id: string) => void;
   updateActiveWorkout: (name: string, exercises: WorkoutExerciseInput[]) => void;
@@ -553,8 +586,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     }
   }, [saveToLocalStorage, saveToServerImmediate]);
 
+  // The SUMMARY, not the full rows. See CompletedWorkoutRecord above.
   const { data: completedWorkoutsData = [], isLoading } = useQuery<CompletedWorkoutRow[]>({
-    queryKey: ["/api/completed-workouts"],
+    queryKey: ["/api/completed-workouts/summary"],
   });
 
   const completedWorkouts: CompletedWorkoutRecord[] = completedWorkoutsData.map((w) => {
@@ -566,11 +600,9 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       displayId: w.displayId,
       templateId: w.templateId || null,
       name: w.name,
-      exercises: w.exercises.map((ex) => ({
-        ...ex,
-        muscleGroups: ex.muscleGroups || [],
-        setsData: ex.setsData || [],
-      })),
+      totalSets: w.totalSets ?? 0,
+      totalReps: w.totalReps ?? 0,
+      exerciseIds: w.exerciseIds ?? [],
       completedAt,
       // Carried through so History can show (and correct) the training time.
       // These were dropped here, which is why duration_seconds was written on
@@ -607,7 +639,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       setActiveWorkout(null);
       setTrackingProgress(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
       if (user) {
         apiRequest("DELETE", "/api/active-workout").catch(() => {});
       }
@@ -622,7 +654,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       return apiRequest("DELETE", `/api/completed-workouts/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
     },
   });
 
@@ -631,7 +663,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
       return apiRequest("PUT", `/api/completed-workouts/${id}`, { name, exercises, completedAt, localDate, durationSeconds });
     },
     onSuccess: (_, variables) => {
-      queryClient.setQueryData(["/api/completed-workouts"], (oldData: CompletedWorkoutRow[] | undefined) => {
+      queryClient.setQueryData(["/api/completed-workouts"], (oldData: CompletedWorkoutFullRow[] | undefined) => {
         if (!oldData) return oldData;
         return oldData.map(workout => 
           workout.id === variables.id 
@@ -644,7 +676,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
             : workout
         );
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
     },
   });
 
@@ -931,7 +963,10 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
    * its rows exactly as logged, and finishing updates that workout rather than
    * creating a second one.
    */
-  const resumeWorkout = useCallback((completedWorkout: CompletedWorkoutRecord) => {
+  // Takes the exercises EXPLICITLY. The app-wide record no longer carries them
+  // (see CompletedWorkoutRecord), and a caller that has only metadata should be
+  // made to fetch the workout rather than silently resume an empty one.
+  const resumeWorkout = useCallback((completedWorkout: { id: string; name: string; exercises: Exercise[] }) => {
     const displayId = `${completedWorkout.id}-resume-${Date.now()}`;
     const { exercises, exerciseSets } = buildResumeState(
       completedWorkout.exercises as never,
@@ -969,7 +1004,7 @@ export function WorkoutProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
-  const restartWorkout = useCallback((completedWorkout: CompletedWorkoutRecord) => {
+  const restartWorkout = useCallback((completedWorkout: { id: string; name: string; exercises: Exercise[] }) => {
     const newDisplayId = `${completedWorkout.id}-restart-${Date.now()}`;
     startWorkout({
       id: completedWorkout.id,

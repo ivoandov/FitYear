@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import { useWorkout } from "@/context/WorkoutContext";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, invalidateCompletedWorkouts } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import {
@@ -86,7 +86,7 @@ export function WorkoutHistoryCard({
   // client now trims an obvious idle tail automatically, but only the user
   // knows the real number when the trim cannot tell.
   const [editedDuration, setEditedDuration] = useState("");
-  const { updateCompletedWorkout, completedWorkouts, resumeWorkout } = useWorkout();
+  const { updateCompletedWorkout, resumeWorkout } = useWorkout();
   const { toast } = useToast();
   const { enrichExercises } = useExerciseDetails();
 
@@ -103,7 +103,7 @@ export function WorkoutHistoryCard({
       return apiRequest("POST", `/api/completed-workouts/${workoutId}/sync-calendar`, { localDate: localDateStr });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
       toast({
         title: "Synced to Calendar",
         description: `"${workoutName}" has been added to your Google Calendar`,
@@ -128,8 +128,19 @@ export function WorkoutHistoryCard({
    * the numbers by hand or start a second workout for the same session.
    */
   const handleContinue = () => {
-    const record = completedWorkouts.find((w) => w.id === workoutId);
-    if (!record) return;
+    if (!workoutId) return;
+    // Built from this card's OWN props rather than looked up in the workout
+    // context: the context carries metadata only now, so a lookup there would
+    // have found a workout with no exercises and resumed an empty session.
+    // History already passes the full exercises down to render them.
+    const record = {
+      id: workoutId,
+      name: workoutName,
+      exercises: exercises.map((ex) => ({
+        ...ex,
+        setsData: ex.setsData ?? ex.sets,
+      })) as never,
+    };
     if (!resumeWorkout(record)) {
       toast({
         title: "Nothing to continue",

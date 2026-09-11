@@ -94,3 +94,20 @@ export const queryClient = new QueryClient({
     mutations: { retry: 0 },
   },
 });
+
+/**
+ * Invalidate BOTH completed-workout caches.
+ *
+ * There are two: `/api/completed-workouts` (full rows with every set, fetched
+ * only by History) and `/api/completed-workouts/summary` (metadata plus two
+ * counts, held app-wide by the workout context). React Query matches keys by
+ * array prefix, not string prefix, so invalidating the first does NOT touch the
+ * second - and forgetting the second leaves Home's workout counts and the goals
+ * strip showing yesterday's numbers after a save.
+ *
+ * Anything that creates, edits or deletes a completed workout calls this.
+ */
+export function invalidateCompletedWorkouts() {
+  queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts/summary"] });
+}

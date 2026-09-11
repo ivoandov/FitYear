@@ -12,7 +12,7 @@ import { COARSE_MUSCLE_GROUPS, matchesCoarse, type CoarseGroup } from "@/lib/mus
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { canRegenerateImage } from "@/lib/photo-admin";
-import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
+import { apiRequest, queryClient, describeApiError, invalidateCompletedWorkouts } from "@/lib/queryClient";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { ExerciseType } from "@/lib/exercise-types";
 import {
@@ -157,7 +157,7 @@ export default function ExercisesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
       // Also invalidate completed workouts so stats update with new muscle groups
-      queryClient.invalidateQueries({ queryKey: ["/api/completed-workouts"] });
+      invalidateCompletedWorkouts();
       setEditingExercise(null);
       toast({
         title: "Exercise Updated",

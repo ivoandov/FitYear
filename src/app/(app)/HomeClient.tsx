@@ -513,12 +513,33 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
     setShowEditorDialog(true);
   };
 
-  const handleRestartWorkout = (completedWorkout: typeof completedWorkouts[0]) => {
+  /**
+   * Fetch one past workout's exercises, at the moment they are needed.
+   *
+   * Home carries metadata only now (see CompletedWorkoutRecord): the sets are
+   * wanted exactly when someone presses repeat, restart, schedule-again or
+   * edit, so they are fetched then rather than on every page load.
+   */
+  const fetchWorkoutExercises = async (workoutId: string): Promise<Exercise[] | null> => {
+    try {
+      const res = await fetch(`/api/completed-workouts/${workoutId}`, { credentials: "include" });
+      if (!res.ok) throw new Error(String(res.status));
+      const full = (await res.json()) as { exercises?: Exercise[] };
+      return full.exercises ?? [];
+    } catch {
+      toast({ title: "Couldn't load that workout", variant: "destructive" });
+      return null;
+    }
+  };
+
+  const handleRestartWorkout = async (completedWorkout: typeof completedWorkouts[0]) => {
+    const exercises = await fetchWorkoutExercises(completedWorkout.id);
+    if (!exercises) return;
     setWorkoutPreview({
       id: completedWorkout.id,
       displayId: `${completedWorkout.id}-restart-${Date.now()}`,
       name: completedWorkout.name,
-      exercises: completedWorkout.exercises as Exercise[],
+      exercises,
     });
     router.push("/workout-preview");
   };
@@ -567,10 +588,12 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
   );
   const visibleLibraryItems = libraryItems.slice(0, libraryLimit);
 
-  const handleRepeatCompleted = (workoutId: string) => {
+  const handleRepeatCompleted = async (workoutId: string) => {
     const workout = completedWorkouts.find((w) => w.id === workoutId);
     if (!workout) return;
-    const exercises = exercisesFromCompletedWorkout(workout.exercises as never);
+    const full = await fetchWorkoutExercises(workoutId);
+    if (!full) return;
+    const exercises = exercisesFromCompletedWorkout(full as never);
     if (exercises.length === 0) {
       toast({
         title: "Nothing to repeat",
@@ -1169,7 +1192,7 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-foreground">{workout.name}</p>
                       <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.04em] text-tertiary-foreground">
-                        {format(workout.completedAt, "MMM d")} · {workout.exercises.length} exercise{workout.exercises.length === 1 ? "" : "s"}
+                        {format(workout.completedAt, "MMM d")} · {workout.exerciseIds.length} exercise{workout.exerciseIds.length === 1 ? "" : "s"}
                       </p>
                     </div>
                   </div>
@@ -1196,14 +1219,20 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => handleScheduleAgain(workout)}
+                          onClick={async () => {
+                            const ex = await fetchWorkoutExercises(workout.id);
+                            if (ex) handleScheduleAgain({ ...workout, exercises: ex });
+                          }}
                           data-testid={`button-schedule-again-${index}`}
                         >
                           <CalendarIcon className="h-4 w-4 mr-2" />
                           Schedule Again
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleEditCompletedWorkout(workout)}
+                          onClick={async () => {
+                            const ex = await fetchWorkoutExercises(workout.id);
+                            if (ex) handleEditCompletedWorkout({ ...workout, exercises: ex });
+                          }}
                           data-testid={`button-edit-recent-workout-${index}`}
                         >
                           <Pencil className="h-4 w-4 mr-2" />
@@ -1242,7 +1271,11 @@ export default function HomeClient({ initial }: { initial: HomePayload }) {
               {visibleLibraryItems.map((item) => {
                 if (item.kind === "past") {
                   const workout = item.workout;
-                  const pastImage = getWorkoutImageUrl(workout.exercises as never);
+                  // From the catalog by id: the summary carries ids, not the
+                  // exercise snapshots the old call read.
+                  const pastImage = workout.exerciseIds
+                    .map((id) => exerciseImageById.get(id))
+                    .find((url): url is string => !!url) ?? undefined;
                   return (
                     <div key={item.key} className="aspect-square" data-testid={`card-library-past-${workout.id}`}>
                       <div className={`relative flex h-full flex-col overflow-hidden rounded-[18px] ${pastImage ? "bg-card" : "card-elevated"}`}>

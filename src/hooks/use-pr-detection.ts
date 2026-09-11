@@ -38,7 +38,18 @@ interface ExerciseLite {
  *     self-correcting. See prSetIndices.
  */
 export function usePrDetection(
-  completedWorkouts: Array<{ exercises: unknown[] }>,
+  /**
+   * All-time bests, computed server-side by `/api/exercises/personal-bests`.
+   *
+   * These used to be derived here by walking every set the user had ever
+   * logged, which forced the workout context - and so every page in the app -
+   * to carry the full history. The scoring rules are unchanged and still live
+   * in `lib/pr-bests`; only WHERE they run moved.
+   */
+  historical: {
+    bests: Map<string, { bestWeight: number; maxVolume: number; assisted: boolean }>;
+    holds: Map<string, BestHold>;
+  },
   exercises: ExerciseLite[],
   weightUnit: WeightUnit,
 ) {
@@ -66,63 +77,8 @@ export function usePrDetection(
     [isHoldById],
   );
 
-  /**
-   * Longest hold per exercise, with the load it was held at. Separate from the
-   * weight/volume bests because a hold's load can legitimately be ZERO (a
-   * bodyweight hang), which those deliberately discard.
-   */
-  const historicalHolds = useMemo(() => {
-    const best = new Map<string, BestHold>();
-    for (const w of completedWorkouts) {
-      for (const ex of w.exercises as Array<{
-        id: string;
-        exerciseType?: string | null;
-        setsData?: Array<{ weight?: number | null; time?: number | null; completed?: boolean }>;
-      }>) {
-        if (!(usesTime(ex.exerciseType) && !usesDistance(ex.exerciseType))) continue;
-        for (const s of ex.setsData ?? []) {
-          if (!s.completed) continue;
-          const secs = s.time || 0;
-          if (secs > 0 && beatsHold(secs, s.weight || 0, best.get(ex.id))) {
-            best.set(ex.id, { seconds: secs, weightLbs: s.weight || 0 });
-          }
-        }
-      }
-    }
-    return best;
-  }, [completedWorkouts]);
-
-  // Historical bests per exerciseId (in lbs/DB units).
-  const historicalBests = useMemo(() => {
-    const bests = new Map<string, { bestWeight: number; maxVolume: number; assisted: boolean }>();
-    for (const w of completedWorkouts) {
-      for (const ex of w.exercises as Array<{ id: string; setsData?: Array<{ weight?: number | null; reps?: number | null; completed?: boolean }> }>) {
-        const assisted = isAssistedById.get(ex.id) === true;
-        for (const s of ex.setsData ?? []) {
-          if (!s.completed) continue;
-          const wt = s.weight || 0;
-          if (wt <= 0) continue; // ignore zero-weight rows
-          const cur = bests.get(ex.id);
-          if (!cur) {
-            bests.set(ex.id, {
-              bestWeight: wt,
-              maxVolume: assisted ? 0 : wt * (s.reps || 0),
-              assisted,
-            });
-            continue;
-          }
-          if (assisted) {
-            if (wt < cur.bestWeight) cur.bestWeight = wt;
-          } else {
-            if (wt > cur.bestWeight) cur.bestWeight = wt;
-            const vol = wt * (s.reps || 0);
-            if (vol > cur.maxVolume) cur.maxVolume = vol;
-          }
-        }
-      }
-    }
-    return bests;
-  }, [completedWorkouts, isAssistedById]);
+  const historicalHolds = historical.holds;
+  const historicalBests = historical.bests;
 
   /**
    * Which (instanceId, setIndex) pairs currently HOLD a record — drives the

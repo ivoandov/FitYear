@@ -11,9 +11,33 @@ import {
   isCalendarConnected,
   updateCalendarEvent,
 } from "@/lib/calendar";
-import { writeNormalizedRows } from "@/lib/db/normalized-workout";
+import { writeNormalizedRows, assembleNormalizedExercises } from "@/lib/db/normalized-workout";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+/**
+ * One completed workout, with its exercises and sets assembled.
+ *
+ * Added 2026-09-11 so Home can repeat or restart a past workout without the
+ * whole app carrying every set ever logged: the exercises are only needed at
+ * the moment the button is pressed, so they are fetched at the moment the
+ * button is pressed.
+ */
+export const GET = handle(async (_request: NextRequest, ctx: Ctx) => {
+  const { user } = await requireUser();
+  const { id } = await ctx.params;
+  const [row] = await db
+    .select()
+    .from(completedWorkouts)
+    .where(
+      and(eq(completedWorkouts.id, id), eq(completedWorkouts.userId, user.id)),
+    )
+    .limit(1);
+  if (!row) throw new ApiError(404, "Workout not found");
+
+  const assembled = await assembleNormalizedExercises([row.id]);
+  return { ...row, exercises: assembled.get(row.id) ?? [] };
+});
 
 const PutSchema = z.object({
   name: z.string().min(1).optional(),
