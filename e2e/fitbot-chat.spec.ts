@@ -52,7 +52,8 @@ test("the chat page KEEPS the app chrome, unlike the FitBot wizards", async ({
 
 test("Home offers a way into the conversation", async ({ page, account: _account }) => {
   await page.goto("/");
-  const entry = page.getByTestId("button-fitbot-chat");
+  // Scoped to `main`: see the streaming note in dual-write.spec.ts.
+  const entry = page.locator("main").getByTestId("button-fitbot-chat");
   await expect(entry).toBeVisible();
   await entry.click();
   await expect(page).toHaveURL(/\/fit-bot\/chat/);

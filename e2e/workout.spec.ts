@@ -1,3 +1,13 @@
+/**
+ * Home's controls are addressed through `main` on purpose.
+ *
+ * Home's first-paint data is server-rendered, so React streams its content:
+ * the suspended chunk lands in a `<div hidden>` at the end of the body and is
+ * then moved into place. For a few hundred milliseconds BOTH copies are in the
+ * DOM, and a bare `getByTestId` matches the hidden one too, failing Playwright
+ * strict mode with "resolved to 2 elements". Users never see it - the spare
+ * copy is `display: none` - but a selector has to say which tree it means.
+ */
 import { test, expect } from "./fixtures";
 import { sql } from "./helpers";
 
@@ -14,7 +24,7 @@ test("quick-start: log a set, auto-name on complete, rename persists", async ({
   account,
 }) => {
   await page.goto("/");
-  await page.getByTestId("button-start-workout").click();
+  await page.locator("main").getByTestId("button-start-workout").click();
   await expect(page.getByTestId("button-add-first-exercise")).toBeVisible();
   await addFirstExercise(page, "bench");
 
