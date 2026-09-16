@@ -281,16 +281,29 @@ export function beatsHold(
  * `isAssistedById` maps exercise id → isAssisted. Exercises not in the map
  * default to false (normal).
  */
-export function detectPRs(
-  currentWorkout: { exercises: unknown },
+/** What the user's bests were BEFORE the workout being judged. */
+export interface PrHistory {
+  /** Max weight normally; MIN for an assisted lift, where lower is stronger. */
+  bestWeight: Map<string, number>;
+  maxVolume: Map<string, number>;
+  /** A hold's record is a duration plus the load it was held at. */
+  bestHold: Map<string, BestHold>;
+}
+
+/**
+ * Build the history maps by walking prior workouts.
+ *
+ * Kept for callers that already hold the sets. The workout-summary screen does
+ * NOT: it used to assemble every set the user had ever logged just to get here
+ * - 730ms of a 1,249ms page, growing with every workout - and now loads the
+ * same maps in one scoped query (`lib/api/pr-history-load`).
+ */
+export function buildPrHistory(
   priorWorkouts: { exercises: unknown }[],
   isAssistedById: Map<string, boolean> = new Map(),
-): PrHit[] {
-  // For normal exercises we track MAX; for assisted we track MIN (over
-  // non-zero weights only, since "0 lbs assist" is a degenerate seed value).
-  const histBestWeight = new Map<string, number>(); // max OR min by mode
+): PrHistory {
+  const histBestWeight = new Map<string, number>();
   const histMaxVolume = new Map<string, number>();
-  // A hold's record is a duration plus the load it was held at.
   const histBestHold = new Map<string, BestHold>();
 
   for (const w of priorWorkouts) {
@@ -322,6 +335,26 @@ export function detectPRs(
       }
     }
   }
+
+  return { bestWeight: histBestWeight, maxVolume: histMaxVolume, bestHold: histBestHold };
+}
+
+/**
+ * Which sets in this workout beat what came before.
+ *
+ * Takes the history as MAPS rather than as a list of prior workouts, so a
+ * caller can load them with one scoped query instead of assembling a lifetime
+ * of sets. `buildPrHistory` produces them from workouts when that is what you
+ * have.
+ */
+export function detectPRs(
+  currentWorkout: { exercises: unknown },
+  history: PrHistory,
+  isAssistedById: Map<string, boolean> = new Map(),
+): PrHit[] {
+  const histBestWeight = history.bestWeight;
+  const histMaxVolume = history.maxVolume;
+  const histBestHold = history.bestHold;
 
   const hits: PrHit[] = [];
   const currentExs = (currentWorkout.exercises as ExerciseInWorkout[]) || [];

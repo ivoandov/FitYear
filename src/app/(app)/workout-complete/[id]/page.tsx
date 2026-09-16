@@ -6,7 +6,7 @@ import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
 import { WorkoutNameEditor } from "@/components/WorkoutNameEditor";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { completedWorkouts, prHistory, exercises, userSettings } from "@/lib/db/schema";
+import { completedWorkouts, prHistory, userSettings } from "@/lib/db/schema";
 import {
   summarizeWorkout,
   formatDuration,
@@ -15,6 +15,7 @@ import {
   preferRepsOverVolume,
 } from "@/lib/workout-stats";
 import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
+import { loadAssistedFlags, loadPrHistoryFor } from "@/lib/api/pr-history-load";
 import { viewerTimeZone } from "@/lib/server-timezone";
 import { lbsToDisplay } from "@/lib/units";
 
@@ -64,19 +65,18 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
       ),
     );
 
-  // Phase 4d: assemble this workout + all prior from the normalized tables (sole
-  // store) for the summary + PR detection.
-  const normalized = await assembleNormalizedExercises([
-    workout.id,
-    ...prior.map((p) => p.id),
-  ]);
+  // THIS workout's sets only.
+  //
+  // This used to assemble every prior workout's sets too, purely so PR
+  // detection could walk them: 730ms of a 1,249ms page on a real account, and
+  // growing with every workout logged - so the screen you see after pressing
+  // Finish got slower the longer you used the app. The bests now come from one
+  // scoped query below.
+  const normalized = await assembleNormalizedExercises([workout.id]);
   const workoutForStats = {
     ...workout,
     exercises: (normalized.get(workout.id) ?? []) as unknown,
   };
-  const priorForStats = prior.map((p) => ({
-    exercises: (normalized.get(p.id) ?? []) as unknown,
-  }));
 
   const summary = summarizeWorkout(workoutForStats);
   const timeZone = await viewerTimeZone();
@@ -86,14 +86,20 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
   );
 
   // PR detection needs isAssisted per exercise so assisted-machine exercises
-  // invert the weight comparison (less counterweight = harder = PR).
-  const allExercises = await db
-    .select({ id: exercises.id, isAssisted: exercises.isAssisted })
-    .from(exercises);
-  const isAssistedById = new Map(
-    allExercises.map((e) => [e.id, !!e.isAssisted]),
-  );
-  const prHits = detectPRs(workoutForStats, priorForStats, isAssistedById);
+  // invert the weight comparison (less counterweight = harder = PR). Scoped to
+  // THIS workout's exercises rather than the whole 154-row catalog.
+  const workoutExerciseIds = (
+    (workoutForStats.exercises as { id?: string }[]) ?? []
+  )
+    .map((e) => e?.id)
+    .filter((id): id is string => !!id);
+
+  const [isAssistedById, prHistory_] = await Promise.all([
+    loadAssistedFlags(workoutExerciseIds),
+    // `before` excludes this workout, so a session cannot beat itself.
+    loadPrHistoryFor(user.id, workoutExerciseIds, { before: workout.completedAt }),
+  ]);
+  const prHits = detectPRs(workoutForStats, prHistory_, isAssistedById);
 
   // Persist new PRs (idempotent - skip if a row already exists for this workout/exercise/type)
   if (prHits.length > 0) {

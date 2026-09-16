@@ -5,6 +5,7 @@ import {
   calcStreak,
   deriveWorkoutName,
   detectPRs,
+  buildPrHistory,
   epley1RM,
   isRepTotalExercise,
   preferRepsOverVolume,
@@ -71,7 +72,7 @@ describe("detectPRs", () => {
   it("flags a heavier weight and higher volume as PRs for a normal exercise", () => {
     const prior = [{ exercises: [ex({ id: "e1", name: "Bench", setsData: [set({ weight: 100, reps: 5, completed: true })] })] }];
     const current = { exercises: [ex({ id: "e1", name: "Bench", setsData: [set({ weight: 110, reps: 5, completed: true })] })] };
-    const hits = detectPRs(current, prior);
+    const hits = detectPRs(current, buildPrHistory(prior));
     expect(hits).toEqual([
       { exerciseId: "e1", exerciseName: "Bench", type: "weight", newValue: 110, previousValue: 100 },
       { exerciseId: "e1", exerciseName: "Bench", type: "volume", newValue: 550, previousValue: 500 },
@@ -80,7 +81,7 @@ describe("detectPRs", () => {
 
   it("treats a first-ever exercise as a PR with null previous", () => {
     const current = { exercises: [ex({ id: "e2", name: "Row", setsData: [set({ weight: 80, reps: 8, completed: true })] })] };
-    const hits = detectPRs(current, []);
+    const hits = detectPRs(current, buildPrHistory([]));
     expect(hits).toEqual([
       { exerciseId: "e2", exerciseName: "Row", type: "weight", newValue: 80, previousValue: null },
       { exerciseId: "e2", exerciseName: "Row", type: "volume", newValue: 640, previousValue: null },
@@ -90,25 +91,25 @@ describe("detectPRs", () => {
   it("does not flag a PR when neither weight nor volume beats history", () => {
     const prior = [{ exercises: [ex({ id: "e1", setsData: [set({ weight: 100, reps: 5, completed: true })] })] }];
     const current = { exercises: [ex({ id: "e1", setsData: [set({ weight: 90, reps: 5, completed: true })] })] };
-    expect(detectPRs(current, prior)).toEqual([]);
+    expect(detectPRs(current, buildPrHistory(prior))).toEqual([]);
   });
 
   it("inverts to MIN weight for assisted exercises and skips volume", () => {
     const assisted = new Map([["e3", true]]);
     const prior = [{ exercises: [ex({ id: "e3", name: "Assisted Pull-up", setsData: [set({ weight: 50, reps: 5, completed: true })] })] }];
     const lighter = { exercises: [ex({ id: "e3", name: "Assisted Pull-up", setsData: [set({ weight: 40, reps: 5, completed: true })] })] };
-    const hits = detectPRs(lighter, prior, assisted);
+    const hits = detectPRs(lighter, buildPrHistory(prior, assisted), assisted);
     expect(hits).toEqual([
       { exerciseId: "e3", exerciseName: "Assisted Pull-up", type: "weight", newValue: 40, previousValue: 50 },
     ]);
     // More assistance (higher counterweight) is NOT a PR for an assisted lift.
     const heavier = { exercises: [ex({ id: "e3", name: "Assisted Pull-up", setsData: [set({ weight: 60, reps: 5, completed: true })] })] };
-    expect(detectPRs(heavier, prior, assisted)).toEqual([]);
+    expect(detectPRs(heavier, buildPrHistory(prior, assisted), assisted)).toEqual([]);
   });
 
   it("ignores uncompleted and zero-weight sets", () => {
     const current = { exercises: [ex({ id: "e4", setsData: [set({ weight: 200, reps: 5, completed: false }), set({ weight: 0, reps: 5, completed: true })] })] };
-    expect(detectPRs(current, [])).toEqual([]);
+    expect(detectPRs(current, buildPrHistory([]))).toEqual([]);
   });
 });
 
@@ -287,20 +288,22 @@ describe("detectPRs epsilon", () => {
     ],
   });
 
+  const assistedNone = new Map([["e1", false]]);
+
   it("ignores a kg round-trip drift instead of firing a phantom weight PR", () => {
     // 100 lb -> 45.4 kg -> 100.1 lb: unchanged work, not a record.
-    const hits = detectPRs(ex(100.1, 10), [ex(100, 10)], new Map([["e1", false]]));
+    const hits = detectPRs(ex(100.1, 10), buildPrHistory([ex(100, 10)], assistedNone), assistedNone);
     expect(hits.filter((h) => h.type === "weight")).toHaveLength(0);
   });
 
   it("scales the volume epsilon by reps so drift x reps is not a PR", () => {
     // 100.1 x 10 = 1001 vs 1000 exceeds a flat 0.25 margin but is still drift.
-    const hits = detectPRs(ex(100.1, 10), [ex(100, 10)], new Map([["e1", false]]));
+    const hits = detectPRs(ex(100.1, 10), buildPrHistory([ex(100, 10)], assistedNone), assistedNone);
     expect(hits.filter((h) => h.type === "volume")).toHaveLength(0);
   });
 
   it("still reports a genuine improvement", () => {
-    const hits = detectPRs(ex(105, 10), [ex(100, 10)], new Map([["e1", false]]));
+    const hits = detectPRs(ex(105, 10), buildPrHistory([ex(100, 10)], assistedNone), assistedNone);
     expect(hits.some((h) => h.type === "weight")).toBe(true);
   });
 });
@@ -403,7 +406,7 @@ describe("hold PRs - a duration axis for weight_time", () => {
     // before this a hang could never register a record at all.
     const hits = detectPRs(
       { exercises: [hold([{ w: 0, t: 60 }])] },
-      [{ exercises: [hold([{ w: 0, t: 45 }])] }],
+      buildPrHistory([{ exercises: [hold([{ w: 0, t: 45 }])] }]),
     );
     expect(hits).toEqual([
       { exerciseId: "h", exerciseName: "Plate Pinch", type: "time", newValue: 60, previousValue: 45 },
@@ -414,7 +417,7 @@ describe("hold PRs - a duration axis for weight_time", () => {
     // A hold has no reps, so volume is meaningless, and its record is the clock.
     const hits = detectPRs(
       { exercises: [hold([{ w: 25, t: 60 }])] },
-      [{ exercises: [hold([{ w: 5, t: 90 }])] }],
+      buildPrHistory([{ exercises: [hold([{ w: 5, t: 90 }])] }]),
     );
     expect(hits.map((h) => h.type)).toEqual([]);
   });

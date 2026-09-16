@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
@@ -190,19 +190,27 @@ export const POST = handle(async (request: NextRequest) => {
     );
   }
 
+  // Google Calendar runs AFTER the response, not before it.
+  //
+  // These are network round trips to Google, and the user was waiting on them
+  // with a finished workout on screen and nothing to look at. Nothing on the
+  // summary screen depends on them: `calendarEventId` is only read later, by
+  // History's sync button, and appears on the next fetch of the row.
+  //
+  // `after()` is the framework's primitive for exactly this - the work still
+  // runs to completion on the server, it just stops holding the response open.
+  // It is NOT fire-and-forget: a bare floating promise on a serverless function
+  // can be frozen the moment the response is sent.
   if (calendarConnected) {
-    if (scheduledWorkoutRow?.calendarEventId) {
-      sideEffects.push(
-        deleteCalendarEvent(
-          user.id,
-          scheduledWorkoutRow.calendarEventId,
-          settings?.calendarId ?? undefined,
-        ),
-      );
-    }
-
-    sideEffects.push(
-      (async () => {
+    after(async () => {
+      try {
+        if (scheduledWorkoutRow?.calendarEventId) {
+          await deleteCalendarEvent(
+            user.id,
+            scheduledWorkoutRow.calendarEventId,
+            settings?.calendarId ?? undefined,
+          );
+        }
         const eventId = await createCalendarEvent(
           user.id,
           body.name,
@@ -215,10 +223,15 @@ export const POST = handle(async (request: NextRequest) => {
             .update(completedWorkouts)
             .set({ calendarEventId: eventId })
             .where(eq(completedWorkouts.id, created.id));
-          created.calendarEventId = eventId;
         }
-      })(),
-    );
+      } catch (e) {
+        // The response is long gone, so this can only be logged. Same reasoning
+        // as the allSettled below: a calendar failure must never look to the
+        // user like a workout that did not save.
+        console.error("[completed-workouts] calendar sync failed:", e);
+        Sentry.captureException(e);
+      }
+    });
   }
 
   // The workout is already committed. A failing side effect (routine counter,
