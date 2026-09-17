@@ -1,31 +1,43 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
 /**
- * Everything FitBot can see and everything it can ask to do.
+ * Everything FitBot can see, everything it can remember, and everything it can
+ * ask to do.
  *
  * Ivo, 2026-09-10: "make sure fitbot has access to every single part of FitYear
- * and can act on any of it."
+ * and can act on any of it." Then 2026-09-17, asking for real memory: "i want
+ * this to truly feel like your own fitness coach that doesnt have silly
+ * restrictions."
  *
- * The split is the whole design, and it is not a limitation - it is what makes
- * "act on any of it" safe enough to be worth having:
+ * There are THREE categories and the differences between them are the design:
  *
- * **READ tools run immediately.** They are database reads scoped to the calling
- * user, so the model can look at anything without a round trip through the UI.
+ * **READ tools run immediately.** Database reads scoped to the calling user, so
+ * the model can look at anything without a round trip through the UI.
  *
- * **WRITE tools are PROPOSALS.** The model does not perform them. Calling one
- * ends the turn and hands the client a structured action, which the client
- * renders for approval and then executes against the app's OWN API routes with
- * the user's session. Nothing here re-implements a write.
+ * **MEMORY tools run immediately, and they WRITE.** They are the deliberate
+ * exception to the rule below, and the reasoning is specific rather than
+ * convenient. That rule exists because this app's write guarantees live in its
+ * route handlers - name canonicalisation, the duplicate guard, userId scoping
+ * on tables with no foreign keys, the idempotent save - and a second write path
+ * would have to reproduce all of them. A coach note has exactly ONE such
+ * guarantee, userId scoping, and `lib/api/coach-notes.ts` is the single
+ * implementation that carries it for both this and the Settings screen. Against
+ * that, requiring approval for every remembered fact would mean a coach that
+ * asks permission to know your shoulder hurts, which is precisely the silly
+ * restriction Ivo is describing. The safety comes from VISIBILITY instead:
+ * every note is listed and deletable in Settings, the model is told to say what
+ * it recorded, and a note can never alter training data - it is text in a
+ * prompt, not a change to a routine.
  *
- * Two reasons it is built this way rather than letting the loop write directly:
+ * **PROPOSAL tools do not run at all.** Calling one ends the turn and hands the
+ * client a structured action, which the client renders for approval and then
+ * executes against the app's OWN API routes with the user's session. Nothing
+ * here re-implements a write. This is the shape Ivo asked for: "it analyzes,
+ * tells me what it sees, and I approve/deny/change what it is going to do."
  *
- * 1. Ivo asked for exactly this shape: "it analyzes, tells me what it sees, and
- *    I approve/deny/change what it is going to do."
- * 2. Every write guarantee this app has lives in its route handlers - exercise
- *    name canonicalisation, the duplicate guard, userId scoping on tables with
- *    no foreign keys, the idempotent completed-workout save. A second write
- *    path would have to reproduce all of it and would drift the first time one
- *    changed.
+ * If you add a tool, decide which of the three it is and put it in that list.
+ * A proposal that executes in the loop is still a bug; a memory write that asks
+ * for approval is still a coach with amnesia.
  */
 
 /** Which endpoint the client calls when the user approves a proposal. */
@@ -116,13 +128,90 @@ export const READ_TOOLS: Anthropic.Tool[] = [
 ];
 
 /**
+ * Memory. These EXECUTE, and they are the only writes in this file that do.
+ *
+ * The header of this module explains why. The short version: a note is text in
+ * a prompt rather than a change to anyone's training, the single write helper
+ * carries the only guarantee that applies, and every note is visible and
+ * deletable in Settings - so the cost of getting one wrong is the person
+ * deleting a line, not a corrupted routine.
+ *
+ * Note the deliberate asymmetry in `update_memory` and `forget`: the model is
+ * told, in the system prompt and in these descriptions, not to quietly rewrite
+ * something the person stated themselves. What someone tells you about their
+ * own body outranks what you inferred about it.
+ */
+export const MEMORY_TOOLS: Anthropic.Tool[] = [
+  {
+    name: "remember",
+    description:
+      "Record something about this person that will still matter in a month, so you know it in every future conversation. Use it the moment you learn a goal, an injury or physical limitation, what equipment they have, when they can train, a strong preference, or something the two of you agreed to do. Do not use it for anything you can already read with a tool - their workouts, weights and records are all readable, and duplicating them here is noise. Say in your reply what you noted.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["goal", "constraint", "preference", "context", "agreement"],
+          description:
+            "constraint = a hard rule you must never propose around (injury, missing equipment, a day they cannot train). goal = what they are training for. preference = a leaning you may push back on. context = a life fact that affects training. agreement = something you both decided.",
+        },
+        content: {
+          type: "string",
+          description:
+            "One specific fact, in plain language, that will read correctly to you months from now with no other context. 'Left shoulder painful on overhead pressing since Aug 2026, fine on incline' rather than 'shoulder issue'.",
+        },
+        expiresOn: {
+          type: "string",
+          description:
+            "YYYY-MM-DD, only when the fact stops being true on a known date, such as travel or a deload block. Omit for anything permanent. A fact with no end date and no expiry set is how memory turns into clutter.",
+        },
+      },
+      required: ["kind", "content"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "update_memory",
+    description:
+      "Revise something you already know, using the id shown in your memory. Prefer this over remembering a second, contradictory version: if their goal changes or an injury resolves, the old fact should become the new one rather than sitting beside it. Do not rewrite a note marked as stated by the person themselves without asking them first.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id in square brackets in your memory." },
+        kind: {
+          type: "string",
+          enum: ["goal", "constraint", "preference", "context", "agreement"],
+        },
+        content: { type: "string" },
+        expiresOn: { type: "string", description: "YYYY-MM-DD, or empty string to clear it." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "forget",
+    description:
+      "Drop something you know that has stopped being true or was wrong. Use it freely: a wrong fact about someone's body is worse than no fact. Do not delete a note marked as stated by the person themselves unless they ask you to.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id in square brackets in your memory." },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
+];
+
+/**
  * Proposals. Each maps to an endpoint the CLIENT calls after approval.
  *
  * `summary` is required on every one of them because the user reads it before
  * deciding. A proposal the user cannot understand is one they cannot
  * meaningfully approve, which would make the confirmation step theater.
  */
-export const WRITE_TOOLS: Anthropic.Tool[] = [
+export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
   {
     name: "propose_routine_change",
     description:
@@ -402,11 +491,22 @@ export function buildProposalRequest(
   }
 }
 
-/** The tool names that are proposals rather than reads. */
-export const WRITE_TOOL_NAMES = new Set(WRITE_TOOLS.map((t) => t.name));
+/** The tool names that END THE TURN and are handed to the user to approve. */
+export const PROPOSAL_TOOL_NAMES = new Set(PROPOSAL_TOOLS.map((t) => t.name));
 
-export const ALL_TOOLS: Anthropic.Tool[] = [...READ_TOOLS, ...WRITE_TOOLS];
+/** The tool names that write memory and execute in the loop. */
+export const MEMORY_TOOL_NAMES = new Set(MEMORY_TOOLS.map((t) => t.name));
 
-export function isWriteTool(name: string): boolean {
-  return WRITE_TOOL_NAMES.has(name);
+export const ALL_TOOLS: Anthropic.Tool[] = [
+  ...READ_TOOLS,
+  ...MEMORY_TOOLS,
+  ...PROPOSAL_TOOLS,
+];
+
+export function isProposalTool(name: string): boolean {
+  return PROPOSAL_TOOL_NAMES.has(name);
+}
+
+export function isMemoryTool(name: string): boolean {
+  return MEMORY_TOOL_NAMES.has(name);
 }

@@ -31,6 +31,7 @@ import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useRouter, useSearchParams } from "next/navigation";
 import { enableRestPush, hasRestPush, pushSupported } from "@/lib/push-client";
 import { isNative } from "@/lib/native";
+import { CoachMemoryCard } from "@/components/settings/CoachMemoryCard";
 
 interface CalendarInfo {
   id: string;
@@ -399,6 +400,8 @@ export default function SettingsPage() {
         </div>
 
         <FitYearGoalsCard />
+
+        <CoachMemoryCard />
 
         <div className={CARD}>
           <div className={`${EYEBROW} mb-4`}>Workout tracking</div>

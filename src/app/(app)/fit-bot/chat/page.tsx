@@ -70,12 +70,29 @@ const TOOL_LABELS: Record<string, string> = {
   get_settings: "Checking your settings",
 };
 
+/**
+ * Memory writes get their own labels, and their own phrasing.
+ *
+ * These are the one thing FitBot does without asking, so the person watching
+ * should always see it happen. "Remembering that" while it writes is the
+ * visible half of that bargain; the other half is the Settings screen, where
+ * everything it holds can be read and deleted.
+ */
+const MEMORY_LABELS: Record<string, string> = {
+  remember: "Remembering that",
+  update_memory: "Updating what it knows about you",
+  forget: "Forgetting that",
+};
+
 export default function FitBotChatPage() {
   const router = useRouter();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [transcript, setTranscript] = useState<Transcript>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Until the stored conversation has been fetched, an empty page would flash
+  // the opener prompts at somebody who has been talking to FitBot for weeks.
+  const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
   // Lets Stop abort the in-flight turn. Held in a ref because the click handler
@@ -99,6 +116,57 @@ export default function FitBotChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
+
+  /**
+   * Pick the conversation back up.
+   *
+   * The server holds the model's copy of the transcript and hands back only
+   * what was SAID, so this restores the thread without replaying tool activity
+   * or stale proposal cards. A failure here is deliberately quiet: not being
+   * able to show last week's conversation is no reason to stop somebody having
+   * this one, and the server still has it either way.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/coach-conversation", { credentials: "include" });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as { turns?: { kind: "user" | "bot"; text: string }[] };
+        if (!cancelled && data.turns?.length) setTurns(data.turns);
+      } catch {
+        // Nothing to say to the user; they simply start from a clean page.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Start a fresh thread.
+   *
+   * This clears the CONVERSATION and never the memory. Wanting a clean page is
+   * not the same as wanting the coach to forget your injury, and a button that
+   * quietly did both would be the worst kind of destructive. What FitBot knows
+   * is managed on its own screen in Settings.
+   */
+  async function startNew() {
+    if (busy) return;
+    try {
+      await fetch("/api/coach-conversation", { method: "DELETE", credentials: "include" });
+      setTurns([]);
+      setTranscript([]);
+      toast({
+        title: "Started a new conversation",
+        description: "FitBot still remembers what it knows about you.",
+      });
+    } catch (e) {
+      toast({ title: "Couldn't clear that", description: describeApiError(e), variant: "destructive" });
+    }
+  }
 
   async function send(text: string) {
     const message = text.trim();
@@ -163,7 +231,7 @@ export default function FitBotChatPage() {
 
           if (event.type === "text") {
             pushText(String(event.text ?? ""));
-          } else if (event.type === "tool") {
+          } else if (event.type === "tool" || event.type === "memory") {
             streamingText = "";
             const name = String(event.name ?? "");
             setTurns((t) => {
@@ -298,11 +366,24 @@ export default function FitBotChatPage() {
     void send(`No, don't do that: ${proposal.summary}`);
   }
 
-  const empty = turns.length === 0;
+  // Not "no turns" but "nothing to show and nothing coming": the openers must
+  // not flash up for a moment in front of a conversation that is about to load.
+  const empty = turns.length === 0 && !loading;
 
   return (
     <div className="flex flex-1 flex-col">
-      <DesktopTopBar title="FitBot" eyebrow="Coach" />
+      <DesktopTopBar title="FitBot" eyebrow="Coach">
+        {turns.length > 0 && (
+          <button
+            type="button"
+            onClick={startNew}
+            data-testid="button-new-conversation-desktop"
+            className="rounded-full border-strong bg-white/[0.03] px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            New chat
+          </button>
+        )}
+      </DesktopTopBar>
 
       <header className="flex h-14 items-center gap-3 px-4 md:hidden">
         <button
@@ -314,6 +395,16 @@ export default function FitBotChatPage() {
           <ArrowLeft className="h-[18px] w-[18px] text-muted-foreground" />
         </button>
         <span className="text-base font-bold text-foreground">FitBot</span>
+        {turns.length > 0 && (
+          <button
+            type="button"
+            onClick={startNew}
+            data-testid="button-new-conversation"
+            className="ml-auto font-mono text-[11px] uppercase tracking-[0.08em] text-tertiary-foreground"
+          >
+            New chat
+          </button>
+        )}
       </header>
 
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pb-4 md:px-9">
@@ -373,7 +464,7 @@ export default function FitBotChatPage() {
                       className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-tertiary-foreground"
                     >
                       <Check className="h-3 w-3 text-primary" />
-                      {TOOL_LABELS[n] ?? n}
+                      {TOOL_LABELS[n] ?? MEMORY_LABELS[n] ?? n}
                     </div>
                   ))}
                 </div>

@@ -1,24 +1,57 @@
 import { describe, it, expect } from "vitest";
 import {
   ALL_TOOLS,
+  MEMORY_TOOLS,
+  PROPOSAL_TOOLS,
   READ_TOOLS,
-  WRITE_TOOLS,
   buildProposalRequest,
-  isWriteTool,
+  isMemoryTool,
+  isProposalTool,
 } from "@/lib/ai/fitbot-tools";
 
 describe("the tool surface", () => {
-  it("keeps reads and writes disjoint", () => {
-    // A read that ran as a proposal would never execute; a write that ran as a
-    // read would execute with no approval. Both failures are silent.
-    for (const t of READ_TOOLS) expect(isWriteTool(t.name)).toBe(false);
-    for (const t of WRITE_TOOLS) expect(isWriteTool(t.name)).toBe(true);
+  it("puts every tool in exactly one of the three categories", () => {
+    // The categories decide what HAPPENS when the model calls something, and
+    // every way of getting it wrong is silent. A proposal misread as a read
+    // would execute a change with no approval. A read misread as a proposal
+    // would never run and would sit waiting for the user to approve a lookup.
+    // A memory write misread as a proposal would make the coach ask permission
+    // to remember things, which is the whole restriction this replaced.
+    for (const t of READ_TOOLS) {
+      expect(isProposalTool(t.name)).toBe(false);
+      expect(isMemoryTool(t.name)).toBe(false);
+    }
+    for (const t of MEMORY_TOOLS) {
+      expect(isMemoryTool(t.name)).toBe(true);
+      expect(isProposalTool(t.name)).toBe(false);
+    }
+    for (const t of PROPOSAL_TOOLS) {
+      expect(isProposalTool(t.name)).toBe(true);
+      expect(isMemoryTool(t.name)).toBe(false);
+    }
   });
 
-  it("gives every write tool a request builder", () => {
+  it("offers all three categories to the model", () => {
+    const names = new Set(ALL_TOOLS.map((t) => t.name));
+    // A tool list that quietly dropped a category would leave the feature
+    // built, wired and unreachable - the class of bug routine-usage was.
+    for (const t of [...READ_TOOLS, ...MEMORY_TOOLS, ...PROPOSAL_TOOLS]) {
+      expect(names.has(t.name)).toBe(true);
+    }
+  });
+
+  it("gives every proposal tool a request builder", () => {
     // A proposal with no builder renders an Approve button that does nothing.
-    for (const t of WRITE_TOOLS) {
+    for (const t of PROPOSAL_TOOLS) {
       expect(buildProposalRequest(t.name, { routineId: "r", scheduledWorkoutId: "s" })).not.toBeNull();
+    }
+  });
+
+  it("gives no memory tool a request builder", () => {
+    // Memory executes server-side. A builder here would mean it had also been
+    // wired as a proposal, which is the double-write this split exists to stop.
+    for (const t of MEMORY_TOOLS) {
+      expect(buildProposalRequest(t.name, {})).toBeNull();
     }
   });
 
@@ -30,9 +63,18 @@ describe("the tool surface", () => {
   it("requires a summary on every proposal", () => {
     // The user reads the summary before approving. A proposal without one
     // cannot be judged, which would make the approval step theater.
-    for (const t of WRITE_TOOLS) {
+    for (const t of PROPOSAL_TOOLS) {
       const required = (t.input_schema as { required?: string[] }).required ?? [];
       expect(required).toContain("summary");
+    }
+  });
+
+  it("requires no summary on a memory tool", () => {
+    // Nothing is approved, so a summary would be a field written for a dialog
+    // that never opens - tokens spent on every note for nobody to read.
+    for (const t of MEMORY_TOOLS) {
+      const required = (t.input_schema as { required?: string[] }).required ?? [];
+      expect(required).not.toContain("summary");
     }
   });
 });

@@ -498,6 +498,80 @@ export const workoutSets = pgTable(
 export type WorkoutExercise = typeof workoutExercises.$inferSelect;
 export type WorkoutSet = typeof workoutSets.$inferSelect;
 
+/**
+ * What FitBot knows about this person that their workout rows cannot say.
+ *
+ * Everything else in this schema records what someone DID. None of it records
+ * what they are training for, what their left shoulder will not tolerate, or
+ * what they agreed with the coach last week - and without those a conversation
+ * starts from nothing every single time. The chat transcript is client state
+ * (see `coach_conversations` below for why that is only half a fix), so before
+ * this table FitBot could not remember a single thing across a page refresh.
+ *
+ * `kind` is what makes these usable rather than a pile of text. The system
+ * prompt groups by it, and the groups are treated differently: a `constraint`
+ * is a hard rule the coach must never propose around, while a `preference` is
+ * a lean it can argue with. Keep the five in sync with COACH_NOTE_KINDS in
+ * lib/coach-notes.ts, which is the source of truth for the vocabulary.
+ *
+ * `expiresOn` is the difference between memory and clutter. "Traveling until
+ * the 15th" is true for eleven days and misleading forever after, so a fact
+ * with a known end date carries it and simply stops being loaded. Null means
+ * permanent, which most notes are.
+ *
+ * `source` records whether FitBot inferred a fact or the person stated it
+ * themselves. A user-authored note is not something the model may quietly
+ * revise, which is the one asymmetry the write tools enforce.
+ */
+export const coachNotes = pgTable(
+  "coach_notes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    /** goal | constraint | preference | context | agreement */
+    kind: text("kind").notNull(),
+    content: text("content").notNull(),
+    /** An AUTHORED DAY, anchored like every other date here. Null = permanent. */
+    expiresOn: timestamp("expires_on"),
+    /** fitbot | user */
+    source: text("source").notNull().default("fitbot"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("coach_notes_user_id_idx").on(t.userId)],
+);
+
+/**
+ * The running conversation with FitBot, one row per user.
+ *
+ * The transcript used to live only in React state, so closing the tab erased
+ * it. Persisting it is what lets a conversation be picked up tomorrow instead
+ * of restarted, which is most of what "my coach" means in practice.
+ *
+ * ONE row per user, not a list of sessions: this is a continuous relationship,
+ * the way a real coaching thread runs, not a series of support tickets.
+ *
+ * `messages` is the Anthropic message array verbatim, tool calls and results
+ * included, because that is what the API needs handed back. It is TRIMMED on
+ * every save (see lib/api/coach-conversation.ts) rather than growing without
+ * limit - and the trim is safe precisely because `coach_notes` exists: what
+ * matters long-term has been written there as a durable fact, so dropping old
+ * turns loses the wording and not the knowledge.
+ */
+export const coachConversations = pgTable("coach_conversations", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  /** Anthropic MessageParam[]. Written with sql.json, never JSON.stringify. */
+  messages: jsonb("messages").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type CoachNote = typeof coachNotes.$inferSelect;
+export type CoachConversation = typeof coachConversations.$inferSelect;
+
 // Zod schemas
 export const insertExerciseSchema = createInsertSchema(exercises).omit({
   id: true,

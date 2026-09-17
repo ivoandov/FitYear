@@ -4,7 +4,17 @@ import { z } from "zod";
 import { requireUser, ApiError } from "@/lib/api/auth";
 import { parseTimeZone } from "@/lib/api/timezone";
 import { runReadTool } from "@/lib/ai/fitbot-reads";
-import { ALL_TOOLS, buildProposalRequest, isWriteTool } from "@/lib/ai/fitbot-tools";
+import {
+  ALL_TOOLS,
+  buildProposalRequest,
+  isMemoryTool,
+  isProposalTool,
+} from "@/lib/ai/fitbot-tools";
+import { runMemoryTool } from "@/lib/ai/fitbot-memory";
+import { loadCoachNotes } from "@/lib/api/coach-notes";
+import { loadConversation, saveConversation } from "@/lib/api/coach-conversation";
+import { renderCoachMemory } from "@/lib/coach-notes";
+import { localDateKeyInZone } from "@/lib/date";
 
 /**
  * A conversation with FitBot that can see the whole app and act on it.
@@ -25,10 +35,20 @@ import { ALL_TOOLS, buildProposalRequest, isWriteTool } from "@/lib/ai/fitbot-to
  * exercise-name canonicalisation, the duplicate guard and userId scoping that
  * all live in those handlers. See lib/ai/fitbot-tools.ts.
  *
- * **The transcript is opaque client state.** The full Anthropic message array,
- * tool calls and results included, round-trips through the client. The
- * alternative was a server session store, which is a database table and a
- * cleanup job to solve a problem the stateless API does not have.
+ * **It remembers you.** Two different mechanisms, and the distinction matters.
+ * `coach_notes` holds durable FACTS - goals, injuries, agreements - which are
+ * rendered into the system prompt on every turn with no tool call, so they cost
+ * nothing to consult and are simply always known. `coach_conversations` holds
+ * the running TRANSCRIPT so a conversation resumes rather than restarts. The
+ * transcript is trimmed as it grows and the facts are not, which is the right
+ * way round: what matters long-term has been written down as a fact, so trimming
+ * costs the wording of an old exchange and not the knowledge from it.
+ *
+ * This replaced client-held history, which meant closing the tab erased the
+ * conversation. The old reasoning - that a server store is a table and a cleanup
+ * job to solve a problem the stateless API does not have - was correct about the
+ * cost and wrong about the problem. A coach that cannot remember yesterday is
+ * not a coach.
  *
  * **It streams.** The edge proxy has its own patience and a multi-step tool loop
  * that returns nothing until it is finished can exhaust it. Streaming keeps
@@ -90,6 +110,12 @@ const SYSTEM = `You are FitBot, the coach inside FitYear, talking to the person 
 
 WHO YOU ARE TALKING TO. One person, about their own training. You can see everything in their FitYear account through your tools. Look things up rather than asking them to tell you what you could read yourself.
 
+YOU REMEMBER THEM BETWEEN CONVERSATIONS. What you know is listed under YOUR MEMORY below, and this conversation continues from wherever you left off - it is not a fresh start. Use what you know without announcing that you remember it: a coach who knows your shoulder is bad just trains around it, they do not preface every session with a recap.
+
+WHAT TO WRITE DOWN. Call remember the moment you learn something that will still matter in a month: what they are training for, an injury or limitation, the equipment they have, the days they can train, a strong preference, or something the two of you agreed to do. Do not record what you can already read - their workouts, weights and records are all one tool call away, and copying them into memory is noise that crowds out the things that are not readable. If something you know turns out to be wrong or out of date, use update_memory to revise it or forget to drop it; a wrong fact about somebody's body is worse than no fact. Prefer revising over accumulating a second, contradictory version. When you record or drop something, say so in a sentence, so they always know what you are holding.
+
+Anything in your memory marked as stated by them is theirs, not yours: do not rewrite or delete it without asking first. What someone tells you about their own body outranks what you inferred about it.
+
 GATHER IN ONE GO. Ask for every tool you need in a SINGLE batch rather than looking one thing up, thinking, then looking up another. Each extra round trip costs the user several seconds of staring at nothing.
 
 HOW TO OPEN A CONVERSATION ABOUT THEIR TRAINING. Read before you talk. get_active_program tells you what they are running AND how their completed sessions differ from the plan; get_training_summary tells you which muscle groups are behind their own baseline. Lead with what you actually noticed, specifically, with numbers. "You have added biceps work on 2 of your last 3 Day 1 sessions" is useful. "How is your training going?" wastes their time.
@@ -99,6 +125,7 @@ CHANGING ANYTHING. You do not make changes yourself. When you want something cha
 Before proposing, be sure it is what they want. If the request is ambiguous, ask one short question first. If you have noticed something and are suggesting it unprompted, say what you saw and ask whether to make the change, rather than firing a proposal at them cold.
 
 RULES THAT KEEP THE DATA HONEST.
+- A hard constraint in your memory is a rule, not a preference. Never propose anything that violates one, and if they ask for something that does, say why before doing it rather than silently obeying or silently refusing.
 - dayIndex is a position in the ROTATION, starting at 1, and the GAPS ARE THE REST DAYS. A 4-day week inside a 7-day cycle is dayIndex 1, 3, 5, 6 - never 1, 2, 3, 4, which would stack four training days together and rest for three.
 - Reps are free text and stay free text: "6-8", "AMRAP", "30s" are all valid. Never turn a range into a single number.
 - Every weight in the data is POUNDS. If they talk in kilos, convert, and say which unit you mean.
@@ -120,11 +147,36 @@ export async function POST(request: NextRequest) {
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const todayKey = localDateKeyInZone(new Date(), tz);
+
+  const [notes, stored] = await Promise.all([
+    loadCoachNotes(user.id),
+    loadConversation(user.id),
+  ]);
+
+  // The stored transcript is authoritative: it is written at the end of every
+  // turn, so it cannot be behind the client. The one exception is a
+  // conversation that was already in progress when persistence shipped, which
+  // has client history and no stored row - honour the client's copy then rather
+  // than making that conversation appear to reset itself.
+  const prior =
+    stored.length > 0
+      ? (stored as Anthropic.MessageParam[])
+      : ((input.history ?? []) as Anthropic.MessageParam[]);
 
   const messages: Anthropic.MessageParam[] = [
-    ...((input.history ?? []) as Anthropic.MessageParam[]),
+    ...prior,
     { role: "user", content: input.message },
   ];
+
+  const memory = renderCoachMemory(notes, todayKey);
+  // Today's date belongs here rather than in the cached prefix: a coach that
+  // does not know what day it is cannot reason about "this week", and baking it
+  // into the cached block would serve a stale date for the life of the cache.
+  const context = [
+    `TODAY IS ${todayKey} (their timezone: ${tz}).`,
+    memory ? `YOUR MEMORY OF THIS PERSON\n\n${memory}` : "YOUR MEMORY OF THIS PERSON\n\nEmpty so far. Anything worth keeping, write down with remember as you learn it.",
+  ].join("\n\n");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -134,6 +186,22 @@ export async function POST(request: NextRequest) {
       };
 
       const startedAt = Date.now();
+
+      /**
+       * Store the transcript, but never at the cost of the reply.
+       *
+       * A conversation that answered well and failed to save is a small loss;
+       * one that threw while saving and lost its answer is a large one. So this
+       * swallows its own failure and logs it, which is the same call the read
+       * tools make.
+       */
+      const persist = async (all: Anthropic.MessageParam[]) => {
+        try {
+          await saveConversation(user.id, all);
+        } catch (e) {
+          console.error("[ai/chat] could not save transcript:", e);
+        }
+      };
 
       try {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -157,11 +225,16 @@ export async function POST(request: NextRequest) {
             // difference between "working" and "hung".
             thinking: { type: "adaptive", display: "summarized" },
             output_config: { effort: EFFORT },
-            // The system prompt and the tool list are byte-identical on every
-            // turn, so they are the stable prefix worth caching. The transcript
-            // after them is what varies.
+            // TWO blocks, and the order is the point. The instructions and the
+            // tool list are byte-identical on every turn, so they are the
+            // stable prefix and carry the cache breakpoint. Memory and today's
+            // date go AFTER it, uncached, because they change - memory
+            // whenever the coach learns something, the date every midnight.
+            // Putting them inside the cached block would either invalidate the
+            // cache on every note written or serve yesterday's date all day.
             system: [
               { type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } },
+              { type: "text", text: context },
             ],
             tools: ALL_TOOLS,
             messages,
@@ -191,7 +264,36 @@ export async function POST(request: NextRequest) {
           let proposed = false;
 
           for (const call of calls) {
-            if (isWriteTool(call.name)) {
+            if (isMemoryTool(call.name)) {
+              // Executes, unlike a proposal. See the header of fitbot-tools.ts
+              // for why memory is the one write that does not need approval.
+              send({ type: "memory", name: call.name });
+              try {
+                const message = await runMemoryTool(
+                  call.name,
+                  (call.input ?? {}) as Record<string, unknown>,
+                  { userId: user.id, todayKey },
+                );
+                results.push({
+                  type: "tool_result",
+                  tool_use_id: call.id,
+                  content: message,
+                });
+              } catch (e) {
+                // Same reasoning as a failed read: returned, not thrown. A
+                // conversation should survive failing to write a note down.
+                console.error(`[ai/chat] memory ${call.name} failed:`, e);
+                results.push({
+                  type: "tool_result",
+                  tool_use_id: call.id,
+                  content: `That did not save: ${(e as Error).message}`,
+                  is_error: true,
+                });
+              }
+              continue;
+            }
+
+            if (isProposalTool(call.name)) {
               proposed = true;
               const inputObj = call.input as Record<string, unknown>;
               send({
@@ -242,12 +344,17 @@ export async function POST(request: NextRequest) {
           if (proposed) break;
         }
 
+        await persist(messages);
         send({ type: "done", history: messages });
       } catch (e) {
         // Hobby keeps runtime logs for an hour and a user report always arrives
         // after that window, so the detail goes to the log and a plain sentence
         // goes to the user.
         console.error("[ai/chat] failed:", e);
+        // Save what the conversation got to before it broke. Losing the whole
+        // exchange because the last round trip failed would make a rate limit
+        // feel like the coach forgetting the conversation.
+        await persist(messages);
         send({
           type: "error",
           message:
