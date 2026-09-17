@@ -337,6 +337,12 @@ async function getSettings(userId: string) {
     monthlyWorkoutGoal: s?.monthlyWorkoutGoal ?? 16,
     fitbotDefaultFocus: s?.fitbotDefaultFocus ?? "strength",
     timeZone: s?.timeZone ?? null,
+    // How many days a week they said they can train, from onboarding. The app
+    // has stored this all along and this tool did not return it, so the coach
+    // could not see the single most load-bearing constraint on any program it
+    // proposed - it had to infer intent from behaviour, which conflates "does
+    // not want to" with "cannot". Null means they never said.
+    daysPerWeekTarget: s?.onboardingDaysPerWeek ?? null,
   };
 }
 

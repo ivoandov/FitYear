@@ -122,7 +122,7 @@ export const READ_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_settings",
     description:
-      "The user's preferences: weight unit for display, monthly workout goal, default training focus and time zone.",
+      "The user's preferences: weight unit for display, monthly workout goal, default training focus, time zone, and daysPerWeekTarget - how many days a week they said they can realistically train. Check that before proposing any program: training more days than they said they have is the fastest way to write a plan they will not follow.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
 ];
