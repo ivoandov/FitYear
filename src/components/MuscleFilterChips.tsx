@@ -133,7 +133,7 @@ export function MuscleFilterChips({
                 </button>
                 <div className="flex flex-wrap gap-1.5">
                   {specs.length === 0 ? (
-                    <span className="mt-1 font-mono text-[10px] text-tertiary-foreground">— no specifics</span>
+                    <span className="mt-1 font-mono text-[10px] text-tertiary-foreground">- no specifics</span>
                   ) : (
                     specs.map((s) =>
                       chip(s, active, () => onChange(c), `${c}-${s}`),

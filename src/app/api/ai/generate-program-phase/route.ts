@@ -91,7 +91,7 @@ export const POST = handle(async (request: NextRequest) => {
 
   const prompt = `You are an expert strength coach filling in the ACCESSORY variety for one phase of a ${input.skeleton.durationWeeks}-week ${input.skeleton.name} program.
 
-PHASE: "${phase.name}" — focus: ${phase.focus} — weeks ${phase.startWeek} to ${phase.endWeek}.
+PHASE: "${phase.name}" - focus: ${phase.focus} - weeks ${phase.startWeek} to ${phase.endWeek}.
 
 USER PROFILE:
 - Experience: ${input.experience}
@@ -100,7 +100,7 @@ USER PROFILE:
 ${input.imbalanceMuscles.length ? `- Bring up these muscles: ${input.imbalanceMuscles.join(", ")}. Notes: ${input.imbalanceNotes}` : ""}
 ${input.injuryDetails.length ? `- Train around: ${input.injuryDetails.join(", ")}. Notes: ${input.injuryNotes}` : ""}
 
-The distinct workouts (anchor lifts are ALREADY programmed — do NOT repeat them):
+The distinct workouts (anchor lifts are ALREADY programmed - do NOT repeat them):
 ${workoutSummary}
 
 For EACH workout above, author:

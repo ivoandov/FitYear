@@ -131,7 +131,7 @@ export const AnchorLiftSchema = z.object({
 // workouts are NOT pinned to weekdays; they rotate on a cycle (see
 // SkeletonSchema.cycle), so there is no dayOfWeek here.
 export const WorkoutDaySchema = z.object({
-  label: z.string(), // "Push", "Upper A", "Legs" — matched by the variety day + assembler
+  label: z.string(), // "Push", "Upper A", "Legs" - matched by the variety day + assembler
   muscleGroups: z.array(z.string()).default([]),
   anchorLifts: z.array(AnchorLiftSchema).default([]),
 });

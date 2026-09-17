@@ -47,7 +47,7 @@ export function encryptToken(plaintext: string): string {
   if (!plaintext) return plaintext;
   if (plaintext.startsWith(PREFIX)) return plaintext; // already encrypted; idempotent
   const key = getKey();
-  if (!key) return plaintext; // encryption disabled — pass-through
+  if (!key) return plaintext; // encryption disabled - pass-through
   const iv = randomBytes(IV_LEN);
   const cipher = createCipheriv(ALGO, key, iv);
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);

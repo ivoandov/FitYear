@@ -259,7 +259,11 @@ export function canonicalExerciseName(raw: string): string {
     else unsplitAlternative = true;
   }
 
-  s = s.replace(/[–—]/g, " ").replace(/\s+-\s+/g, " ").replace(/[&/]/g, " and ");
+  // The dashes in this class are INPUT characters to strip from a pasted
+  // name, not prose - a find-and-replace for Ivo's no-em-dash rule broke
+  // this once by turning the class into an en-dash-to-hyphen RANGE, which
+  // stripped every hyphen and split "Y-T-W" into "Y T W".
+  s = s.replace(/[\u2013\u2014]/g, " ").replace(/\s+-\s+/g, " ").replace(/[&/]/g, " and ");
   // An INTERNAL hyphen becomes a space before matching. Left as-is, "Lying"
   // matched inside "Side-Lying" and "Dumbbell" inside "Single-Dumbbell",
   // hoisting half the compound and leaving "Side-" and "Single-" stranded.

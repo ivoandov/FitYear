@@ -77,7 +77,7 @@ export const POST = handle(async (request: NextRequest) => {
   ]);
   const historyBlock = trainingHistoryPromptBlock(history);
 
-  const prompt = `You are an expert strength coach designing the STRUCTURE of a ${input.programLength}-day (${durationWeeks}-week) ${input.focus.join(" + ")} training program. You are laying out the macrocycle skeleton only — the per-week loads are computed deterministically afterward and per-phase accessory variety is authored later, so keep this focused and coherent.
+  const prompt = `You are an expert strength coach designing the STRUCTURE of a ${input.programLength}-day (${durationWeeks}-week) ${input.focus.join(" + ")} training program. You are laying out the macrocycle skeleton only - the per-week loads are computed deterministically afterward and per-phase accessory variety is authored later, so keep this focused and coherent.
 
 USER PROFILE:
 - Experience: ${input.experience}

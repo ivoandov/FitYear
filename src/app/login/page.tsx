@@ -28,7 +28,7 @@ export default async function LoginPage({
           play inline without a tap. playsInline avoids fullscreening on mobile.
           poster = first paint (25 KB JPG) while the 1.4 MB MP4 streams in.
           preload="auto" hints the browser to start downloading immediately.
-          The MP4 is faststart-encoded so the moov atom is at the head —
+          The MP4 is faststart-encoded so the moov atom is at the head -
           playback begins after the first ~17 KB instead of needing the full
           file. */}
       <video

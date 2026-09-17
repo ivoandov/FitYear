@@ -64,7 +64,7 @@ export default function OnboardingPage() {
 
   return (
     <main className="flex min-h-screen flex-col p-5 sm:p-8">
-      {/* Skip — always available */}
+      {/* Skip - always available */}
       <div className="flex justify-end">
         <button
           type="button"

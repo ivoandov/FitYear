@@ -734,7 +734,7 @@ export default function TrackPage() {
         toast({
           title: "Couldn't save your workout",
           description:
-            "Something went wrong saving. Your progress is kept — check your connection and tap Finish again.",
+            "Something went wrong saving. Your progress is kept - check your connection and tap Finish again.",
         });
         return;
       }
@@ -752,7 +752,7 @@ export default function TrackPage() {
               const day = ri.completedWorkouts;
               if (day < ri.totalWorkouts) {
                 toast({
-                  title: `🎯 Day ${day} complete — Day ${day + 1} unlocked`,
+                  title: `🎯 Day ${day} complete - Day ${day + 1} unlocked`,
                   description: ri.routineName,
                 });
               } else {
@@ -829,7 +829,7 @@ export default function TrackPage() {
       toast({
         title: "Couldn't save your workout",
         description:
-          "Something went wrong saving. Your progress is kept — check your connection and try again.",
+          "Something went wrong saving. Your progress is kept - check your connection and try again.",
       });
       return;
     }
@@ -937,7 +937,7 @@ export default function TrackPage() {
               <div>
                 <p className="font-semibold">No exercises yet</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Pick exercises as you go — you don&apos;t have to plan ahead.
+                  Pick exercises as you go - you don&apos;t have to plan ahead.
                 </p>
               </div>
               <Button onClick={() => setIsAddExerciseOpen(true)} data-testid="button-add-first-exercise">
@@ -1204,7 +1204,7 @@ export default function TrackPage() {
               </button>
             </div>
 
-            {/* Finish CTA — appears only when every set is checked; the checkbox
+            {/* Finish CTA - appears only when every set is checked; the checkbox
                 completes individual sets (no separate "End Set" button). */}
             {allSetsCompleted && (
               <button

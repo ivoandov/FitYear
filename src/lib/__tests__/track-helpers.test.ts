@@ -61,7 +61,7 @@ describe("getDefaultSets", () => {
   });
 });
 
-describe("getDefaultSets — with a FitBot plan", () => {
+describe("getDefaultSets - with a FitBot plan", () => {
   const hist = mk("2026-07-05", [
     { id: "sq", setsData: [{ weight: 135, reps: 5, completed: true }] },
   ]);
@@ -98,7 +98,7 @@ describe("getDefaultSets — with a FitBot plan", () => {
   });
 });
 
-describe("getDefaultSets — with a FitBot program target load", () => {
+describe("getDefaultSets - with a FitBot program target load", () => {
   const hist = mk("2026-07-05", [
     { id: "sq", setsData: [{ weight: 155, reps: 6, completed: true }] },
   ]);

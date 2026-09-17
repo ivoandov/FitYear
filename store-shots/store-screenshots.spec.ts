@@ -50,11 +50,39 @@ const SIZES = [
 const OUT = resolve(process.env.HOME!, "Projects/FitYear/store/screenshots");
 
 const SHOTS: { name: string; path: string; settle?: (page: Page) => Promise<void> }[] = [
-  { name: "1-home", path: "/" },
-  { name: "2-history", path: "/history" },
-  { name: "3-insights", path: "/insights" },
-  { name: "4-exercises", path: "/exercises" },
-  { name: "5-fitbot", path: "/fit-bot" },
+  {
+    // FIRST on purpose: tracking is the screen people spend their time in, and
+    // the listing leads with the rest timer. The set is missing from the draft
+    // set because it cannot be reached by navigating to a URL - a live workout
+    // has to be driven through the UI, which is what `settle` does here.
+    name: "1-track",
+    path: "/",
+    settle: async (page) => {
+      await page.locator("main").getByTestId("button-start-workout").click();
+      await page.getByTestId("button-add-first-exercise").click();
+      await page.getByTestId("input-add-exercise-search").fill("Barbell Bench Press");
+      await page.locator('[data-testid^="add-exercise-row-"]').first().click();
+      await page.getByTestId("button-add-exercises-confirm").click();
+      await page.getByTestId("text-current-exercise").waitFor();
+
+      // Two sets logged and a third open, so the screen shows real work rather
+      // than an empty grid. Completing a set starts the rest timer, which is
+      // the thing worth photographing.
+      await page.getByTestId("input-weight-1").fill("205");
+      await page.getByTestId("input-reps-1").fill("5");
+      await page.getByTestId("checkbox-complete-1").click();
+      await page.waitForTimeout(600);
+      await page.getByTestId("input-weight-2").fill("205");
+      await page.getByTestId("input-reps-2").fill("5");
+      await page.getByTestId("checkbox-complete-2").click();
+      await page.waitForTimeout(1200);
+    },
+  },
+  { name: "2-home", path: "/" },
+  { name: "3-history", path: "/history" },
+  { name: "4-insights", path: "/insights" },
+  { name: "5-exercises", path: "/exercises" },
+  { name: "6-fitbot", path: "/fit-bot" },
 ];
 
 

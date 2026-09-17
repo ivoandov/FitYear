@@ -135,7 +135,7 @@ export function usePrDetection(
           const load = setWeightLbs > 0 ? ` at ${lbsToDisplay(setWeightLbs, weightUnit)} ${weightUnit}` : "";
           void hapticSuccess();
           toast({
-            title: `⏱️ ${exerciseName} — new hold PR!`,
+            title: `⏱️ ${exerciseName} - new hold PR!`,
             description: `${secs}s${load}${prev ? ` (was ${prev.seconds}s)` : ""}`,
           });
         }
@@ -184,13 +184,13 @@ export function usePrDetection(
       if (isWeightPr) {
         isPr = true;
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
-          ? "—"
+          ? "-"
           : fmt(runningBestWeight);
         void hapticSuccess();
         toast({
-          title: `🏆 ${exerciseName} — new weight PR!`,
+          title: `🏆 ${exerciseName} - new weight PR!`,
           description: assisted
-            ? `${fmt(setWeightLbs)} assist (was ${prevLabel}) — less help = harder`
+            ? `${fmt(setWeightLbs)} assist (was ${prevLabel}) - less help = harder`
             : `${fmt(setWeightLbs)} (was ${prevLabel})`,
         });
       }
@@ -201,8 +201,8 @@ export function usePrDetection(
         isPr = true;
         void hapticSuccess();
         toast({
-          title: `⭐ ${exerciseName} — new volume PR!`,
-          description: `${fmt(setWeightLbs)} × ${setReps} = ${fmt(volume)} (was ${runningMaxVolume ? fmt(runningMaxVolume) : "—"})`,
+          title: `⭐ ${exerciseName} - new volume PR!`,
+          description: `${fmt(setWeightLbs)} × ${setReps} = ${fmt(volume)} (was ${runningMaxVolume ? fmt(runningMaxVolume) : "-"})`,
         });
       }
 

@@ -227,7 +227,7 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
             </h1>
             {exercise.isAssisted ? (
               <p className="text-xs text-muted-foreground mt-1">
-                Assisted exercise — lower weight = harder.
+                Assisted exercise - lower weight = harder.
               </p>
             ) : null}
           </div>

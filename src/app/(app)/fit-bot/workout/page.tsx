@@ -150,13 +150,13 @@ export default function FitBotWorkoutPage() {
       setLastChanges(data.changes ?? []);
       setTranscript((t) => [
         ...t,
-        { role: "bot", text: data.summary || "Done — updated your workout." },
+        { role: "bot", text: data.summary || "Done - updated your workout." },
       ]);
     } catch (e) {
       // Keep the prior workout; surface the failure inline.
       setTranscript((t) => [
         ...t,
-        { role: "bot", text: `I couldn't apply that — ${describeApiError(e)}` },
+        { role: "bot", text: `I couldn't apply that - ${describeApiError(e)}` },
       ]);
     } finally {
       setRefining(false);
@@ -388,7 +388,7 @@ function PromptScreen({
               What kind of workout would you like today?
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Describe your ideal session — FitBot builds it in seconds.
+              Describe your ideal session - FitBot builds it in seconds.
             </p>
           </div>
 

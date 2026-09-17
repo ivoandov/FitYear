@@ -484,7 +484,7 @@ export default function FitBotProgramPage() {
             <div className="card-elevated divide-y divide-[color:var(--divider)] px-4">
               <SummaryRow label="Focus" value={focus.join(", ")} onEdit={() => setScreen("focus")} />
               <SummaryRow label="Equipment" value={equipment.join(", ")} onEdit={() => setScreen("equipment")} />
-              <SummaryRow label="Experience" value={experience ?? "—"} onEdit={() => setScreen("experience")} />
+              <SummaryRow label="Experience" value={experience ?? "-"} onEdit={() => setScreen("experience")} />
               <SummaryRow
                 label="Distinct workouts"
                 value={`${distinctWorkouts} workouts`}
@@ -601,7 +601,7 @@ const WIZARD_COPY: Record<WizardStep, { title: string; hint?: string }> = {
     title: "How should your program rotate?",
     hint: "Pick how many distinct workouts to rotate through, how long it runs, and any structure notes.",
   },
-  extras: { title: "Anything else?", hint: "Optional — pick any that apply." },
+  extras: { title: "Anything else?", hint: "Optional - pick any that apply." },
   imbalances: { title: "Which muscles need extra work?", hint: "Pick areas you want to bring up." },
   injuries: { title: "What should we work around?", hint: "So Fit Bot can pick safe alternatives." },
   summary: { title: "Ready to build your program?", hint: "Review and tweak." },
@@ -783,7 +783,7 @@ function SummaryRow({
         <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-tertiary-foreground">
           {label}
         </div>
-        <div className="mt-1 text-sm">{value || "—"}</div>
+        <div className="mt-1 text-sm">{value || "-"}</div>
       </div>
       {onEdit ? (
         <button type="button" onClick={onEdit} className="text-xs font-semibold text-primary hover:underline">
@@ -835,8 +835,8 @@ function BuildingScreen({
         </h2>
         <p className="mx-auto mt-2 max-w-[280px] text-sm leading-relaxed text-muted-foreground">
           {anyFailed
-            ? "The rest of your program is safe — just rebuild the flagged step."
-            : "Built in segments so nothing times out. A minute or two — keep this screen open."}
+            ? "The rest of your program is safe - just rebuild the flagged step."
+            : "Built in segments so nothing times out. A minute or two - keep this screen open."}
         </p>
       </div>
 

@@ -188,7 +188,7 @@ export function ExerciseProgressChart({
               </SheetHeader>
               <div className="px-6 py-4 space-y-3">
                 <h3 className="text-sm font-semibold text-muted-foreground">
-                  {exerciseName} — completed sets
+                  {exerciseName} - completed sets
                 </h3>
                 <div className="space-y-2">
                   {selected.sets.map((s) => {
@@ -303,7 +303,7 @@ function ChartTooltip({
       {p.isOutlier ? (
         <div className="text-destructive flex items-center gap-1">
           <TriangleAlert className="h-3 w-3" />
-          Anomaly — tap to inspect
+          Anomaly - tap to inspect
         </div>
       ) : null}
     </div>

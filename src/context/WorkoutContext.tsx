@@ -37,7 +37,7 @@ interface ActiveWorkout {
   scheduledWorkoutId: string | null;
   name: string;
   exercises: WorkoutExercise[];
-  startedAt?: string; // ISO string — set on startWorkout, used for duration on complete
+  startedAt?: string; // ISO string - set on startWorkout, used for duration on complete
   /**
    * Set when this session REOPENED an already-finished workout. Finishing then
    * updates that workout instead of creating a second one, so a session picked
@@ -195,7 +195,7 @@ interface WorkoutContextType {
   completedWorkouts: CompletedWorkoutRecord[];
   isLoading: boolean;
   trackingProgress: TrackingProgress | null;
-  lastCompletedWorkoutId: string | null; // Set after completeWorkout() succeeds — used by /workout-complete page
+  lastCompletedWorkoutId: string | null; // Set after completeWorkout() succeeds - used by /workout-complete page
   startWorkout: (workout: { id: string; displayId: string; scheduledWorkoutId?: string; name: string; exercises: Exercise[] }) => void;
   startEmptyWorkout: () => void;
   startGeneratedWorkout: (workout: { name: string; exercises: GeneratedWorkoutExercise[] }) => void;
