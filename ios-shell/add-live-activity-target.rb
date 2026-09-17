@@ -109,7 +109,18 @@ if widget_target.nil?
       "INFOPLIST_KEY_CFBundleDisplayName" => "FitYear Rest Timer",
       "INFOPLIST_KEY_NSHumanReadableCopyright" => "",
       "IPHONEOS_DEPLOYMENT_TARGET" => WIDGET_MIN_IOS,
-      "TARGETED_DEVICE_FAMILY" => "1,2",
+      # iPhone ONLY ("1"), on both targets, and it is not an oversight.
+      # `cap add ios` generates "1,2" (universal), which is what shipped in
+      # builds 1 and 2 - and Apple then REFUSES to review the version without a
+      # 13-inch iPad screenshot set, because required screenshot sizes are
+      # derived from the binary's device families. That is only the mechanical
+      # reason. The real one is that the listing leads on the lock-screen rest
+      # timer and its Dynamic Island presentation, and Live Activities and
+      # haptics do not exist on iPad at all, so a universal binary promises a
+      # reviewer on an iPad something the app cannot do there. If iPad is ever
+      # wanted, it is a deliberate piece of work (a layout pass plus an honest
+      # story for the iPhone-only features), not a build setting.
+      "TARGETED_DEVICE_FAMILY" => "1",
       "SWIFT_VERSION" => "5.0",
       "CODE_SIGN_STYLE" => "Automatic",
       "SKIP_INSTALL" => "YES",
