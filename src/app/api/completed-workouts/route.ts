@@ -78,17 +78,14 @@ export const POST = handle(async (request: NextRequest) => {
       .limit(1)
       .then((rows) => rows[0] ?? null);
 
-  const duplicate = await findExisting();
-  if (duplicate) {
-    return new Response(JSON.stringify(duplicate), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  }
-
-  // Stage 1: parallel reads — scheduled workout (for templateId/routineInstance/
-  // stale calendar event), calendar-connected check, and selected calendar id.
-  const [scheduledWorkoutRow, calendarConnected, settings] = await Promise.all([
+  // The duplicate check runs IN the same round trip as the reads below rather
+  // than before them. It used to be awaited on its own, so every save paid a
+  // serial database round trip for a case that almost never happens - and the
+  // user waits for this request with a finished workout on screen. A duplicate
+  // still short-circuits below; the extra reads are wasted only in that rare
+  // case, and they are wasted in parallel.
+  const [duplicate, scheduledWorkoutRow, calendarConnected, settings] = await Promise.all([
+    findExisting(),
     body.scheduledWorkoutId
       ? db
           .select()
@@ -114,6 +111,13 @@ export const POST = handle(async (request: NextRequest) => {
       .limit(1)
       .then((rows) => rows[0] ?? null),
   ]);
+
+  if (duplicate) {
+    return new Response(JSON.stringify(duplicate), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const templateId = body.templateId ?? scheduledWorkoutRow?.templateId ?? null;
   const scheduledRoutineInstanceId =
