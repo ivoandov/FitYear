@@ -221,6 +221,16 @@ export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
       properties: {
         routineId: { type: "string" },
         summary: { type: "string", description: "One sentence the user will read before approving." },
+        progression: {
+          type: "object",
+          description:
+            "The routine's DEFAULT progressive-overload rule, applied to every exercise that has a starting weight and no rule of its own. Send null to turn progression off. Omit the field entirely to leave the current setting alone.",
+          properties: {
+            incrementLbs: { type: "number" },
+            everyWeeks: { type: "integer" },
+          },
+          required: ["incrementLbs", "everyWeeks"],
+        },
         days: {
           type: "array",
           items: {
@@ -238,7 +248,24 @@ export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
                     reps: { type: "string", description: "Free text. Never a number." },
                     rest: { type: "integer", description: "Seconds." },
                     notes: { type: "string" },
-                    targetLoadLbs: { type: "number" },
+                    targetLoadLbs: {
+                      type: "number",
+                      description:
+                        "The STARTING working weight in pounds. Progression climbs from here, so an exercise without one never gets a computed target.",
+                    },
+                    progression: {
+                      type: "object",
+                      description:
+                        "Overrides the routine's default progression FOR THIS EXERCISE. Set it where the routine's one rule does not fit: a squat tolerates bigger jumps than a lateral raise. Omit it to inherit the routine default. It replaces that default whole rather than merging with it.",
+                      properties: {
+                        incrementLbs: { type: "number", description: "Pounds added each step." },
+                        everyWeeks: {
+                          type: "integer",
+                          description: "Weeks at each load before adding. 1 means every week.",
+                        },
+                      },
+                      required: ["incrementLbs", "everyWeeks"],
+                    },
                   },
                   required: ["name", "sets", "reps"],
                 },
@@ -412,6 +439,10 @@ export function buildProposalRequest(
         method: "PUT",
         path: `/api/routines/${input.routineId}`,
         body: {
+          // Only sent when the model named it: a PUT carrying undefined would
+          // read as "leave alone", but an explicit null CLEARS the rule, and
+          // the two must not be confused.
+          ...(input.progression !== undefined ? { progression: input.progression } : {}),
           entries: days.map((d) => {
             const day = d as Record<string, unknown>;
             return {

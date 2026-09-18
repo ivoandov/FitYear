@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Calendar as CalendarIcon, Trash2, Pencil, Play, Globe, Lock, MoreVertical, ChevronLeft, ChevronRight, CheckCircle, X, Copy, Sparkles, ClipboardPaste } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Trash2, Pencil, Play, Globe, Lock, MoreVertical, ChevronLeft, ChevronRight, CheckCircle, X, Copy, Sparkles, ClipboardPaste, TrendingUp } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, addDays } from "date-fns";
 import { apiRequest, queryClient, describeApiError } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
 import type { Exercise } from "@/data/exercises";
 import { RoutineEditDialog } from "@/components/RoutineEditDialog";
+import { describeRule, normalizeRule } from "@/lib/progression";
 
 interface RoutineWithEntries extends Routine {
   entries: RoutineEntry[];
@@ -159,6 +160,7 @@ export default function RoutinesPage() {
     name?: string;
     description?: string;
     defaultDurationDays?: number;
+    progression?: unknown;
     isPublic?: boolean;
     entries?: RoutineEntryDraft[];
   };
@@ -170,6 +172,12 @@ export default function RoutinesPage() {
   };
   const [routineDescription, setRoutineDescription] = useState("");
   const [routineDuration, setRoutineDuration] = useState(7);
+  // The routine's default progressive-overload rule. Null means "this routine
+  // does not add weight", which is the honest default: stamping +5 lb a week
+  // onto somebody's routine uninvited would change their training for them.
+  const [progressionOn, setProgressionOn] = useState(false);
+  const [progressionIncrement, setProgressionIncrement] = useState(5);
+  const [progressionEveryWeeks, setProgressionEveryWeeks] = useState(1);
   const [routineIsPublic, setRoutineIsPublic] = useState(false);
   const [routineEntries, setRoutineEntries] = useState<RoutineEntryDraft[]>([]);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
@@ -208,7 +216,7 @@ export default function RoutinesPage() {
   });
 
   const createRoutineMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string; defaultDurationDays: number; isPublic: boolean; entries: RoutineEntryDraft[] }) => {
+    mutationFn: async (data: { name: string; description?: string; defaultDurationDays: number; isPublic: boolean; progression: { incrementLbs: number; everyWeeks: number } | null; entries: RoutineEntryDraft[] }) => {
       return apiRequest("POST", "/api/routines", data);
     },
     onSuccess: () => {
@@ -376,6 +384,9 @@ export default function RoutinesPage() {
     setRoutineDescription("");
     setRoutineDuration(7);
     setRoutineIsPublic(false);
+    setProgressionOn(false);
+    setProgressionIncrement(5);
+    setProgressionEveryWeeks(1);
     setRoutineEntries([]);
     setCurrentWeekOffset(0);
   };
@@ -386,6 +397,9 @@ export default function RoutinesPage() {
     setRoutineDescription("");
     setRoutineDuration(7);
     setRoutineIsPublic(false);
+    setProgressionOn(false);
+    setProgressionIncrement(5);
+    setProgressionEveryWeeks(1);
     setRoutineEntries([]);
     setCurrentWeekOffset(0);
     setIsBuilderOpen(true);
@@ -404,6 +418,12 @@ export default function RoutinesPage() {
       setRoutineDescription(fullRoutine.description || "");
       setRoutineDuration(fullRoutine.defaultDurationDays);
       setRoutineIsPublic(fullRoutine.isPublic);
+      const rule = normalizeRule(fullRoutine.progression as Record<string, unknown> | null);
+      setProgressionOn(!!rule);
+      if (rule) {
+        setProgressionIncrement(rule.incrementLbs);
+        setProgressionEveryWeeks(rule.everyWeeks);
+      }
       setRoutineEntries(fullRoutine.entries.map(e => ({
         dayIndex: e.dayIndex,
         workoutTemplateId: e.workoutTemplateId,
@@ -443,6 +463,11 @@ export default function RoutinesPage() {
       description: routineDescription || undefined,
       defaultDurationDays: routineDuration,
       isPublic: routineIsPublic,
+      // Explicit null CLEARS the rule, which is distinct from omitting it. A
+      // user turning progression off must actually turn it off.
+      progression: progressionOn
+        ? { incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks }
+        : null,
       entries: routineEntries.filter(e => e.workoutName),
     };
 
@@ -576,6 +601,15 @@ export default function RoutinesPage() {
                 </span>
               )}
               <span className={`${CHIP} text-muted-foreground`}>{durationLabel(routine.defaultDurationDays)}</span>
+              {/* Ivo asked for the app to "tell the user" rather than silently
+                  moving the weight. A load that climbs on its own with no
+                  statement of the rule reads as a bug, not a plan. */}
+              {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null)) ? (
+                <span className={`${CHIP} text-primary`} data-testid={`chip-progression-${routine.id}`}>
+                  <TrendingUp className="h-2.5 w-2.5" />
+                  {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null))}
+                </span>
+              ) : null}
               {routine.isPublic ? (
                 <span className={`${CHIP} text-muted-foreground`}>
                   <Globe className="h-2.5 w-2.5" /> PUBLIC
@@ -952,6 +986,57 @@ export default function RoutinesPage() {
                         <SelectItem value="90">90 days</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Progressive overload. Off by default on purpose: adding
+                      weight to somebody's routine uninvited changes their
+                      training for them, so it stays null until asked for. */}
+                  <div className="space-y-2 rounded-[10px] border bg-white/[0.03] p-3.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="routine-progression" className={LABEL_EYEBROW}>
+                        Add weight over time
+                      </Label>
+                      <Switch
+                        id="routine-progression"
+                        checked={progressionOn}
+                        onCheckedChange={setProgressionOn}
+                        data-testid="switch-routine-progression"
+                      />
+                    </div>
+                    {progressionOn ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0.5}
+                            step={0.5}
+                            value={progressionIncrement}
+                            onChange={(e) => setProgressionIncrement(Number(e.target.value))}
+                            className="h-10 w-20"
+                            data-testid="input-progression-increment"
+                            aria-label="Pounds to add"
+                          />
+                          <span className="text-sm text-muted-foreground">lb every</span>
+                          <Input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={progressionEveryWeeks}
+                            onChange={(e) => setProgressionEveryWeeks(Number(e.target.value))}
+                            className="h-10 w-16"
+                            data-testid="input-progression-weeks"
+                            aria-label="Weeks between increases"
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {progressionEveryWeeks === 1 ? "week" : "weeks"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground" data-testid="text-progression-summary">
+                          {describeRule({ incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks })}
+                          . Applies to any exercise with a starting weight.
+                        </p>
+                      </>
+                    ) : null}
                   </div>
 
                   <div className="flex h-12 items-center justify-between rounded-[10px] border bg-white/[0.03] px-3.5">

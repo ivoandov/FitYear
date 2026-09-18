@@ -205,6 +205,60 @@ export const POST = handle(async (request: NextRequest) => {
   // runs to completion on the server, it just stops holding the response open.
   // It is NOT fire-and-forget: a bare floating promise on a serverless function
   // can be frozen the moment the response is sent.
+  // Re-decide the NEXT session's target loads in light of this one. Runs after
+  // the response like the calendar sync, and for the same reason: the user is
+  // looking at a finished workout, and adjusting a future session's suggested
+  // weight is not worth holding the screen for.
+  if (scheduledRoutineInstanceId && scheduledRoutineDayIndex != null) {
+    after(async () => {
+      const { adjustNextOccurrence } = await import("@/lib/api/progression-adjust");
+      const { effectiveRule } = await import("@/lib/progression");
+      const { routines, routineInstances } = await import("@/lib/db/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const [inst] = await db
+        .select({ routineId: routineInstances.routineId })
+        .from(routineInstances)
+        .where(eq(routineInstances.id, scheduledRoutineInstanceId))
+        .limit(1);
+      if (!inst?.routineId) return;
+
+      const [routine] = await db
+        .select({ progression: routines.progression })
+        .from(routines)
+        .where(eq(routines.id, inst.routineId))
+        .limit(1);
+
+      await adjustNextOccurrence({
+        userId: user.id,
+        routineInstanceId: scheduledRoutineInstanceId,
+        routineDayIndex: scheduledRoutineDayIndex,
+        completedAt: created.completedAt,
+        // The per-exercise override is resolved inside, against each exercise's
+        // own `progression`; this is the routine-level default.
+        rule: effectiveRule(routine?.progression as Record<string, unknown> | null, null),
+        // `exercises` is z.unknown() on the wire, so it is narrowed here
+        // rather than cast: this runs on whatever a client actually sent.
+        performed: (Array.isArray(body.exercises) ? body.exercises : []).flatMap(
+          (raw): Array<{ name: string; weightLbs: number | null; reps: number | null; completed: boolean }> => {
+            const ex = raw as { name?: unknown; sets?: unknown };
+            const name = typeof ex.name === "string" ? ex.name : "";
+            if (!name || !Array.isArray(ex.sets)) return [];
+            return ex.sets.map((s) => {
+              const set = s as { weight?: unknown; reps?: unknown; completed?: unknown };
+              return {
+                name,
+                weightLbs: typeof set.weight === "number" ? set.weight : null,
+                reps: typeof set.reps === "number" ? set.reps : null,
+                completed: set.completed === true,
+              };
+            });
+          },
+        ),
+      });
+    });
+  }
+
   if (calendarConnected) {
     after(async () => {
       try {

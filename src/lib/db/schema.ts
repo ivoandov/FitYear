@@ -274,6 +274,21 @@ export const routines = pgTable(
     // the Routines card. Set by ai/save-program from the assembled program's
     // cycleLength so the card can show the true rotation, not a 7-day collapse.
     cycleLength: integer("cycle_length"),
+    /**
+     * The routine's DEFAULT progressive-overload rule: `{ incrementLbs,
+     * everyWeeks }`, or null for a routine that does not progress.
+     *
+     * Nullable with no backfill, deliberately. Null means "this routine does
+     * not add weight", which is a legitimate state and the honest one for every
+     * routine that existed before this column - silently defaulting them to
+     * +5 lb a week would start adding weight to people's programs uninvited.
+     *
+     * An individual exercise may override it inline on
+     * `routine_entries.exercises[].progression`, which needs no column of its
+     * own because that array is already jsonb. The override wins WHOLE rather
+     * than merging; see lib/progression.ts:effectiveRule.
+     */
+    progression: jsonb("progression"),
     isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

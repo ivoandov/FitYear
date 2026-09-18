@@ -10,6 +10,8 @@ import {
 } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { expandRoutineSchedule } from "@/lib/routine-schedule";
+import { effectiveRule, plannedLoadForWeek } from "@/lib/progression";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
 import { addDaysToDateKey, localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
 import { viewerTimeZone } from "@/lib/server-timezone";
@@ -46,10 +48,8 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
     .where(eq(routineEntries.routineId, id));
 
   const maxDays = body.durationDays ?? routine.defaultDurationDays;
-  const filtered = entries.filter(
-    (e) => e.dayIndex <= maxDays && e.workoutName,
-  );
-  if (filtered.length === 0) {
+  const named = entries.filter((e) => e.workoutName);
+  if (named.length === 0) {
     throw new ApiError(400, "No workout entries found for the specified duration");
   }
 
@@ -68,10 +68,48 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   // calendar arithmetic, so no step ever depends on a machine's local clock.
   const startKey = localDateKeyInZone(startDate, await viewerTimeZone());
 
+  // REPEAT the cycle across the chosen duration. Until 2026-09-18 a routine
+  // scheduled one pass and the duration only filtered entries out, so starting
+  // a 3-day routine "for 8 weeks" produced three sessions. A FitBot program,
+  // whose entries already reach past one rotation, still gets exactly one pass.
+  const occurrences = expandRoutineSchedule(named, {
+    startKey,
+    durationDays: maxDays,
+    cycleLength: routine.cycleLength,
+  });
+  if (occurrences.length === 0) {
+    throw new ApiError(400, "No workout entries found for the specified duration");
+  }
+
+  /**
+   * Bake each session's target load from the routine's progression rule.
+   *
+   * Computed HERE, per occurrence, because the week is known here and nowhere
+   * downstream: the scheduled workout is just a date and a list of exercises.
+   * `targetLoadLbs` is the field the tracker already prefills set one from, so
+   * once it is written the whole existing path carries it with no change.
+   *
+   * An exercise with no starting load gets nothing - progression needs
+   * somewhere to start from, and inventing a first weight for somebody would be
+   * a guess about their training, not a calculation.
+   */
+  const applyProgression = (exercises: unknown, week: number): unknown => {
+    if (!Array.isArray(exercises)) return exercises ?? [];
+    return exercises.map((raw) => {
+      const ex = raw as Record<string, unknown>;
+      const rule = effectiveRule(
+        routine.progression as Record<string, unknown> | null,
+        ex.progression as Record<string, unknown> | null,
+      );
+      const base = Number(ex.targetLoadLbs);
+      if (!rule || !Number.isFinite(base) || base <= 0) return ex;
+      return { ...ex, targetLoadLbs: plannedLoadForWeek(base, rule, week) };
+    });
+  };
+
   const conflicts: string[] = [];
-  for (const entry of filtered) {
-    const dateStr = addDaysToDateKey(startKey, entry.dayIndex - 1);
-    if (existingDates.has(dateStr)) conflicts.push(dateStr);
+  for (const o of occurrences) {
+    if (existingDates.has(o.dateKey)) conflicts.push(o.dateKey);
   }
   if (conflicts.length > 0) {
     throw new ApiError(409, "Scheduling conflicts found", {
@@ -98,7 +136,10 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
         startDate: scheduledDateFromKey(startKey),
         endDate,
         durationDays: maxDays,
-        totalWorkouts: filtered.length,
+        // The denominator of every progress readout, so it has to count the
+        // REPEATS rather than the entries - a routine that repeats four times
+        // can otherwise never reach 100%.
+        totalWorkouts: occurrences.length,
         completedWorkouts: 0,
         status: "active",
       })
@@ -107,22 +148,23 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
     const created = await tx
       .insert(scheduledWorkouts)
       .values(
-        filtered.map((entry) => {
+        occurrences.map(({ entry, dateKey, week }) => {
           // Calendar arithmetic on the DAY KEY, then anchored at noon UTC.
           // This used to add days to a Date and store the result, which is
           // local midnight - 07:00Z for Los Angeles - and any zone west of the
           // creating one then read it as the previous day. See
           // scheduledDateFromKey.
-          const d = scheduledDateFromKey(
-            addDaysToDateKey(startKey, entry.dayIndex - 1),
-          );
+          const d = scheduledDateFromKey(dateKey);
           return {
             userId: user.id,
             name: entry.workoutName || `Day ${entry.dayIndex}`,
             date: d,
-            exercises: entry.exercises ?? [],
+            exercises: applyProgression(entry.exercises, week),
             templateId: entry.workoutTemplateId ?? null,
             routineInstanceId: inst.id,
+            // The ROUTINE DAY, not the day of the program: every repeat of a
+            // cycle maps back to the same routine entry, which is what the
+            // plan-versus-actual join and the re-sync both match on.
             routineDayIndex: entry.dayIndex,
           };
         }),

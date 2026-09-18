@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { normalizeRule } from "@/lib/progression";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -20,11 +21,26 @@ const EntrySchema = z.object({
   exercises: z.unknown().optional(),
 });
 
+/**
+ * A progressive-overload rule, accepted loosely and normalised rather than
+ * rejected. It arrives from a browser form and from FitBot proposals, and a
+ * slipped number should not fail a routine save somebody is mid-way through -
+ * `normalizeRule` clamps it and returns null when there is nothing usable.
+ * Explicit null is meaningful and distinct from absent: it CLEARS the rule.
+ */
+const ProgressionSchema = z
+  .object({
+    incrementLbs: z.unknown().optional(),
+    everyWeeks: z.unknown().optional(),
+  })
+  .nullable();
+
 const PutSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   defaultDurationDays: z.number().int().positive().optional(),
   isPublic: z.boolean().optional(),
+  progression: ProgressionSchema.optional(),
   entries: z.array(EntrySchema).optional(),
 });
 
@@ -68,6 +84,13 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   if (body.defaultDurationDays !== undefined)
     update.defaultDurationDays = body.defaultDurationDays;
   if (body.isPublic !== undefined) update.isPublic = body.isPublic;
+  // Normalised on the way in so the stored rule is always usable, and an
+  // explicit null clears it. The per-exercise override rides inside
+  // `entries[].exercises[].progression` and is normalised where it is read,
+  // since that array is passed through verbatim by design.
+  if (body.progression !== undefined) {
+    update.progression = body.progression === null ? null : normalizeRule(body.progression);
+  }
 
   // One transaction: the entries are replaced with a delete-then-insert, so a
   // failure between them (a dropped pooler connection, an oversized program)
