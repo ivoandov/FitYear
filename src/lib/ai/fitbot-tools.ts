@@ -90,7 +90,7 @@ export const READ_TOOLS: Anthropic.Tool[] = [
   {
     name: "search_exercises",
     description:
-      "Search the shared exercise catalog by name or muscle group. Use this before proposing any exercise so you reuse an existing one rather than creating a near-duplicate.",
+      "Search for an exercise by name or muscle group. Returns TWO lists and the difference matters. `inCatalog` are exercises that already exist for this user - reuse one of these by its exact name wherever you can, so their history stays joined up. `standardNames` are recognised exercise names that do NOT exist yet, offered so you propose a standard name rather than inventing one; proposing one creates it. Always search before naming any exercise, and prefer a catalog entry, then a standard name, and only invent a name when neither has the movement you mean.",
     input_schema: {
       type: "object",
       properties: {

@@ -14,6 +14,7 @@ import {
 import { loadTrainingHistory } from "@/lib/api/training-history";
 import { getActiveRoutineAdherence } from "@/lib/api/routine-adherence";
 import { scheduledDateKey } from "@/lib/date";
+import { searchReference } from "@/lib/exercise-reference";
 import { routineEntries } from "@/lib/db/schema";
 
 /**
@@ -248,7 +249,27 @@ async function searchExercises(query?: string, muscleGroup?: string) {
       )
     : rows;
 
-  return filtered.slice(0, 40);
+  const inCatalog = filtered.slice(0, 40);
+
+  // The STANDARD-NAMES half, and the two are returned separately on purpose.
+  // Before this, a search that missed left the model to invent a name for
+  // anything the catalog did not already hold - which is exactly how a shared
+  // catalog fragments. Now it has a public-domain vocabulary to name things
+  // from. These have NO id because they are not rows: proposing one creates an
+  // exercise, and the create path canonicalises the name and runs the duplicate
+  // guard, so nothing here bypasses a single existing guarantee.
+  const known = new Set(inCatalog.map((r) => r.name.toLowerCase()));
+  const standardNames = searchReference({ query, muscleGroup, limit: 15 })
+    .filter((r) => !known.has(r.name.toLowerCase()))
+    .map((r) => ({
+      name: r.name,
+      equipment: r.equipment,
+      muscleGroups: r.muscles,
+      mechanic: r.mechanic,
+      force: r.force,
+    }));
+
+  return { inCatalog, standardNames };
 }
 
 async function listUpcomingWorkouts(userId: string) {
