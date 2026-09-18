@@ -12,16 +12,37 @@ describe("working out the cycle period", () => {
     expect(cyclePeriodFor(WEEKLY)).toBe(7);
   });
 
-  it("uses a longer span when the routine genuinely has one", () => {
-    expect(cyclePeriodFor([{ dayIndex: 1 }, { dayIndex: 9 }])).toBe(9);
+  it("rounds a longer hand-built span up to whole weeks", () => {
+    // The hand editor lays routines out in weeks, so a routine reaching day 9
+    // is a two-week routine, not a 9-day cycle.
+    expect(cyclePeriodFor([{ dayIndex: 1 }, { dayIndex: 9 }])).toBe(14);
+    expect(cyclePeriodFor([{ dayIndex: 1 }, { dayIndex: 14 }])).toBe(14);
   });
 
-  it("a 10-day manual cycle still repeats, since its span equals its period", () => {
+  it("a four-week routine ending on day 27 repeats every 28 days, not 27", () => {
+    // The bug this guards: with the bare span as the period, day 1 landed
+    // again on day 28, and every later pass ran a day earlier than built.
+    const fourWeeks = [1, 3, 5, 8, 10, 12, 15, 17, 19, 22, 24, 27].map((dayIndex) => ({ dayIndex }));
+    const out = expandRoutineSchedule(fourWeeks, { startKey: "2026-09-21", durationDays: 56 });
+    expect(out).toHaveLength(24);
+    expect(out.filter((o) => o.dateKey === "2026-10-18")).toEqual([]); // day 28 stays a rest day
+    expect(out[12].dateKey).toBe("2026-10-19"); // second pass starts on day 29
+    expect(out[12].entry.dayIndex).toBe(1);
+  });
+
+  it("a hand-built cycle still repeats across a longer duration", () => {
     const out = expandRoutineSchedule([{ dayIndex: 1 }, { dayIndex: 10 }], {
       startKey: "2026-09-21",
       durationDays: 30,
     });
-    expect(out).toHaveLength(6);
+    // Two-week period: days 1, 10, 15, 24, 29.
+    expect(out.map((o) => o.dateKey)).toEqual([
+      "2026-09-21",
+      "2026-09-30",
+      "2026-10-05",
+      "2026-10-14",
+      "2026-10-19",
+    ]);
   });
 
   it("prefers an explicit cycleLength", () => {

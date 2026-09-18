@@ -38,11 +38,17 @@ export type ScheduledOccurrence<T> = {
 /**
  * The cycle period in days.
  *
- * `cycleLength` is authoritative when set - only `ai/save-program` writes it,
- * from the assembled program's own rotation. Otherwise the period is the span
- * of the entries, floored at 7: a routine with training days at dayIndex 1, 3
- * and 5 is a weekly routine with rest gaps, not a 5-day one, and collapsing it
- * to 5 would drift the training days earlier every repeat.
+ * `cycleLength` is authoritative when set - `ai/save-program` and the AI
+ * routine editor write it from the program's own rotation. Otherwise the
+ * routine was built by hand, and the hand editor lays a routine out in WEEKS,
+ * so the period is the span of the entries rounded UP to whole weeks: a
+ * routine with training days at 1, 3 and 5 is one week with rest gaps, not a
+ * 5-day cycle.
+ *
+ * Rounding up to the week, not just flooring at 7, was decided 2026-09-18
+ * (Ivo: "good with me"). Using the bare span made a four-week routine whose
+ * last session is day 27 repeat every 27 days, putting day 1 again on day 28
+ * and every later pass a day earlier than the week somebody built.
  */
 export function cyclePeriodFor(
   entries: ScheduleEntry[],
@@ -50,7 +56,7 @@ export function cyclePeriodFor(
 ): number {
   if (cycleLength && cycleLength > 0) return cycleLength;
   const span = entries.reduce((m, e) => Math.max(m, e.dayIndex), 0);
-  return Math.max(span, 7);
+  return Math.max(Math.ceil(span / 7) * 7, 7);
 }
 
 /**
