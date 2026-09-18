@@ -98,6 +98,44 @@ export function plannedLoadForWeek(
   return round1(baseLoadLbs + rule.incrementLbs * steps);
 }
 
+/**
+ * Bake one session's target loads from the routine's rule and the week.
+ *
+ * Shared by BOTH places that turn a routine into scheduled sessions - starting
+ * it, and re-syncing a running one after an edit - so the two cannot disagree.
+ * The re-sync used to copy the routine's exercises verbatim, which put every
+ * remaining week of a progressing routine back at the STARTING weight the
+ * moment somebody changed anything about it.
+ *
+ * `exercises` must be the ROUTINE's copy, whose `targetLoadLbs` is the starting
+ * weight. Never a scheduled row's: that one has already climbed, and feeding it
+ * back in climbs twice (the 2026-09-18 gotcha about the two numbers).
+ *
+ * An exercise with no starting weight is left alone - progression needs
+ * somewhere to start, and inventing a first weight would be a guess about
+ * somebody's training. So is an ASSISTED lift: its weight is counter-assistance,
+ * so adding to it makes the lift easier, and a climb would be a regression
+ * presented as progress.
+ */
+export function progressedExercises(
+  exercises: unknown,
+  routineRule: MaybeRule,
+  week: number,
+  isAssisted: (ex: Record<string, unknown>) => boolean = () => false,
+): unknown[] {
+  if (!Array.isArray(exercises)) return [];
+  return exercises.map((raw) => {
+    if (!raw || typeof raw !== "object") return raw;
+    const ex = raw as Record<string, unknown>;
+    const base = Number(ex.targetLoadLbs);
+    if (!Number.isFinite(base) || base <= 0) return ex;
+    if (isAssisted(ex)) return ex;
+    const rule = effectiveRule(routineRule, ex.progression as MaybeRule);
+    if (!rule) return ex;
+    return { ...ex, targetLoadLbs: plannedLoadForWeek(base, rule, week) };
+  });
+}
+
 /** What happened the last time this exercise was performed at its target. */
 export type LastAttempt = {
   /** Heaviest completed working load, in lbs. */

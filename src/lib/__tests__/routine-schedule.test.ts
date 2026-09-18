@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cyclePeriodFor, expandRoutineSchedule } from "@/lib/routine-schedule";
+import { cyclePeriodFor, expandRoutineSchedule, isExpandedProgram, programWeekFor } from "@/lib/routine-schedule";
 
 /** A 3-day week: train Mon, Wed, Fri, with the gaps as rest. */
 const WEEKLY = [{ dayIndex: 1 }, { dayIndex: 3 }, { dayIndex: 5 }];
@@ -130,5 +130,40 @@ describe("refusing to produce nonsense", () => {
     );
     expect(out[0].entry.workoutName).toBe("Push");
     expect(out[0].entry.exercises).toEqual([{ name: "Bench" }]);
+  });
+});
+
+describe("telling a full program from one cycle", () => {
+  it("a FitBot build reaching past its rotation is already expanded", () => {
+    // Its loads have already climbed, so a progression rule must not touch it.
+    expect(isExpandedProgram([{ dayIndex: 1 }, { dayIndex: 3 }, { dayIndex: 29 }], 7)).toBe(true);
+  });
+
+  it("a manual weekly routine is one cycle", () => {
+    expect(isExpandedProgram(WEEKLY)).toBe(false);
+    expect(isExpandedProgram(WEEKLY, 7)).toBe(false);
+  });
+
+  it("a routine with no usable entries is not a program", () => {
+    expect(isExpandedProgram([])).toBe(false);
+  });
+});
+
+describe("the week a session falls in", () => {
+  it("matches the week expandRoutineSchedule assigns", () => {
+    // The re-sync only has a session's DATE, and must land on the same week
+    // the start route used when it created that session.
+    const out = expandRoutineSchedule(WEEKLY, { startKey: "2026-09-21", durationDays: 28 });
+    for (const o of out) expect(programWeekFor("2026-09-21", o.dateKey)).toBe(o.week);
+  });
+
+  it("counts calendar weeks from the start day", () => {
+    expect(programWeekFor("2026-09-21", "2026-09-21")).toBe(1);
+    expect(programWeekFor("2026-09-21", "2026-09-27")).toBe(1);
+    expect(programWeekFor("2026-09-21", "2026-09-28")).toBe(2);
+  });
+
+  it("never reports a week before the first", () => {
+    expect(programWeekFor("2026-09-21", "2026-09-01")).toBe(1);
   });
 });

@@ -5,6 +5,7 @@ import {
   effectiveRule,
   normalizeRule,
   plannedLoadForWeek,
+  progressedExercises,
   resolveTarget,
 } from "@/lib/progression";
 
@@ -181,5 +182,54 @@ describe("telling the user what the plan is", () => {
 
   it("describes the shipped default", () => {
     expect(describeRule(DEFAULT_PROGRESSION)).toBe("+5 lb every week");
+  });
+});
+
+describe("baking a session's targets", () => {
+  const bench = { name: "Bench", targetLoadLbs: 135, reps: "5" };
+
+  it("climbs a starting weight by the routine's rule", () => {
+    expect(progressedExercises([bench], FIVE_WEEKLY, 3)).toEqual([
+      { ...bench, targetLoadLbs: 145 },
+    ]);
+  });
+
+  it("uses an exercise's own rule INSTEAD of the routine's, not merged with it", () => {
+    // +10 every 2 weeks on the exercise, +5 weekly on the routine: week 3 is
+    // one step of the exercise's rule. A merge would give 140 or 155.
+    const own = { ...bench, progression: { incrementLbs: 10, everyWeeks: 2 } };
+    const [out] = progressedExercises([own], FIVE_WEEKLY, 3) as Array<Record<string, unknown>>;
+    expect(out.targetLoadLbs).toBe(145);
+  });
+
+  it("climbs an exercise with its own rule when the routine has none", () => {
+    // The manual path this build exists for: the routine rule is off and one
+    // lift carries its own.
+    const own = { ...bench, progression: { incrementLbs: 5, everyWeeks: 1 } };
+    const [out] = progressedExercises([own], null, 2) as Array<Record<string, unknown>>;
+    expect(out.targetLoadLbs).toBe(140);
+  });
+
+  it("leaves an exercise with no starting weight alone", () => {
+    // Inventing a first weight for somebody is a guess, not a calculation.
+    const bare = { name: "Row", reps: "8" };
+    expect(progressedExercises([bare], FIVE_WEEKLY, 4)).toEqual([bare]);
+    const zero = { name: "Push-ups", targetLoadLbs: 0 };
+    expect(progressedExercises([zero], FIVE_WEEKLY, 4)).toEqual([zero]);
+  });
+
+  it("never climbs an ASSISTED lift", () => {
+    // Its weight is assistance. +5 lb a week would make it easier every week.
+    const assisted = { name: "Assisted Pull-ups", targetLoadLbs: 60 };
+    const out = progressedExercises([assisted, bench], FIVE_WEEKLY, 3, (ex) => ex.name === "Assisted Pull-ups");
+    expect(out).toEqual([assisted, { ...bench, targetLoadLbs: 145 }]);
+  });
+
+  it("does nothing when neither level has a rule", () => {
+    expect(progressedExercises([bench], null, 6)).toEqual([bench]);
+  });
+
+  it("treats a missing exercise list as empty", () => {
+    expect(progressedExercises(null, FIVE_WEEKLY, 1)).toEqual([]);
   });
 });

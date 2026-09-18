@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { heldTarget, lowRepTarget, topSetsByExercise } from "@/lib/api/progression-adjust";
+import { heldTarget, holdExercises, lowRepTarget, topSetsByExercise } from "@/lib/api/progression-adjust";
 
 const RULE = { incrementLbs: 5, everyWeeks: 1 };
 
@@ -81,5 +81,44 @@ describe("deciding whether to hold", () => {
     // The caller only writes when something actually changed; returning the
     // planned value would rewrite every future session on every save.
     expect(heldTarget(195, RULE, { weightLbs: 195, reps: 5 }, 8)).toBeNull();
+  });
+});
+
+describe("holding the next session, exercise by exercise", () => {
+  // Bench prescribed 195 for 8, and the last session got 190 for 5.
+  const next = [{ name: "Bench", targetLoadLbs: 195, reps: "8" }];
+  const fellShort = [{ name: "Bench", weightLbs: 190, reps: 5, completed: true }];
+
+  it("holds under the routine's rule", () => {
+    expect(holdExercises(next, RULE, fellShort)).toEqual([
+      { name: "Bench", targetLoadLbs: 190, reps: "8", progressionHeld: true },
+    ]);
+  });
+
+  it("holds under an exercise's OWN rule when the routine has none", () => {
+    // This is what the per-exercise override was missing: the caller resolved
+    // only the routine default, found none, and nothing ever held.
+    const own = [{ ...next[0], progression: { incrementLbs: 5, everyWeeks: 1 } }];
+    const [out] = holdExercises(own, null, fellShort) ?? [];
+    expect(out?.targetLoadLbs).toBe(190);
+  });
+
+  it("judges against the exercise's own increment, not the routine's", () => {
+    // 150 lifted against a 195 plan: 45 short. Evidence under a +50 rule (the
+    // shortfall is within one step), noise under the routine's +5.
+    const own = [{ ...next[0], progression: { incrementLbs: 50, everyWeeks: 1 } }];
+    const lighter = [{ name: "Bench", weightLbs: 150, reps: 5, completed: true }];
+    expect(holdExercises(next, RULE, lighter)).toBeNull();
+    expect(holdExercises(own, RULE, lighter)?.[0].targetLoadLbs).toBe(150);
+  });
+
+  it("leaves an assisted lift alone", () => {
+    expect(holdExercises(next, RULE, fellShort, () => true)).toBeNull();
+  });
+
+  it("returns null when nothing changed, so nothing is written", () => {
+    const hit = [{ name: "Bench", weightLbs: 195, reps: 8, completed: true }];
+    expect(holdExercises(next, RULE, hit)).toBeNull();
+    expect(holdExercises(next, null, fellShort)).toBeNull();
   });
 });

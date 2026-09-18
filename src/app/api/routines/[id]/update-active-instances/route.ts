@@ -11,6 +11,9 @@ import {
 } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { loadAssistedCheck } from "@/lib/api/assisted";
+import { progressedExercises } from "@/lib/progression";
+import { isExpandedProgram, programWeekFor } from "@/lib/routine-schedule";
 import {
   deleteCalendarEvent,
   getSelectedCalendarId,
@@ -38,6 +41,7 @@ const PostSchema = z.object({
 
 type Pending = {
   id: string;
+  date: Date;
   routineDayIndex: number | null;
   routineInstanceId: string | null;
   calendarEventId: string | null;
@@ -73,6 +77,17 @@ function splitPending(pending: Pending[], entryDays: Set<number>) {
 
 type Entry = typeof routineEntries.$inferSelect;
 
+/**
+ * The exercises a session on `dateKey` should carry, from its routine entry.
+ *
+ * Copying the entry verbatim was right until routines started climbing: the
+ * entry holds the STARTING weight, so a re-sync put every remaining week of a
+ * progressing program back at week one's load - after any edit at all, a
+ * renamed day included. The week is recomputed from the date exactly as the
+ * start route computes it, through the same function.
+ */
+type Progress = (exercises: unknown, dateKey: string) => unknown;
+
 async function loadState(
   routineId: string,
   userId: string,
@@ -81,6 +96,7 @@ async function loadState(
   pending: Pending[];
   missing: Missing[];
   instanceId: string | null;
+  progress: Progress;
 }> {
   const [routine] = await db
     .select()
@@ -109,6 +125,7 @@ async function loadState(
       pending: [],
       missing: [],
       instanceId: null,
+      progress: (exercises) => exercises,
     };
   }
 
@@ -125,6 +142,7 @@ async function loadState(
   const pending = await db
     .select({
       id: scheduledWorkouts.id,
+      date: scheduledWorkouts.date,
       routineDayIndex: scheduledWorkouts.routineDayIndex,
       routineInstanceId: scheduledWorkouts.routineInstanceId,
       calendarEventId: scheduledWorkouts.calendarEventId,
@@ -199,7 +217,22 @@ async function loadState(
     });
   }
 
-  return { entryByDay, pending, missing, instanceId: instance.id };
+  // A FitBot program is re-synced verbatim, as it always was: each entry
+  // already carries that week's computed load, and a rule on top would climb
+  // it twice. See isExpandedProgram.
+  const expanded = isExpandedProgram(entries, routine.cycleLength);
+  const isAssisted = expanded ? () => false : await loadAssistedCheck();
+  const progress: Progress = (exercises, dateKey) =>
+    expanded
+      ? exercises
+      : progressedExercises(
+          exercises,
+          routine.progression as Record<string, unknown> | null,
+          programWeekFor(startKey, dateKey),
+          isAssisted,
+        );
+
+  return { entryByDay, pending, missing, instanceId: instance.id, progress };
 }
 
 /**
@@ -250,7 +283,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
   const raw = await request.text();
   const body = raw ? PostSchema.parse(JSON.parse(raw)) : {};
 
-  const { entryByDay, pending, missing, instanceId } = await loadState(id, user.id);
+  const { entryByDay, pending, missing, instanceId, progress } = await loadState(id, user.id);
   const toCreate = body.createMissing === false ? [] : missing;
   if (pending.length === 0 && toCreate.length === 0) {
     return { ok: true, updatedCount: 0, removedCount: 0, createdCount: 0 };
@@ -268,7 +301,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
       await tx
         .update(scheduledWorkouts)
         .set({
-          exercises: entry.exercises,
+          exercises: progress(entry.exercises, scheduledDateKey(row.date)),
           ...(entry.workoutName ? { name: entry.workoutName } : {}),
         })
         .where(
@@ -325,7 +358,7 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
           // Anchored at noon UTC by the same helper the start route uses, so a
           // viewer east of UTC+12 reads the day the user actually chose.
           date: scheduledDateFromKey(m.dateKey),
-          exercises: m.exercises ?? [],
+          exercises: progress(m.exercises ?? [], m.dateKey),
           templateId: null,
           routineInstanceId: instanceId,
           routineDayIndex: m.dayIndex,

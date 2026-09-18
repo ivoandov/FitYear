@@ -1,5 +1,5 @@
 import { round1 } from "@/lib/units";
-import type { ProgressionRule } from "@/lib/progression";
+import { effectiveRule, type MaybeRule, type ProgressionRule } from "@/lib/progression";
 
 /**
  * Hold the weight on the next session when this one fell short.
@@ -93,6 +93,48 @@ export function heldTarget(
 }
 
 /**
+ * Decide the next occurrence's targets, exercise by exercise.
+ *
+ * Each exercise is judged against ITS OWN rule: a per-exercise override beats
+ * the routine default whole, exactly as it does when the session was scheduled.
+ * This used to receive the routine default only, so an exercise with a rule of
+ * its own was judged against a rule it does not follow - and with no routine
+ * default at all nothing held, whatever the exercise's own rule said.
+ *
+ * An assisted lift is skipped for the reason `progressedExercises` never climbs
+ * one: its weight is assistance, so "hold at what you lifted" points the wrong
+ * way.
+ *
+ * Returns null when nothing changed, so the caller writes only when it must.
+ */
+export function holdExercises(
+  exercises: Record<string, unknown>[],
+  routineRule: MaybeRule,
+  performed: PerformedSet[],
+  isAssisted: (ex: Record<string, unknown>) => boolean = () => false,
+): Record<string, unknown>[] | null {
+  const tops = topSetsByExercise(performed);
+  let changed = false;
+
+  const updated = exercises.map((ex) => {
+    const name = typeof ex.name === "string" ? ex.name : "";
+    const planned = Number(ex.targetLoadLbs);
+    const top = tops.get(name);
+    if (!name || !top || !Number.isFinite(planned) || planned <= 0) return ex;
+    if (isAssisted(ex)) return ex;
+    const rule = effectiveRule(routineRule, ex.progression as MaybeRule);
+    if (!rule) return ex;
+
+    const held = heldTarget(planned, rule, top, lowRepTarget(ex.reps));
+    if (held == null) return ex;
+    changed = true;
+    return { ...ex, targetLoadLbs: held, progressionHeld: true };
+  });
+
+  return changed ? updated : null;
+}
+
+/**
  * Re-decide the next occurrence's targets in light of what just happened.
  *
  * Swallows its own failure: this runs after the response, and a workout that
@@ -104,21 +146,23 @@ export async function adjustNextOccurrence(opts: {
   routineInstanceId: string;
   routineDayIndex: number;
   completedAt: Date;
-  rule: ProgressionRule | null;
+  /** The ROUTINE's default, unresolved. Each exercise's own rule is applied inside. */
+  routineRule: MaybeRule;
   performed: PerformedSet[];
 }): Promise<void> {
-  const { userId, routineInstanceId, routineDayIndex, completedAt, rule, performed } = opts;
-  if (!rule) return;
+  const { userId, routineInstanceId, routineDayIndex, completedAt, routineRule, performed } = opts;
 
   try {
     // Imported LAZILY: `lib/db` throws at module load without DATABASE_URL,
     // which is the unit-test environment, and that would make every pure helper
     // in this file untestable for the sake of one function that needs it.
-    const [{ db }, { scheduledWorkouts }, { and, asc, eq, gt }] = await Promise.all([
-      import("@/lib/db"),
-      import("@/lib/db/schema"),
-      import("drizzle-orm"),
-    ]);
+    const [{ db }, { scheduledWorkouts }, { and, asc, eq, gt }, { loadAssistedCheck }] =
+      await Promise.all([
+        import("@/lib/db"),
+        import("@/lib/db/schema"),
+        import("drizzle-orm"),
+        import("@/lib/api/assisted"),
+      ]);
 
     const [next] = await db
       .select()
@@ -139,22 +183,13 @@ export async function adjustNextOccurrence(opts: {
 
     if (!next || !Array.isArray(next.exercises)) return;
 
-    const tops = topSetsByExercise(performed);
-    let changed = false;
-
-    const updated = (next.exercises as Record<string, unknown>[]).map((ex) => {
-      const name = typeof ex.name === "string" ? ex.name : "";
-      const planned = Number(ex.targetLoadLbs);
-      const top = tops.get(name);
-      if (!name || !top || !Number.isFinite(planned) || planned <= 0) return ex;
-
-      const held = heldTarget(planned, rule, top, lowRepTarget(ex.reps));
-      if (held == null) return ex;
-      changed = true;
-      return { ...ex, targetLoadLbs: held, progressionHeld: true };
-    });
-
-    if (!changed) return;
+    const updated = holdExercises(
+      next.exercises as Record<string, unknown>[],
+      routineRule,
+      performed,
+      await loadAssistedCheck(),
+    );
+    if (!updated) return;
     await db
       .update(scheduledWorkouts)
       .set({ exercises: updated })

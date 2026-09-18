@@ -212,7 +212,6 @@ export const POST = handle(async (request: NextRequest) => {
   if (scheduledRoutineInstanceId && scheduledRoutineDayIndex != null) {
     after(async () => {
       const { adjustNextOccurrence } = await import("@/lib/api/progression-adjust");
-      const { effectiveRule } = await import("@/lib/progression");
       const { routines, routineInstances } = await import("@/lib/db/schema");
       const { eq } = await import("drizzle-orm");
 
@@ -234,9 +233,11 @@ export const POST = handle(async (request: NextRequest) => {
         routineInstanceId: scheduledRoutineInstanceId,
         routineDayIndex: scheduledRoutineDayIndex,
         completedAt: created.completedAt,
-        // The per-exercise override is resolved inside, against each exercise's
-        // own `progression`; this is the routine-level default.
-        rule: effectiveRule(routine?.progression as Record<string, unknown> | null, null),
+        // The routine-level default, UNRESOLVED. Each exercise's own override
+        // is applied inside, per exercise. Resolving it here used to mean an
+        // exercise with its own rule was judged against the routine's instead,
+        // and nothing held at all when the routine had no default.
+        routineRule: routine?.progression as Record<string, unknown> | null,
         // `exercises` is z.unknown() on the wire, so it is narrowed here
         // rather than cast: this runs on whatever a client actually sent.
         performed: (Array.isArray(body.exercises) ? body.exercises : []).flatMap(

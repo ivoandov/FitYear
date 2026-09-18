@@ -10,8 +10,9 @@ import {
 } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
-import { expandRoutineSchedule } from "@/lib/routine-schedule";
-import { effectiveRule, plannedLoadForWeek } from "@/lib/progression";
+import { expandRoutineSchedule, isExpandedProgram } from "@/lib/routine-schedule";
+import { progressedExercises } from "@/lib/progression";
+import { loadAssistedCheck } from "@/lib/api/assisted";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
 import { addDaysToDateKey, localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
 import { viewerTimeZone } from "@/lib/server-timezone";
@@ -88,24 +89,23 @@ export const POST = handle(async (request: NextRequest, ctx: Ctx) => {
    * downstream: the scheduled workout is just a date and a list of exercises.
    * `targetLoadLbs` is the field the tracker already prefills set one from, so
    * once it is written the whole existing path carries it with no change.
+   * `progressedExercises` is shared with the re-sync of a running program, so
+   * the two cannot compute different weeks differently.
    *
-   * An exercise with no starting load gets nothing - progression needs
-   * somewhere to start from, and inventing a first weight for somebody would be
-   * a guess about their training, not a calculation.
+   * A FitBot program is left exactly as built: each of its entries already
+   * carries that week's computed load, and a rule on top would climb it twice.
    */
-  const applyProgression = (exercises: unknown, week: number): unknown => {
-    if (!Array.isArray(exercises)) return exercises ?? [];
-    return exercises.map((raw) => {
-      const ex = raw as Record<string, unknown>;
-      const rule = effectiveRule(
-        routine.progression as Record<string, unknown> | null,
-        ex.progression as Record<string, unknown> | null,
-      );
-      const base = Number(ex.targetLoadLbs);
-      if (!rule || !Number.isFinite(base) || base <= 0) return ex;
-      return { ...ex, targetLoadLbs: plannedLoadForWeek(base, rule, week) };
-    });
-  };
+  const expanded = isExpandedProgram(named, routine.cycleLength);
+  const isAssisted = expanded ? () => false : await loadAssistedCheck();
+  const applyProgression = (exercises: unknown, week: number): unknown =>
+    expanded
+      ? (exercises ?? [])
+      : progressedExercises(
+          exercises,
+          routine.progression as Record<string, unknown> | null,
+          week,
+          isAssisted,
+        );
 
   const conflicts: string[] = [];
   for (const o of occurrences) {

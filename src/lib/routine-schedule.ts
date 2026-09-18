@@ -54,6 +54,49 @@ export function cyclePeriodFor(
 }
 
 /**
+ * Whether the entries are ALREADY a full-length program rather than one cycle.
+ *
+ * True for every FitBot build: its entries sit at absolute dayIndexes across
+ * the whole duration, each carrying that week's own computed `targetLoadLbs`.
+ * Such a program is scheduled once, untouched, and a progression rule must NOT
+ * be applied on top of it - its loads have already climbed, so a rule would
+ * climb them a second time.
+ *
+ * The discriminator is span against the CYCLE PERIOD, not against the
+ * duration. A first draft compared it to the duration and got this exactly
+ * wrong: a 35-day FitBot program whose last session falls on day 31 has a span
+ * under the duration, so it would have been repeated and the whole program
+ * duplicated on top of itself. Entries reaching past one rotation mean the
+ * program is already expanded.
+ */
+export function isExpandedProgram(
+  entries: ScheduleEntry[],
+  cycleLength?: number | null,
+): boolean {
+  const usable = entries.filter((e) => Number.isFinite(e.dayIndex) && e.dayIndex >= 1);
+  if (usable.length === 0) return false;
+  const span = usable.reduce((m, e) => Math.max(m, e.dayIndex), 0);
+  return span > cyclePeriodFor(usable, cycleLength);
+}
+
+/**
+ * The 1-indexed week of a program that a session falls in, from two day keys.
+ *
+ * The same arithmetic `expandRoutineSchedule` uses - calendar weeks from the
+ * start, not cycle repeats - for callers that only have a session's DATE, such
+ * as the re-sync of a program already on the calendar. Zone-free by contract,
+ * like both keys.
+ */
+export function programWeekFor(startKey: string, dateKey: string): number {
+  const toUtc = (k: string) => {
+    const [y, m, d] = k.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  const days = Math.round((toUtc(dateKey) - toUtc(startKey)) / 86_400_000);
+  return Math.max(1, Math.floor(days / 7) + 1);
+}
+
+/**
  * Expand a routine into the sessions it should create.
  *
  * Repeats the cycle until `durationDays` is used up, and never schedules past
@@ -73,18 +116,11 @@ export function expandRoutineSchedule<T extends ScheduleEntry>(
     .sort((a, b) => a.dayIndex - b.dayIndex);
   if (usable.length === 0 || durationDays < 1) return [];
 
-  const span = usable[usable.length - 1].dayIndex;
   const period = cyclePeriodFor(usable, opts.cycleLength);
 
-  // Already a full-length program: one pass, untouched.
-  //
-  // The discriminator is span against the CYCLE PERIOD, not against the
-  // duration. A first draft compared it to the duration and got this exactly
-  // wrong: a 35-day FitBot program whose last session falls on day 31 has a
-  // span under the duration, so it would have been repeated and the whole
-  // program duplicated on top of itself. Entries reaching past one rotation
-  // mean the program is already expanded.
-  if (span > period) {
+  // Already a full-length program: one pass, untouched. See isExpandedProgram
+  // for why the test is span against the period and never against the duration.
+  if (isExpandedProgram(usable, opts.cycleLength)) {
     return usable
       .filter((e) => e.dayIndex <= durationDays)
       .map((entry) => ({
