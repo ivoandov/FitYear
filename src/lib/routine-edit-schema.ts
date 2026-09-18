@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeRule, type MaybeRule } from "@/lib/progression";
 
 /**
  * The shape FitBot returns when it edits a routine.
@@ -34,6 +35,16 @@ export const EditedExerciseSchema = z.object({
   // an edit must be able to leave it alone rather than invent one.
   targetLoadLbs: z
     .preprocess((v) => (v === null || v === undefined || v === "" ? undefined : v), z.coerce.number().min(0).max(2000))
+    .optional(),
+  // The exercise's OWN progression rule, which the user set by hand or FitBot
+  // set earlier. Listed so it survives the parse: an unlisted key is stripped,
+  // which silently erased every per-exercise rule on any AI edit at all.
+  // Normalised like every other rule, and dropped when unusable.
+  progression: z
+    .preprocess(
+      (v) => normalizeRule(v as MaybeRule) ?? undefined,
+      z.object({ incrementLbs: z.number(), everyWeeks: z.number() }).optional(),
+    )
     .optional(),
 });
 

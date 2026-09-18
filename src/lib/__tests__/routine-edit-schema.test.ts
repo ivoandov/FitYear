@@ -58,4 +58,34 @@ describe("EditedRoutineSchema", () => {
     expect(r.changes).toEqual([]);
     expect(r.summary).toBe("");
   });
+
+  it("keeps an exercise's own progression rule instead of stripping it", () => {
+    // Unlisted keys are stripped, so before this field existed every AI edit
+    // silently erased the per-exercise rules a user had set by hand.
+    const r = EditedRoutineSchema.parse({
+      days: [
+        day({
+          exercises: [
+            { name: "Squat", sets: 5, reps: "5", rest: 180, progression: { incrementLbs: 10, everyWeeks: 2 } },
+          ],
+        }),
+      ],
+    });
+    expect(r.days[0].exercises[0].progression).toEqual({ incrementLbs: 10, everyWeeks: 2 });
+  });
+
+  it("drops an unusable rule rather than failing the edit", () => {
+    const r = EditedRoutineSchema.parse({
+      days: [
+        day({
+          exercises: [
+            { name: "Squat", sets: 5, reps: "5", rest: 180, progression: { incrementLbs: 0 } },
+            { name: "Row", sets: 3, reps: "8", rest: 90, progression: null },
+            { name: "Curl", sets: 3, reps: "12", rest: 60 },
+          ],
+        }),
+      ],
+    });
+    expect(r.days[0].exercises.map((e) => e.progression)).toEqual([undefined, undefined, undefined]);
+  });
 });
