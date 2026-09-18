@@ -4,6 +4,7 @@ import path from "node:path";
 import { GoogleGenAI } from "@google/genai";
 import sharp from "sharp";
 import { getBucket } from "@/lib/gcs";
+import { imageSubjectFor } from "@/lib/image-subjects";
 
 const STYLE_PREFIX =
   "Editorial fitness illustration, single athletic figure performing the exercise, clean modern gym setting, neutral muted background, balanced studio lighting, photographic style, 3/4 angled view, full body in frame, centered composition. Crisp focus on form and posture. No text, no watermarks, no logos.";
@@ -72,23 +73,20 @@ export interface RegenerateResult {
 }
 
 /**
- * Generate a new exercise image with Imagen 4, optimize it (sharp/mozjpeg
- * @ 800w q82), and upload to the GCS bucket. Returns the GCS object name
- * and the legacy-shape URL that exercises.image_url stores.
+ * Generate an exercise image and optimize it (sharp/mozjpeg @ 800w q82),
+ * WITHOUT uploading it. Split out so candidates can be generated and looked at
+ * before anything replaces an image in the shared catalog.
  */
-export async function regenerateExerciseImage(opts: {
-  exerciseId: string;
+export async function generateExerciseImageBuffer(opts: {
   exerciseName: string;
   description?: string | null;
-  /** Optional override; defaults to the brand-style prefix + name */
+  /** Optional override; defaults to the brand-style prefix + subject */
   promptOverride?: string;
-}): Promise<RegenerateResult> {
-  const { exerciseId, exerciseName, description, promptOverride } = opts;
+}): Promise<Buffer> {
+  const { exerciseName, description, promptOverride } = opts;
   const ai = await getClient();
 
-  const userPrompt = promptOverride
-    ? promptOverride
-    : `Subject: ${exerciseName}.${description ? ` ${description}` : ""}`;
+  const userPrompt = promptOverride ?? imageSubjectFor(exerciseName, description);
   const prompt = `${STYLE_PREFIX}\n\n${userPrompt}`;
 
   const response = await ai.models.generateContent({
@@ -116,12 +114,22 @@ export async function regenerateExerciseImage(opts: {
     );
   }
 
-  const rawBuf = Buffer.from(b64, "base64");
-  const optimized = await sharp(rawBuf)
+  return sharp(Buffer.from(b64, "base64"))
     .resize({ width: MAX_WIDTH, withoutEnlargement: true })
     .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
     .toBuffer();
+}
 
+/**
+ * Upload an already-optimized exercise image to the bucket. Returns the GCS
+ * object name and the legacy-shape URL that exercises.image_url stores.
+ */
+export async function uploadExerciseImage(opts: {
+  exerciseId: string;
+  exerciseName: string;
+  image: Buffer;
+}): Promise<RegenerateResult> {
+  const { exerciseId, exerciseName, image } = opts;
   // Hash-suffixed filename to dodge browser caches when an exercise gets
   // regenerated. Also matches the existing legacy naming (foo_<8char>.jpg).
   const slug = exerciseName.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -130,7 +138,7 @@ export async function regenerateExerciseImage(opts: {
 
   await getBucket()
     .file(objectName)
-    .save(optimized, {
+    .save(image, {
       contentType: "image/jpeg",
       resumable: false,
       metadata: {
@@ -142,5 +150,20 @@ export async function regenerateExerciseImage(opts: {
   // the same as everything else: `/objects/public/<gcs-object-name>`.
   const imageUrl = `/objects/public/${objectName}`;
 
-  return { objectName, imageUrl, sizeBytes: optimized.length };
+  return { objectName, imageUrl, sizeBytes: image.length };
+}
+
+/**
+ * Generate a new exercise image, optimize it, and upload it. Returns the GCS
+ * object name and the legacy-shape URL that exercises.image_url stores.
+ */
+export async function regenerateExerciseImage(opts: {
+  exerciseId: string;
+  exerciseName: string;
+  description?: string | null;
+  /** Optional override; defaults to the brand-style prefix + subject */
+  promptOverride?: string;
+}): Promise<RegenerateResult> {
+  const image = await generateExerciseImageBuffer(opts);
+  return uploadExerciseImage({ exerciseId: opts.exerciseId, exerciseName: opts.exerciseName, image });
 }
