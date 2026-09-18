@@ -14,7 +14,7 @@
  */
 import { expect } from "@playwright/test";
 import { test } from "./fixtures";
-import { seedExercise, sql } from "./helpers";
+import { applyAuth, createTempUser, deleteTempUser, seedExercise, seedSettings, sql } from "./helpers";
 
 type Ex = { name: string; targetLoadLbs?: number; progression?: { incrementLbs: number; everyWeeks: number } };
 
@@ -155,4 +155,49 @@ test("reopening the editor shows the saved weights and rule", async ({ page, acc
       return e?.exercises[1]?.progression ?? null;
     }, { timeout: 15000 })
     .toBeNull();
+});
+
+test("a kg user sets weights and increments in kg, stored in pounds", async ({ browser }) => {
+  // Until 2026-09-18 every rule read "+5 lb" whatever the user's unit.
+  const user = await createTempUser("e2e-kg-rule");
+  try {
+    await seedSettings(user.id, "kg");
+    const routineId = await seedRoutine(user.id);
+    // 5.5 lb is what a 2.5 kg rule is stored as.
+    await sql`update routines set progression = ${sql.json({ incrementLbs: 5.5, everyWeeks: 1 })} where id = ${routineId}`;
+
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await applyAuth(context, user.email, user.password);
+    await page.goto("/routines");
+    await expect(page.getByTestId(`chip-progression-${routineId}`)).toHaveText("+2.5 kg every week");
+
+    await page.getByTestId(`button-routine-menu-${routineId}`).click();
+    await page.getByTestId(`button-edit-routine-${routineId}`).click();
+    const dialog = page.getByTestId("dialog-routine-builder");
+    await expect(dialog.getByTestId("input-progression-increment")).toHaveValue("2.5");
+    await expect(dialog.getByTestId("text-progression-summary")).toContainText("+2.5 kg every week");
+
+    await dialog.getByTestId("button-toggle-weights-1").click();
+    await dialog.getByTestId("input-start-weight-1-0").fill("60");
+    await expect(dialog.getByTestId("text-rule-1-0")).toHaveText("+2.5 kg every week");
+    await dialog.getByTestId("input-start-weight-1-1").fill("100");
+    await dialog.getByTestId("button-rule-own-1-1").click();
+    await dialog.getByTestId("input-own-increment-1-1").fill("5");
+    await dialog.getByTestId("button-save-routine").click();
+    await expect(dialog).toBeHidden();
+
+    await expect
+      .poll(async () => {
+        const [e] = (await sql`
+          select exercises from routine_entries where routine_id = ${routineId}`) as unknown as Array<{ exercises: Ex[] }>;
+        return e?.exercises.map((x) => ({ w: x.targetLoadLbs, p: x.progression ?? null }));
+      }, { timeout: 15000 })
+      .toEqual([
+        { w: 132.3, p: null },
+        { w: 220.5, p: { incrementLbs: 11, everyWeeks: 1 } },
+      ]);
+  } finally {
+    await deleteTempUser(user.id);
+  }
 });

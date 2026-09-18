@@ -1,4 +1,4 @@
-import { round1 } from "@/lib/units";
+import { lbsToDisplay, round1, type WeightUnit } from "@/lib/units";
 
 /**
  * Progressive overload a user can actually configure.
@@ -202,11 +202,17 @@ export function resolveTarget(
  *
  * Ivo asked for the app to "tell the user" rather than silently move numbers,
  * which is the half of progressive overload that builds trust in the plan.
+ *
+ * In the viewer's unit: the rule is stored in pounds like every weight in the
+ * app, and a kg user was being told "+5 lb every week" about their own plan
+ * until 2026-09-18.
  */
-export function describeRule(rule: ProgressionRule | null): string | null {
+export function describeRule(rule: ProgressionRule | null, unit: WeightUnit = "lbs"): string | null {
   if (!rule) return null;
-  const inc = rule.incrementLbs % 1 === 0 ? String(rule.incrementLbs) : rule.incrementLbs.toFixed(1);
+  const amount = lbsToDisplay(rule.incrementLbs, unit) ?? rule.incrementLbs;
+  const inc = amount % 1 === 0 ? String(amount) : amount.toFixed(1);
+  const label = unit === "kg" ? "kg" : "lb";
   return rule.everyWeeks === 1
-    ? `+${inc} lb every week`
-    : `+${inc} lb every ${rule.everyWeeks} weeks`;
+    ? `+${inc} ${label} every week`
+    : `+${inc} ${label} every ${rule.everyWeeks} weeks`;
 }

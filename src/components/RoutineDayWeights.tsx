@@ -157,9 +157,19 @@ function ExerciseWeightRow({
   };
 
   // Seed an own rule from what the routine does now, so choosing it starts from
-  // a sensible place rather than from nothing.
-  const seed = routineRule ?? DEFAULT_PROGRESSION;
+  // a sensible place rather than from nothing. With no routine rule, 5 lb or
+  // 2.5 kg - the same first step the routine-level control offers.
+  const seed =
+    routineRule ?? (weightUnit === "kg" ? { incrementLbs: displayToLbs(2.5, "kg") ?? 5.5, everyWeeks: 1 } : DEFAULT_PROGRESSION);
   const raw = (exercise.progression ?? {}) as { incrementLbs?: number; everyWeeks?: number };
+  const unitLabel = weightUnit === "kg" ? "kg" : "lb";
+  // The increment is typed in the viewer's unit and stored in pounds, so it
+  // keeps its own draft text for the same reason the starting weight does.
+  const shownIncrement = (lbs: number | undefined) => {
+    const v = lbsToDisplay(lbs ?? null, weightUnit);
+    return v == null ? "" : String(v);
+  };
+  const [incrementDraft, setIncrementDraft] = useState(() => shownIncrement(raw.incrementLbs));
 
   return (
     <div
@@ -203,6 +213,7 @@ function ExerciseWeightRow({
                     // Re-choosing the current option must not reset a rule
                     // somebody has already typed.
                     if (hasOwn === opt.own) return;
+                    if (opt.own) setIncrementDraft(shownIncrement(seed.incrementLbs));
                     setOwn(opt.own ? { incrementLbs: seed.incrementLbs, everyWeeks: seed.everyWeeks } : null);
                   }}
                   className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
@@ -218,7 +229,7 @@ function ExerciseWeightRow({
             </div>
             {!hasOwn ? (
               <span className="text-[11px] text-muted-foreground" data-testid={`text-rule-${testKey}`}>
-                {routineRule ? describeRule(routineRule) : "Stays at this weight"}
+                {routineRule ? describeRule(routineRule, weightUnit) : "Stays at this weight"}
               </span>
             ) : null}
           </div>
@@ -230,13 +241,20 @@ function ExerciseWeightRow({
                 type="number"
                 min={0.5}
                 step={0.5}
-                value={raw.incrementLbs ?? ""}
-                onChange={(e) => setOwn({ incrementLbs: numberOrUnset(e.target.value), everyWeeks: raw.everyWeeks })}
+                value={incrementDraft}
+                onChange={(e) => {
+                  setIncrementDraft(e.target.value);
+                  const n = numberOrUnset(e.target.value);
+                  setOwn({
+                    incrementLbs: n == null ? undefined : (displayToLbs(n, weightUnit) ?? undefined),
+                    everyWeeks: raw.everyWeeks,
+                  });
+                }}
                 className="h-8 w-16"
-                aria-label={`Pounds to add for ${exercise.name}`}
+                aria-label={`${weightUnit === "kg" ? "Kilograms" : "Pounds"} to add for ${exercise.name}`}
                 data-testid={`input-own-increment-${testKey}`}
               />
-              <span>lb every</span>
+              <span>{unitLabel} every</span>
               <Input
                 type="number"
                 min={1}

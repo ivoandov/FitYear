@@ -24,6 +24,7 @@ import type { Exercise } from "@/data/exercises";
 import { RoutineEditDialog } from "@/components/RoutineEditDialog";
 import { RoutineDayWeights } from "@/components/RoutineDayWeights";
 import { describeRule, normalizeRule, type MaybeRule } from "@/lib/progression";
+import { displayToLbs, lbsToDisplay } from "@/lib/units";
 
 /**
  * Tidy a day's exercises on the way to the server. The PUT stores the array
@@ -201,6 +202,9 @@ export default function RoutinesPage() {
   // does not add weight", which is the honest default: stamping +5 lb a week
   // onto somebody's routine uninvited would change their training for them.
   const [progressionOn, setProgressionOn] = useState(false);
+  // In the VIEWER's unit while editing, converted to pounds only on save and
+  // back on load. Converting on every keystroke would make "2." unreachable
+  // for a kg user, since it round-trips through a rounding.
   const [progressionIncrement, setProgressionIncrement] = useState(5);
   const [progressionEveryWeeks, setProgressionEveryWeeks] = useState(1);
   const [routineIsPublic, setRoutineIsPublic] = useState(false);
@@ -246,6 +250,9 @@ export default function RoutinesPage() {
     queryKey: ["/api/user-settings"],
   });
   const weightUnit = userSettings?.weightUnit === "kg" ? "kg" : "lbs";
+  // A sensible first step in each unit: 5 lb, or 2.5 kg (the smallest pair of
+  // plates most gyms have), rather than 5 lb shown as an awkward 2.3 kg.
+  const defaultIncrement = weightUnit === "kg" ? 2.5 : 5;
 
   // The CATALOG decides whether an exercise carries weight and whether it is
   // assisted. A routine's exercises are copies of a template's, which are
@@ -431,7 +438,7 @@ export default function RoutinesPage() {
     setRoutineDuration(7);
     setRoutineIsPublic(false);
     setProgressionOn(false);
-    setProgressionIncrement(5);
+    setProgressionIncrement(defaultIncrement);
     setProgressionEveryWeeks(1);
     setRoutineEntries([]);
     setCurrentWeekOffset(0);
@@ -444,7 +451,7 @@ export default function RoutinesPage() {
     setRoutineDuration(7);
     setRoutineIsPublic(false);
     setProgressionOn(false);
-    setProgressionIncrement(5);
+    setProgressionIncrement(defaultIncrement);
     setProgressionEveryWeeks(1);
     setRoutineEntries([]);
     setCurrentWeekOffset(0);
@@ -467,7 +474,7 @@ export default function RoutinesPage() {
       const rule = normalizeRule(fullRoutine.progression as Record<string, unknown> | null);
       setProgressionOn(!!rule);
       if (rule) {
-        setProgressionIncrement(rule.incrementLbs);
+        setProgressionIncrement(lbsToDisplay(rule.incrementLbs, weightUnit) ?? rule.incrementLbs);
         setProgressionEveryWeeks(rule.everyWeeks);
       }
       setRoutineEntries(fullRoutine.entries.map(e => ({
@@ -512,7 +519,7 @@ export default function RoutinesPage() {
       // Explicit null CLEARS the rule, which is distinct from omitting it. A
       // user turning progression off must actually turn it off.
       progression: progressionOn
-        ? { incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks }
+        ? { incrementLbs: displayToLbs(progressionIncrement, weightUnit) ?? progressionIncrement, everyWeeks: progressionEveryWeeks }
         : null,
       entries: routineEntries
         .filter(e => e.workoutName)
@@ -594,7 +601,7 @@ export default function RoutinesPage() {
   // The routine rule as the editor currently has it, for the per-exercise rows
   // to describe what "Routine rule" means right now.
   const editorRoutineRule = progressionOn
-    ? normalizeRule({ incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks })
+    ? normalizeRule({ incrementLbs: displayToLbs(progressionIncrement, weightUnit), everyWeeks: progressionEveryWeeks })
     : null;
 
   const getWeekDays = (weekOffset: number) => {
@@ -673,10 +680,10 @@ export default function RoutinesPage() {
               {/* Ivo asked for the app to "tell the user" rather than silently
                   moving the weight. A load that climbs on its own with no
                   statement of the rule reads as a bug, not a plan. */}
-              {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null)) ? (
+              {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null), weightUnit) ? (
                 <span className={`${CHIP} text-primary`} data-testid={`chip-progression-${routine.id}`}>
                   <TrendingUp className="h-2.5 w-2.5" />
-                  {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null))}
+                  {describeRule(normalizeRule(routine.progression as Record<string, unknown> | null), weightUnit)}
                 </span>
               ) : null}
               {routine.isPublic ? (
@@ -1083,9 +1090,9 @@ export default function RoutinesPage() {
                             onChange={(e) => setProgressionIncrement(Number(e.target.value))}
                             className="h-10 w-20"
                             data-testid="input-progression-increment"
-                            aria-label="Pounds to add"
+                            aria-label={weightUnit === "kg" ? "Kilograms to add" : "Pounds to add"}
                           />
-                          <span className="text-sm text-muted-foreground">lb every</span>
+                          <span className="text-sm text-muted-foreground">{weightUnit === "kg" ? "kg" : "lb"} every</span>
                           <Input
                             type="number"
                             min={1}
@@ -1101,7 +1108,7 @@ export default function RoutinesPage() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground" data-testid="text-progression-summary">
-                          {describeRule({ incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks })}
+                          {describeRule(editorRoutineRule, weightUnit)}
                           . Applies to any exercise with a starting weight, set under each day below.
                         </p>
                       </>

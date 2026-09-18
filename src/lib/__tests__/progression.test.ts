@@ -183,6 +183,12 @@ describe("telling the user what the plan is", () => {
   it("describes the shipped default", () => {
     expect(describeRule(DEFAULT_PROGRESSION)).toBe("+5 lb every week");
   });
+
+  it("speaks kg to a kg user, from the pounds it is stored in", () => {
+    // 2.5 kg is stored as 5.5 lb and must read back as 2.5, not 2.4 or 5.5.
+    expect(describeRule({ incrementLbs: 5.5, everyWeeks: 1 }, "kg")).toBe("+2.5 kg every week");
+    expect(describeRule({ incrementLbs: 11, everyWeeks: 2 }, "kg")).toBe("+5 kg every 2 weeks");
+  });
 });
 
 describe("baking a session's targets", () => {
