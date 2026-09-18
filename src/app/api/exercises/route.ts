@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { exercises, insertExerciseSchema } from "@/lib/db/schema";
@@ -9,6 +10,7 @@ import { normalizeMuscleGroups } from "@/lib/muscle-groups";
 import { matchExercise } from "@/lib/exercise-match";
 import { canonicalExerciseName } from "@/lib/exercise-naming";
 import { EXERCISE_TYPES } from "@/lib/exercise-types";
+import { enrichNewExercise } from "@/lib/api/exercise-enrich";
 
 // Per-user response — never cache.
 export const dynamic = "force-dynamic";
@@ -131,6 +133,14 @@ export const POST = handle(async (request: NextRequest) => {
       isPublic: true,
     })
     .returning();
+
+  // Cues and the demonstration video land AFTER the response rather than making
+  // the user wait for a model call. `after()` is the right primitive and a bare
+  // floating promise is not: an unawaited promise risks being frozen the
+  // instant the function responds. Both are written server-side and stay
+  // omitted from the request schema, because a client-writable field on a
+  // SHARED catalog is an availability bug for every user at once.
+  after(() => enrichNewExercise(created.id, created.name, created.description));
 
   return new Response(JSON.stringify(created), {
     status: 201,
