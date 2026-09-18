@@ -968,6 +968,11 @@ export default function TrackPage() {
     );
   }
 
+  // Blank until the restore lands, like everything else that reads the index.
+  const exerciseCounter = hasLoadedSavedProgress
+    ? `Exercise ${currentExerciseIndex + 1} / ${enrichedWorkoutExercises.length}`
+    : null;
+
   return (
     <div className="flex-1 overflow-auto">
       <DesktopTopBar
@@ -975,7 +980,7 @@ export default function TrackPage() {
           <span className="flex items-baseline gap-3">
             <span className="truncate">{activeWorkout.name}</span>
             <span className="shrink-0 font-mono text-[12px] font-normal uppercase tracking-[0.06em] text-tertiary-foreground">
-              Exercise {currentExerciseIndex + 1} / {enrichedWorkoutExercises.length}
+              {exerciseCounter}
             </span>
           </span>
         }
@@ -983,7 +988,7 @@ export default function TrackPage() {
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6 md:pt-7">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-primary md:hidden">
-            Exercise {currentExerciseIndex + 1} / {enrichedWorkoutExercises.length}
+            {exerciseCounter ?? "\u00a0"}
           </div>
           <h1 className="mt-1.5 text-2xl font-bold tracking-[-0.01em] md:hidden" data-testid="text-page-title">
             {activeWorkout.name}
@@ -1003,252 +1008,264 @@ export default function TrackPage() {
           </div>
         </div>
 
-        <div className="card-elevated p-4">
-          <div className="mb-4 flex items-center gap-2.5">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-xl"
-              onClick={handlePreviousExercise}
-              disabled={currentExerciseIndex === 0}
-              aria-label="Previous exercise"
-              data-testid="button-previous-exercise"
-            >
-              <ChevronLeft className="h-[18px] w-[18px]" />
-            </Button>
-            <div className="min-w-0 flex-1 text-center">
-              <div className="line-clamp-2 text-balance text-[19px] font-bold leading-tight text-foreground" data-testid="text-current-exercise">
-                {currentExercise.name}
-              </div>
-              <MuscleGroupsLabel
-                groups={currentExercise.muscleGroups ?? []}
-                className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
-              />
-              {supersetBadge && (
-                <div
-                  className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-yellow bg-primary-dim px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-primary"
-                  data-testid="badge-superset"
+        {/* Nothing here renders until the saved progress has been restored.
+            The restore waits on the settings read (it needs the real unit),
+            and until it lands every value below is a default: the exercise,
+            the current set, the rows, and whether anything is logged at all.
+            A tap in that window was overwritten by the restore, and End
+            Workout offered to DISCARD a workout that had sets in it. */}
+        {hasLoadedSavedProgress ? (
+          <>
+            <div className="card-elevated p-4">
+              <div className="mb-4 flex items-center gap-2.5">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-xl"
+                  onClick={handlePreviousExercise}
+                  disabled={currentExerciseIndex === 0}
+                  aria-label="Previous exercise"
+                  data-testid="button-previous-exercise"
                 >
-                  Superset {supersetBadge}
-                  <span className="text-tertiary-foreground">no rest until the round ends</span>
-                </div>
-              )}
-              {currentTarget && (
-                <div
-                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-primary"
-                  data-testid="text-target-prescription"
-                >
-                  Target {currentTarget}
-                </div>
-              )}
-              {Array.isArray(currentExercise.formCues) && currentExercise.formCues.length > 0 && (
-                <ul className="mt-1.5 space-y-0.5" data-testid="list-form-cues">
-                  {(currentExercise.formCues as string[]).slice(0, 2).map((cue, i) => (
-                    <li
-                      key={i}
-                      className="flex gap-2 text-[12px] leading-snug text-tertiary-foreground"
-                    >
-                      <span className="mt-[6px] h-[3px] w-[3px] shrink-0 rounded-full bg-tertiary-foreground" />
-                      {cue}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {warmupLine && (
-                <div
-                  className="mt-1 font-mono text-[11px] tabular-nums text-tertiary-foreground"
-                  data-testid="text-warmup-ramp"
-                >
-                  Warm-up {warmupLine}
-                </div>
-              )}
-              {currentPlanNotes && (
-                <div
-                  className="mt-1 text-[12px] leading-snug text-tertiary-foreground"
-                  data-testid="text-target-notes"
-                >
-                  {currentPlanNotes}
-                </div>
-              )}
-              {repTotal !== null && (
-                <div
-                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
-                  data-testid="text-rep-total"
-                >
-                  Total reps{" "}
-                  <span className="font-semibold text-primary" data-testid="text-rep-total-value">
-                    {repTotal}
-                  </span>
-                </div>
-              )}
-              {goalStanding && (
-                <div
-                  className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
-                  data-testid="text-goal-standing"
-                >
-                  {goalStanding.name} goal{" "}
-                  <span
-                    className={goalStanding.done >= goalStanding.target ? "font-semibold text-primary" : "font-semibold text-foreground"}
-                    data-testid="text-goal-standing-value"
-                  >
-                    {goalStanding.done}/{goalStanding.target}
-                  </span>{" "}
-                  this week
-                </div>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-xl"
-              onClick={handleNextExercise}
-              disabled={currentExerciseIndex === enrichedWorkoutExercises.length - 1}
-              aria-label="Next exercise"
-              data-testid="button-next-exercise"
-            >
-              <ChevronRight className="h-[18px] w-[18px]" />
-            </Button>
-          </div>
-
-          <div>
-            <div className="space-y-1">
-              {/* The header MUST match SetRow's grid template exactly. */}
-              <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-x-2.5 items-center border-b border-divider px-2 pb-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
-                <div>Set</div>
-                <div className="text-center">
-                  {usesDistance(currentExercise.exerciseType)
-                    ? "Distance (mi)"
-                    : `Weight (${weightUnit})`}
-                </div>
-                <div className="text-center">
-                  {usesDistance(currentExercise.exerciseType)
-                    ? "Time (min)"
-                    : usesTime(currentExercise.exerciseType)
-                      ? "Time (sec)"
-                      : "Reps"}
-                </div>
-                <div className="text-center">✓</div>
-              </div>
-              {sets.map((set, index) => {
-                const isCurrentSet = index === currentSetIndex && !set.completed;
-                const isActive = isCurrentSet && trackingState === "in_set";
-                const isPR = prMarkedSets.has(index);
-                // Show the overload ghost only on the current set while it still
-                // holds the untouched prefill (weight + reps === last session's
-                // top set) - any edit clears it, with no extra state.
-                const ghostTarget =
-                  isCurrentSet && overloadGhost &&
-                  set.weight === overloadGhost.prefillWeight &&
-                  set.reps === overloadGhost.prefillReps
-                    ? overloadGhost.text
-                    : undefined;
-                return (
-                  <SetRow
-                    key={set.setNumber}
-                    set={set}
-                    exerciseType={currentExercise.exerciseType}
-                    isCurrentSet={isCurrentSet}
-                    isActive={isActive}
-                    isPR={isPR}
-                    weightUnit={weightUnit}
-                    weightIncrement={weightIncrement}
-                    showKgConversion={showKgConversion}
-                    ghostTarget={ghostTarget}
-                    plateHint={plateHintFor(set.weight)}
-                    onFieldChange={(field, value) => {
-                      const newSets = [...sets];
-                      newSets[index][field] = value;
-                      setCurrentSets(newSets);
-                    }}
-                    onToggleComplete={(checked) => handleToggleSetComplete(index, checked)}
+                  <ChevronLeft className="h-[18px] w-[18px]" />
+                </Button>
+                <div className="min-w-0 flex-1 text-center">
+                  <div className="line-clamp-2 text-balance text-[19px] font-bold leading-tight text-foreground" data-testid="text-current-exercise">
+                    {currentExercise.name}
+                  </div>
+                  <MuscleGroupsLabel
+                    groups={currentExercise.muscleGroups ?? []}
+                    className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
                   />
-                );
-              })}
-              {allSetsCompleted && (
+                  {supersetBadge && (
+                    <div
+                      className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-yellow bg-primary-dim px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-primary"
+                      data-testid="badge-superset"
+                    >
+                      Superset {supersetBadge}
+                      <span className="text-tertiary-foreground">no rest until the round ends</span>
+                    </div>
+                  )}
+                  {currentTarget && (
+                    <div
+                      className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-primary"
+                      data-testid="text-target-prescription"
+                    >
+                      Target {currentTarget}
+                    </div>
+                  )}
+                  {Array.isArray(currentExercise.formCues) && currentExercise.formCues.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5" data-testid="list-form-cues">
+                      {(currentExercise.formCues as string[]).slice(0, 2).map((cue, i) => (
+                        <li
+                          key={i}
+                          className="flex gap-2 text-[12px] leading-snug text-tertiary-foreground"
+                        >
+                          <span className="mt-[6px] h-[3px] w-[3px] shrink-0 rounded-full bg-tertiary-foreground" />
+                          {cue}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {warmupLine && (
+                    <div
+                      className="mt-1 font-mono text-[11px] tabular-nums text-tertiary-foreground"
+                      data-testid="text-warmup-ramp"
+                    >
+                      Warm-up {warmupLine}
+                    </div>
+                  )}
+                  {currentPlanNotes && (
+                    <div
+                      className="mt-1 text-[12px] leading-snug text-tertiary-foreground"
+                      data-testid="text-target-notes"
+                    >
+                      {currentPlanNotes}
+                    </div>
+                  )}
+                  {repTotal !== null && (
+                    <div
+                      className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
+                      data-testid="text-rep-total"
+                    >
+                      Total reps{" "}
+                      <span className="font-semibold text-primary" data-testid="text-rep-total-value">
+                        {repTotal}
+                      </span>
+                    </div>
+                  )}
+                  {goalStanding && (
+                    <div
+                      className="mt-1 font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground"
+                      data-testid="text-goal-standing"
+                    >
+                      {goalStanding.name} goal{" "}
+                      <span
+                        className={goalStanding.done >= goalStanding.target ? "font-semibold text-primary" : "font-semibold text-foreground"}
+                        data-testid="text-goal-standing-value"
+                      >
+                        {goalStanding.done}/{goalStanding.target}
+                      </span>{" "}
+                      this week
+                    </div>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-xl"
+                  onClick={handleNextExercise}
+                  disabled={currentExerciseIndex === enrichedWorkoutExercises.length - 1}
+                  aria-label="Next exercise"
+                  data-testid="button-next-exercise"
+                >
+                  <ChevronRight className="h-[18px] w-[18px]" />
+                </Button>
+              </div>
+
+              <div>
+                <div className="space-y-1">
+                  {/* The header MUST match SetRow's grid template exactly. */}
+                  <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-x-2.5 items-center border-b border-divider px-2 pb-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                    <div>Set</div>
+                    <div className="text-center">
+                      {usesDistance(currentExercise.exerciseType)
+                        ? "Distance (mi)"
+                        : `Weight (${weightUnit})`}
+                    </div>
+                    <div className="text-center">
+                      {usesDistance(currentExercise.exerciseType)
+                        ? "Time (min)"
+                        : usesTime(currentExercise.exerciseType)
+                          ? "Time (sec)"
+                          : "Reps"}
+                    </div>
+                    <div className="text-center">✓</div>
+                  </div>
+                  {sets.map((set, index) => {
+                    const isCurrentSet = index === currentSetIndex && !set.completed;
+                    const isActive = isCurrentSet && trackingState === "in_set";
+                    const isPR = prMarkedSets.has(index);
+                    // Show the overload ghost only on the current set while it still
+                    // holds the untouched prefill (weight + reps === last session's
+                    // top set) - any edit clears it, with no extra state.
+                    const ghostTarget =
+                      isCurrentSet && overloadGhost &&
+                      set.weight === overloadGhost.prefillWeight &&
+                      set.reps === overloadGhost.prefillReps
+                        ? overloadGhost.text
+                        : undefined;
+                    return (
+                      <SetRow
+                        key={set.setNumber}
+                        set={set}
+                        exerciseType={currentExercise.exerciseType}
+                        isCurrentSet={isCurrentSet}
+                        isActive={isActive}
+                        isPR={isPR}
+                        weightUnit={weightUnit}
+                        weightIncrement={weightIncrement}
+                        showKgConversion={showKgConversion}
+                        ghostTarget={ghostTarget}
+                        plateHint={plateHintFor(set.weight)}
+                        onFieldChange={(field, value) => {
+                          const newSets = [...sets];
+                          newSets[index][field] = value;
+                          setCurrentSets(newSets);
+                        }}
+                        onToggleComplete={(checked) => handleToggleSetComplete(index, checked)}
+                      />
+                    );
+                  })}
+                  {allSetsCompleted && (
+                    <button
+                      type="button"
+                      onClick={handleAddSet}
+                      data-testid="button-add-set"
+                      className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl border bg-white/[0.03] text-sm font-semibold text-foreground transition-colors hover:bg-white/[0.06]"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Set
+                    </button>
+                  )}
+                </div>
+
+                {/* Rest control pill: mono REST + editable seconds + neon play */}
+                <div className="mt-4 flex items-center gap-2.5 rounded-xl border bg-card px-3.5 py-2.5">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                    Rest
+                  </span>
+                  <div className="ml-auto flex items-baseline font-mono text-base font-semibold text-foreground">
+                    <Input
+                      type="number"
+                      value={restTimerDuration}
+                      onChange={(e) => setRestTimerDuration(parseInt(e.target.value) || 90)}
+                      aria-label="Rest duration in seconds"
+                      data-testid="input-rest-timer"
+                      className="h-auto w-11 rounded-none border-0 bg-transparent p-0 text-right font-mono text-base font-semibold text-foreground focus-visible:border-0 focus-visible:bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span>s</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingState("resting")}
+                    aria-label="Start rest timer"
+                    data-testid="button-start-rest-timer"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary transition-colors hover:bg-primary/20"
+                  >
+                    <Play className="size-3.5 fill-current" />
+                  </button>
+                </div>
+
+                {/* Finish CTA - appears only when every set is checked; the checkbox
+                    completes individual sets (no separate "End Set" button). */}
+                {allSetsCompleted && (
+                  <button
+                    type="button"
+                    onClick={handlePrimaryButtonClick}
+                    data-testid="button-primary-action"
+                    className={`${CTA} mt-4`}
+                  >
+                    <Check className="h-[18px] w-[18px]" />
+                    {getPrimaryButtonText()}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsAddExerciseOpen(true)}
+                data-testid="button-add-exercise"
+                className="flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border bg-white/[0.03] text-sm font-semibold text-foreground transition-colors hover:bg-white/[0.06]"
+              >
+                <Plus className="h-4 w-4" />
+                Add Exercise
+              </button>
+              <div className="flex gap-2.5">
                 <button
                   type="button"
-                  onClick={handleAddSet}
-                  data-testid="button-add-set"
-                  className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl border bg-white/[0.03] text-sm font-semibold text-foreground transition-colors hover:bg-white/[0.06]"
+                  onClick={() => { flushProgress(); setIsEditDialogOpen(true); }}
+                  data-testid="button-edit-workout"
+                  className="h-[46px] flex-1 rounded-xl border text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
                 >
-                  <Plus className="h-4 w-4" />
-                  Add Set
+                  Edit
                 </button>
-              )}
-            </div>
-
-            {/* Rest control pill: mono REST + editable seconds + neon play */}
-            <div className="mt-4 flex items-center gap-2.5 rounded-xl border bg-card px-3.5 py-2.5">
-              <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground">
-                Rest
-              </span>
-              <div className="ml-auto flex items-baseline font-mono text-base font-semibold text-foreground">
-                <Input
-                  type="number"
-                  value={restTimerDuration}
-                  onChange={(e) => setRestTimerDuration(parseInt(e.target.value) || 90)}
-                  aria-label="Rest duration in seconds"
-                  data-testid="input-rest-timer"
-                  className="h-auto w-11 rounded-none border-0 bg-transparent p-0 text-right font-mono text-base font-semibold text-foreground focus-visible:border-0 focus-visible:bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-                <span>s</span>
+                <button
+                  type="button"
+                  onClick={handleEndWorkout}
+                  data-testid="button-end-workout"
+                  className="h-[46px] flex-1 rounded-xl border text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
+                >
+                  End Workout
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setTrackingState("resting")}
-                aria-label="Start rest timer"
-                data-testid="button-start-rest-timer"
-                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary transition-colors hover:bg-primary/20"
-              >
-                <Play className="size-3.5 fill-current" />
-              </button>
             </div>
-
-            {/* Finish CTA - appears only when every set is checked; the checkbox
-                completes individual sets (no separate "End Set" button). */}
-            {allSetsCompleted && (
-              <button
-                type="button"
-                onClick={handlePrimaryButtonClick}
-                data-testid="button-primary-action"
-                className={`${CTA} mt-4`}
-              >
-                <Check className="h-[18px] w-[18px]" />
-                {getPrimaryButtonText()}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2.5">
-          <button
-            type="button"
-            onClick={() => setIsAddExerciseOpen(true)}
-            data-testid="button-add-exercise"
-            className="flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border bg-white/[0.03] text-sm font-semibold text-foreground transition-colors hover:bg-white/[0.06]"
-          >
-            <Plus className="h-4 w-4" />
-            Add Exercise
-          </button>
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={() => { flushProgress(); setIsEditDialogOpen(true); }}
-              data-testid="button-edit-workout"
-              className="h-[46px] flex-1 rounded-xl border text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={handleEndWorkout}
-              data-testid="button-end-workout"
-              className="h-[46px] flex-1 rounded-xl border text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
-            >
-              End Workout
-            </button>
-          </div>
-        </div>
+          </>
+        ) : (
+          <TrackerRestoring />
+        )}
 
         <WorkoutEditorDialog
           isOpen={isEditDialogOpen}
@@ -1309,6 +1326,30 @@ export default function TrackPage() {
         </AlertDialog>
 
         <RestTimer />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Stands in for the exercise card while saved progress is being restored.
+ * Shaped like the card (a header and three set rows) so the page does not jump
+ * when the real one arrives; usually it is on screen for no time at all,
+ * because the settings read it waits on is served from the persisted cache.
+ */
+function TrackerRestoring() {
+  return (
+    <div
+      className="card-elevated p-4 animate-pulse"
+      aria-busy="true"
+      aria-label="Loading your progress"
+      data-testid="tracker-restoring"
+    >
+      <div className="mx-auto mb-5 h-5 w-1/2 rounded bg-input" />
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-10 rounded-[10px] bg-input/70" />
+        ))}
       </div>
     </div>
   );
