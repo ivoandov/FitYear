@@ -133,6 +133,70 @@ export function AddExerciseDialog({
   }, [name, library, initialData?.id]);
   const strongDuplicate = similar.length > 0 && similar[0].score >= DEFAULT_MATCH_THRESHOLD;
 
+  /**
+   * Standard names that are NOT in the library yet.
+   *
+   * The point is to get a canonical name into the catalog rather than whatever
+   * spelling somebody happened to type - the same job canonicalisation does on
+   * the write path, moved earlier so the user sees it. The vocabulary is ~635KB
+   * and lives on the server, so this asks for a handful of matches instead of
+   * holding the list.
+   *
+   * Suppressed once a strong duplicate is showing: at that point the useful
+   * advice is "you already have this", and offering a third list of new names
+   * underneath would argue with it.
+   */
+  const [standard, setStandard] = useState<Array<{ name: string; equipment: string | null; muscles: string[] }>>([]);
+
+  useEffect(() => {
+    const q = name.trim();
+    if (q.length < 3 || isEditMode || strongDuplicate) {
+      setStandard([]);
+      return;
+    }
+    // Debounced, and the stale-response guard matters more than the delay: the
+    // user types faster than the round trip, so without it an earlier reply can
+    // land after a later one and show suggestions for a prefix they have moved
+    // past.
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/exercises/reference?q=${encodeURIComponent(q)}`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = await res.json();
+        if (!cancelled) setStandard(Array.isArray(data) ? data : []);
+      } catch {
+        // A suggestion list is a convenience; failing it silently is correct.
+        if (!cancelled) setStandard([]);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [name, isEditMode, strongDuplicate]);
+
+  const libraryNames = useMemo(
+    () => new Set(library.map((e) => e.name.toLowerCase())),
+    [library],
+  );
+  const suggestions = standard.filter((s) => !libraryNames.has(s.name.toLowerCase()));
+
+  /**
+   * Take a standard name, and its muscle groups where the form has none yet.
+   *
+   * NOT named `useStandard`: a `use` prefix makes ESLint treat a plain function
+   * as a React Hook, and calling it from an onClick then fails rules-of-hooks.
+   */
+  function applyStandardName(s: { name: string; muscles: string[] }) {
+    setName(s.name);
+    if (selectedMuscleGroups.length === 0 && s.muscles.length > 0) {
+      setSelectedMuscleGroups(s.muscles.filter((m) => muscleGroups.includes(m)));
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
@@ -164,6 +228,28 @@ export function AddExerciseDialog({
                   ? `Already in the library: ${similar[0].name}`
                   : `Similar: ${similar.map((s) => s.name).join(", ")}`}
               </p>
+            )}
+
+            {suggestions.length > 0 && (
+              <div className="space-y-1.5 pt-1" data-testid="standard-name-suggestions">
+                <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-tertiary-foreground">
+                  Standard names
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s.name}
+                      type="button"
+                      onClick={() => applyStandardName(s)}
+                      data-testid={`suggestion-${s.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+                      title={s.equipment ? `${s.name} (${s.equipment})` : s.name}
+                      className="rounded-full border-strong bg-white/[0.03] px-3 py-1 text-xs text-muted-foreground"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 

@@ -288,6 +288,11 @@ export default function ExercisesPage() {
         <button
           type="button"
           onClick={() => setShowAddDialog(true)}
+          // A DISTINCT testid from the mobile button rather than the same one.
+          // The mobile control is `md:hidden` and the e2e viewport is 1280, so
+          // sharing an id would give getByTestId two matches - it matches
+          // hidden elements too - and fail strict mode.
+          data-testid="button-add-exercise-desktop"
           className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} />
