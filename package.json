@@ -55,6 +55,7 @@
     "react": "^19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.8",
+    "react-muscle-highlighter": "^1.2.0",
     "recharts": "^3.10.1",
     "sharp": "^0.35.3",
     "sonner": "^2.0.7",

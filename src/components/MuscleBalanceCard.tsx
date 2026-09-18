@@ -13,6 +13,25 @@ interface BalanceResponse {
 }
 
 /**
+ * Per-muscle-group activity: sets in the last 7 days, the user's own weekly
+ * norm, and a verdict. ONE query shared by this card and the Insights muscle
+ * map, so both read the same cache and cannot disagree.
+ */
+export function useMuscleBalance() {
+  return useQuery<BalanceResponse>({
+    queryKey: ["/api/analytics/muscle-balance", clientTimeZone()],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/analytics/muscle-balance?tz=${encodeURIComponent(clientTimeZone())}`,
+      );
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
  * "Back and Shoulders are behind."
  *
  * Shown on Home only when there is no active routine, because somebody
@@ -27,17 +46,7 @@ interface BalanceResponse {
  */
 export function MuscleBalanceCard() {
   const router = useRouter();
-  const { data } = useQuery<BalanceResponse>({
-    queryKey: ["/api/analytics/muscle-balance", clientTimeZone()],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/analytics/muscle-balance?tz=${encodeURIComponent(clientTimeZone())}`,
-      );
-      if (!res.ok) throw new Error("failed");
-      return res.json();
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data } = useMuscleBalance();
 
   if (!data?.headline) return null;
 

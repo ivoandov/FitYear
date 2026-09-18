@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Trophy, Flame } from "lucide-react";
 import { WorkoutNameEditor } from "@/components/WorkoutNameEditor";
 import { SummaryDurationProvider, SummaryDurationStat, SummaryShareButton } from "./SummaryDuration";
+import { MuscleMap } from "@/components/MuscleMap";
+import { muscleMapLoads } from "@/lib/muscle-map";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { completedWorkouts, prHistory, userSettings } from "@/lib/db/schema";
@@ -132,6 +134,20 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
     }
   }
 
+  // Which regions of the body map this session lit, from each exercise's own
+  // muscle tags - so a leg extension lights the quads rather than all of Legs.
+  const mapLoads = muscleMapLoads(
+    (
+      (normalized.get(workout.id) ?? []) as unknown as Array<{
+        muscleGroups?: string[] | null;
+        setsData?: Array<{ completed: boolean }>;
+      }>
+    ).map((ex) => ({
+      muscleGroups: Array.isArray(ex.muscleGroups) ? ex.muscleGroups : [],
+      completedSets: (ex.setsData ?? []).filter((s) => s.completed).length,
+    })),
+  );
+
   // Sort muscle groups by sets descending
   const muscleEntries = Array.from(summary.muscleGroups.entries()).sort(
     ([, a], [, b]) => b - a,
@@ -226,6 +242,11 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
               <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
                 Muscles trained
               </h2>
+              {mapLoads.length > 0 ? (
+                <div className="mt-4">
+                  <MuscleMap loads={mapLoads} testId="muscle-map-summary" />
+                </div>
+              ) : null}
               <div className="mt-4 space-y-3.5">
                 {muscleEntries.map(([muscle, sets]) => {
                   const pct = Math.min(

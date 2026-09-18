@@ -2,12 +2,15 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { clientTimeZone } from "@/lib/date";
-import { TrendingUp, Dumbbell, Flame } from "lucide-react";
+import { TrendingUp, Dumbbell, Flame, PersonStanding } from "lucide-react";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { useSettings } from "@/components/SettingsProvider";
 import { LiftTrendGrid, type LiftTrend } from "@/components/insights/LiftTrendGrid";
 import { MuscleVolumeGrid, type MuscleVolume } from "@/components/insights/MuscleVolumeGrid";
 import { ConsistencyPanel } from "@/components/insights/ConsistencyPanel";
+import { MuscleMap } from "@/components/MuscleMap";
+import { useMuscleBalance } from "@/components/MuscleBalanceCard";
+import { muscleMapLoads } from "@/lib/muscle-map";
 import type { DayCount } from "@/lib/analytics";
 import type { WeightUnit } from "@/lib/units";
 import type { ReactNode } from "react";
@@ -38,6 +41,15 @@ export default function InsightsPage() {
   const { data: muscle, isPending: muscleLoading } = useQuery<MuscleVolumeTrend>({
     queryKey: [`/api/analytics/muscle-volume-trend?tz=${encodeURIComponent(tz)}&weekStart=${weekStart}`],
   });
+  // The last 7 days by muscle, in SETS - never pounds, which do not compare
+  // across muscles (2026-09-09). Shares Home's balance query and its cache.
+  const { data: balance, isPending: balanceLoading } = useMuscleBalance();
+  const weekGroups = (balance?.groups ?? [])
+    .filter((g) => g.sets7 > 0)
+    .sort((a, b) => b.sets7 - a.sets7);
+  const weekLoads = muscleMapLoads(
+    weekGroups.map((g) => ({ muscleGroups: [g.group], completedSets: g.sets7 })),
+  );
   const { data: consistency = [], isPending: consistencyLoading } = useQuery<DayCount[]>({
     queryKey: [`/api/analytics/consistency?tz=${encodeURIComponent(tz)}`],
   });
@@ -85,6 +97,29 @@ export default function InsightsPage() {
                 <LiftTrendGrid lifts={lifts} weeks={liftWeeks} weightUnit={weightUnit} />
               ) : (
                 <Empty>Log a couple of weighted lifts to see strength trends.</Empty>
+              )}
+            </Section>
+
+            <Section
+              icon={<PersonStanding className="h-3.5 w-3.5 text-primary" />}
+              title="Last 7 days · by muscle"
+              subtitle="Completed sets per muscle group, brighter is more"
+            >
+              {balanceLoading ? (
+                <div className="h-64 animate-pulse rounded-xl bg-white/[0.04]" />
+              ) : weekLoads.length > 0 ? (
+                <>
+                  <MuscleMap loads={weekLoads} testId="muscle-map-week" />
+                  <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1.5" data-testid="muscle-week-counts">
+                    {weekGroups.map((g) => (
+                      <span key={g.group} className="font-mono text-[11px] text-muted-foreground">
+                        {g.group} <span className="font-bold text-foreground">{g.sets7}</span>
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <Empty>Nothing logged in the last 7 days.</Empty>
               )}
             </Section>
 
