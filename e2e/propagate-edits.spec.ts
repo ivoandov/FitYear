@@ -306,3 +306,62 @@ test("a day the edit ADDED gets a session created, and counted onto the plan", a
     await sql`delete from routine_instances where id = ${instance.id}`;
   }
 });
+
+test("a day ADDED to a repeating program lands on every remaining week, not once", async ({
+  page,
+  account,
+}) => {
+  // A weekly routine (days 1 and 3) started two weeks ago for four weeks, and
+  // day 5 was just added. Placement used to put ONE session at the day's
+  // first-pass date - two weeks in the past here - so nothing appeared at all.
+  const [routine] = await sql`
+    insert into routines (user_id, name)
+    values (${account.id}::uuid, ${`ZZ Added Repeat ${Date.now()}`})
+    returning id`;
+  const [instance] = await sql`
+    insert into routine_instances
+      (routine_id, user_id, routine_name, start_date, end_date, duration_days,
+       total_workouts, completed_workouts, status)
+    values (${routine.id}, ${account.id}::uuid, 'ZZ Added Repeat',
+            (current_date - 14) + interval '12 hours',
+            (current_date + 13) + interval '12 hours', 28, 8, 0, 'active')
+    returning id`;
+
+  try {
+    for (const day of [1, 3, 5]) {
+      await sql`
+        insert into routine_entries (routine_id, day_index, workout_name, exercises)
+        values (${routine.id}, ${day}, ${`Day ${day}`},
+                ${sql.json([{ id: `ex-${day}`, name: `Exercise ${day}` }])})`;
+    }
+    // Days 1 and 3 are already on the calendar (their first week will do).
+    for (const [day, offset] of [[1, -14], [3, -12]]) {
+      await sql`
+        insert into scheduled_workouts
+          (user_id, name, date, exercises, routine_instance_id, routine_day_index)
+        values (${account.id}::uuid, ${`Day ${day}`}, (current_date + ${offset}::int) + interval '12 hours',
+                ${sql.json([])}, ${instance.id}, ${day})`;
+    }
+    const [{ w3, w4 }] = await sql`
+      select to_char(current_date + 4, 'YYYY-MM-DD') as w3,
+             to_char(current_date + 11, 'YYYY-MM-DD') as w4`;
+
+    await page.goto("/");
+    const preview = await apiGet(page, `/api/routines/${routine.id}/update-active-instances`);
+    expect(preview.status).toBe(200);
+    // Weeks one and two are past; weeks three and four are not.
+    expect(preview.json?.missingDays).toEqual([
+      { dayIndex: 5, date: w3 },
+      { dayIndex: 5, date: w4 },
+    ]);
+
+    const res = await apiPost(page, `/api/routines/${routine.id}/update-active-instances`);
+    expect(res.json?.createdCount).toBe(2);
+    const [inst] = await sql`select total_workouts from routine_instances where id = ${instance.id}`;
+    expect(inst.total_workouts).toBe(10);
+  } finally {
+    await sql`delete from routines where id = ${routine.id}`;
+    await sql`delete from scheduled_workouts where routine_instance_id = ${instance.id}`;
+    await sql`delete from routine_instances where id = ${instance.id}`;
+  }
+});

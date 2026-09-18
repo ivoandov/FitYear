@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import { addDaysToDateKey, scheduledDateFromKey, scheduledDateKey } from "@/lib/date";
+import { scheduledDateFromKey, scheduledDateKey } from "@/lib/date";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -13,7 +13,7 @@ import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { loadAssistedCheck } from "@/lib/api/assisted";
 import { progressedExercises } from "@/lib/progression";
-import { isExpandedProgram, programWeekFor } from "@/lib/routine-schedule";
+import { expandRoutineSchedule, isExpandedProgram, programWeekFor } from "@/lib/routine-schedule";
 import {
   deleteCalendarEvent,
   getSelectedCalendarId,
@@ -163,9 +163,11 @@ async function loadState(
   // pending query above - which is why "make it 5 days instead of 4" used to
   // change the routine and leave the calendar at four.
   //
-  // Placement copies routines/[id]/start EXACTLY: start day + (dayIndex - 1),
-  // bounded by the program's own duration. Any other rule would put the new
-  // session somewhere the rest of the program never would.
+  // Placement goes through the SAME expansion routines/[id]/start uses, so a
+  // new day lands on every remaining repeat, exactly where the rest of the
+  // program would have put it. Until 2026-09-18 this placed it once, at its
+  // first-pass date - fine before routines repeated, and afterwards it meant a
+  // day added in week three landed nowhere, because that date was past.
   const instance = activeInstances[0];
   const startKey = scheduledDateKey(instance.startDate);
   const todayKey = scheduledDateKey(todayStart);
@@ -201,11 +203,12 @@ async function loadState(
   );
 
   const missing: Missing[] = [];
-  for (const entry of entries) {
+  const occurrences = expandRoutineSchedule(
+    entries.filter((e) => e.workoutName),
+    { startKey, durationDays: instance.durationDays, cycleLength: routine.cycleLength },
+  );
+  for (const { entry, dateKey } of occurrences) {
     if (placed.has(entry.dayIndex)) continue;
-    if (!entry.workoutName) continue;
-    if (entry.dayIndex > instance.durationDays) continue;
-    const dateKey = addDaysToDateKey(startKey, entry.dayIndex - 1);
     // Never create a session in the past, and never on a day already spoken for.
     if (dateKey < todayKey) continue;
     if (occupied.has(dateKey)) continue;

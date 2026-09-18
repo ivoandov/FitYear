@@ -1338,11 +1338,14 @@ export default function RoutinesPage() {
                 and this dialog is already the opt-in. */}
             {resyncPreview && resyncPreview.missingCount > 0 && (
               <div className="rounded-xl border-yellow bg-primary-dim p-3" data-testid="missing-days-note">
+                {/* One added day now lands on every remaining repeat, so the
+                    dates can run long; name the first few and count the rest. */}
                 <p className="text-sm text-foreground">
                   {resyncPreview.missingCount === 1 ? "A new workout" : `${resyncPreview.missingCount} new workouts`}{" "}
                   will be added to your calendar for the{" "}
-                  {resyncPreview.missingDays.length === 1 ? "day" : "days"} you added:{" "}
-                  {resyncPreview.missingDays.map((d) => d.date).join(", ")}.
+                  {new Set(resyncPreview.missingDays.map((d) => d.dayIndex)).size === 1 ? "day" : "days"} you added:{" "}
+                  {resyncPreview.missingDays.slice(0, 3).map((d) => d.date).join(", ")}
+                  {resyncPreview.missingDays.length > 3 ? ` and ${resyncPreview.missingDays.length - 3} more` : ""}.
                 </p>
               </div>
             )}
