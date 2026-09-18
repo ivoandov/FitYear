@@ -10,7 +10,27 @@ describe("the reference vocabulary", () => {
   it("is actually populated", () => {
     // A reference list that silently shipped empty would degrade every
     // suggestion to "invent a name" with nothing failing.
-    expect(referenceSize()).toBeGreaterThan(800);
+    expect(referenceSize()).toBeGreaterThan(4000);
+  });
+
+  it("carries the FUNCTIONAL half, which is why a second source was merged", () => {
+    // The public-domain source is a bodybuilding-era list and has none of
+    // these. They are exactly the movements FitYear's own catalog is full of
+    // and no single source covered, so their absence would mean the merge
+    // silently did nothing.
+    for (const q of ["parallette", "ring", "kettlebell", "sandbag", "suspension"]) {
+      expect(searchReference({ query: q, limit: 3 }).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("carries demonstration videos on the entries that had them", () => {
+    const hits = searchReference({ query: "kettlebell", limit: 40 });
+    expect(hits.some((h) => h.videoId)).toBe(true);
+    // A YouTube id, not a URL: the player is given the id and nothing is
+    // re-hosted.
+    for (const h of hits) {
+      if (h.videoId) expect(h.videoId).toMatch(/^[A-Za-z0-9_-]{6,}$/);
+    }
   });
 
   it("speaks FitYear's muscle vocabulary, not the source's", () => {
@@ -18,7 +38,13 @@ describe("the reference vocabulary", () => {
     // Shipping both would hand the model muscle names its own tools never
     // return, which is how two vocabularies end up in one conversation.
     const coarse = new Set<string>(COARSE_MUSCLE_GROUPS);
-    for (const e of searchReference({ limit: 60 })) {
+    // Across BOTH sources, which use different muscle vocabularies from each
+    // other as well as from this app.
+    for (const e of [
+      ...searchReference({ limit: 60 }),
+      ...searchReference({ query: "kettlebell", limit: 60 }),
+      ...searchReference({ query: "barbell", limit: 60 }),
+    ]) {
       for (const m of [...e.muscles, ...e.secondary]) {
         expect(coarse.has(m)).toBe(true);
       }

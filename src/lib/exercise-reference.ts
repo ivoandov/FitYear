@@ -15,11 +15,19 @@ import { matchExercise } from "@/lib/exercise-match";
  * The distinction is what keeps the earlier objections from applying: no
  * renaming, no migration, no change to exercise identity.
  *
- * Source: Free Exercise DB, public domain under the Unlicense. Its images are
- * deliberately not used - see `scripts/build-exercise-reference.ts` and
- * product/EXERCISE_LIBRARY_SCOPE.md sections 11 and 14. Muscles were already
- * resolved into FitYear's coarse groups when the file was generated, so nothing
- * here speaks a foreign vocabulary.
+ * TWO SOURCES, merged because they barely overlap: Free Exercise DB (public
+ * domain, classic barbell/dumbbell/machine work) and Strength to Overcome
+ * (functional, calisthenics, rings, parallettes, kettlebells, with a
+ * demonstration video on most entries). FitYear's own catalog straddles both.
+ * Provenance, licence terms and the muscle mapping are documented in
+ * `scripts/build-exercise-reference.ts`; muscles were resolved into FitYear's
+ * coarse groups at BUILD time, so nothing here speaks a foreign vocabulary.
+ *
+ * SERVER ONLY, and there is no `server-only` import enforcing it because this
+ * project does not carry that dependency and adding one to a Next build has
+ * bitten it before. The data file is ~635KB and must never reach a client
+ * bundle. Its only consumer is `lib/ai/fitbot-reads.ts`, which runs in a route
+ * handler. **If you import this from a "use client" file, check the bundle.**
  */
 
 export type ReferenceExercise = {
@@ -32,6 +40,8 @@ export type ReferenceExercise = {
   mechanic: string | null;
   /** "push" | "pull" | "static" | null */
   force: string | null;
+  /** A YouTube id where the source had one. Embedded, never re-hosted. */
+  videoId?: string;
 };
 
 const ALL = reference as ReferenceExercise[];
