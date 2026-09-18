@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { loadTrainingHistory } from "@/lib/api/training-history";
 import { getActiveRoutineAdherence } from "@/lib/api/routine-adherence";
-import { scheduledDateKey } from "@/lib/date";
+import { localDateKeyInZone, scheduledDateKey } from "@/lib/date";
 import { searchReference } from "@/lib/exercise-reference";
 import { routineEntries } from "@/lib/db/schema";
 import { recentWorkoutsLimit } from "@/lib/ai/fitbot-tools";
@@ -153,7 +153,7 @@ async function getRoutine(userId: string, routineId: string) {
   };
 }
 
-async function listRecentWorkouts(userId: string, limit: number) {
+async function listRecentWorkouts(userId: string, limit: number, tz: string) {
   // The ceiling is deliberate: every tool result is re-sent on each later turn,
   // and ten workouts of full detail was once the single biggest input to one.
   // `limit` arrives already clamped by `recentWorkoutsLimit`.
@@ -219,7 +219,10 @@ async function listRecentWorkouts(userId: string, limit: number) {
     out.push({
       id: w.id,
       name: w.name,
-      date: w.completedAt.toISOString().slice(0, 10),
+      // The viewer's day, not the UTC one. completed_at is an instant, and an
+      // evening session lands on tomorrow in UTC, which is what the coach was
+      // told for most workouts while the prompt gave it today in local time.
+      date: localDateKeyInZone(w.completedAt, tz),
       durationMinutes: w.durationSeconds ? Math.round(w.durationSeconds / 60) : null,
       routineDayIndex: w.routineDayIndex,
       exercises: [...byName.values()],
@@ -388,7 +391,7 @@ export async function runReadTool(
     case "get_routine":
       return getRoutine(ctx.userId, String(input.routineId ?? ""));
     case "list_recent_workouts":
-      return listRecentWorkouts(ctx.userId, recentWorkoutsLimit(input.limit));
+      return listRecentWorkouts(ctx.userId, recentWorkoutsLimit(input.limit), ctx.tz);
     case "search_exercises":
       return searchExercises(
         input.query ? String(input.query) : undefined,
