@@ -75,6 +75,8 @@ export function SetRow({
   onFieldChange,
   onToggleComplete,
 }: SetRowProps) {
+  // Also exposed as `data-current`, so a spec can ask which set the pointer is
+  // on rather than inferring it from how many rows exist.
   const isHighlighted = isCurrentSet || isActive;
   const rowClass = `${GRID} items-start rounded-xl border-[1.5px] px-2 py-2.5 transition-colors ${
     isHighlighted
@@ -178,7 +180,7 @@ export function SetRow({
 
   if (usesDistance(exerciseType)) {
     return (
-      <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
+      <div className={rowClass} data-testid={`row-set-${set.setNumber}`} data-current={isHighlighted || undefined}>
         {setNumberCell}
         <div className={PILL}>
           <Input
@@ -205,7 +207,7 @@ export function SetRow({
   }
 
   return (
-    <div className={rowClass} data-testid={`row-set-${set.setNumber}`}>
+    <div className={rowClass} data-testid={`row-set-${set.setNumber}`} data-current={isHighlighted || undefined}>
       {setNumberCell}
 
       {weightColumn}
