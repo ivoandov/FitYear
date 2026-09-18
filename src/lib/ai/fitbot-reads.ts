@@ -16,6 +16,7 @@ import { getActiveRoutineAdherence } from "@/lib/api/routine-adherence";
 import { scheduledDateKey } from "@/lib/date";
 import { searchReference } from "@/lib/exercise-reference";
 import { routineEntries } from "@/lib/db/schema";
+import { recentWorkoutsLimit } from "@/lib/ai/fitbot-tools";
 
 /**
  * The read half of FitBot's tool surface.
@@ -153,9 +154,9 @@ async function getRoutine(userId: string, routineId: string) {
 }
 
 async function listRecentWorkouts(userId: string, limit: number) {
-  // Default and ceiling both cut: ten workouts of full detail was the single
-  // biggest input to a turn that did not fit in the function's time budget.
-  const capped = Math.min(Math.max(limit || 6, 1), 15);
+  // The ceiling is deliberate: every tool result is re-sent on each later turn,
+  // and ten workouts of full detail was once the single biggest input to one.
+  // `limit` arrives already clamped by `recentWorkoutsLimit`.
   const workouts = await db
     .select({
       id: completedWorkouts.id,
@@ -167,7 +168,7 @@ async function listRecentWorkouts(userId: string, limit: number) {
     .from(completedWorkouts)
     .where(eq(completedWorkouts.userId, userId))
     .orderBy(desc(completedWorkouts.completedAt))
-    .limit(capped);
+    .limit(limit);
 
   const out = [];
   for (const w of workouts) {
@@ -387,7 +388,7 @@ export async function runReadTool(
     case "get_routine":
       return getRoutine(ctx.userId, String(input.routineId ?? ""));
     case "list_recent_workouts":
-      return listRecentWorkouts(ctx.userId, Number(input.limit ?? 10));
+      return listRecentWorkouts(ctx.userId, recentWorkoutsLimit(input.limit));
     case "search_exercises":
       return searchExercises(
         input.query ? String(input.query) : undefined,

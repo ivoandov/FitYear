@@ -47,6 +47,22 @@ export type ProposalRequest = {
   body?: unknown;
 };
 
+/**
+ * How many workouts `list_recent_workouts` returns. The description the model
+ * reads is built from these, so it cannot promise a ceiling the code does not
+ * honor: it said "max 30" while the code stopped at 15, and the model asked for
+ * 30 and was silently handed half.
+ */
+export const RECENT_WORKOUTS_DEFAULT = 10;
+export const RECENT_WORKOUTS_MAX = 15;
+
+/** The model's `limit`, clamped. Anything missing or unusable means the default. */
+export function recentWorkoutsLimit(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n < 1) return RECENT_WORKOUTS_DEFAULT;
+  return Math.min(Math.floor(n), RECENT_WORKOUTS_MAX);
+}
+
 export const READ_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_training_summary",
@@ -82,7 +98,10 @@ export const READ_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        limit: { type: "integer", description: "How many workouts, newest first. Default 10, max 30." },
+        limit: {
+          type: "integer",
+          description: `How many workouts, newest first. Default ${RECENT_WORKOUTS_DEFAULT}, max ${RECENT_WORKOUTS_MAX}; a larger number returns ${RECENT_WORKOUTS_MAX}.`,
+        },
       },
       additionalProperties: false,
     },
