@@ -22,7 +22,32 @@ import { DesktopTopBar } from "@/components/DesktopTopBar";
 import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/lib/db/schema";
 import type { Exercise } from "@/data/exercises";
 import { RoutineEditDialog } from "@/components/RoutineEditDialog";
-import { describeRule, normalizeRule } from "@/lib/progression";
+import { RoutineDayWeights } from "@/components/RoutineDayWeights";
+import { describeRule, normalizeRule, type MaybeRule } from "@/lib/progression";
+
+/**
+ * Tidy a day's exercises on the way to the server. The PUT stores the array
+ * verbatim, so this is the one place a half-typed own rule or a cleared
+ * starting weight gets settled: an unusable rule is REMOVED rather than stored,
+ * which leaves the exercise on the routine's rule - exactly what the editor
+ * shows once the amount is gone.
+ */
+function cleanExercises(exercises: Exercise[] | null): Exercise[] | null {
+  if (!exercises) return exercises;
+  return exercises.map((ex) => {
+    const next = { ...ex };
+    const start = Number(next.targetLoadLbs);
+    if (next.targetLoadLbs !== undefined && !(Number.isFinite(start) && start > 0)) {
+      delete next.targetLoadLbs;
+    }
+    if (next.progression !== undefined) {
+      const rule = normalizeRule(next.progression as MaybeRule);
+      if (rule) next.progression = rule;
+      else delete next.progression;
+    }
+    return next;
+  });
+}
 
 interface RoutineWithEntries extends Routine {
   entries: RoutineEntry[];
@@ -214,6 +239,27 @@ export default function RoutinesPage() {
   const { data: activeInstances = [] } = useQuery<RoutineInstance[]>({
     queryKey: ["/api/routine-instances/active"],
   });
+
+  // Starting weights are typed in the user's own unit and stored in pounds,
+  // like every other weight in the app.
+  const { data: userSettings } = useQuery<{ weightUnit?: string }>({
+    queryKey: ["/api/user-settings"],
+  });
+  const weightUnit = userSettings?.weightUnit === "kg" ? "kg" : "lbs";
+
+  // The CATALOG decides whether an exercise carries weight and whether it is
+  // assisted. A routine's exercises are copies of a template's, which are
+  // copies of the catalog when the template was made - two steps from the
+  // truth, and the assisted flag on a copy has been wrong before.
+  const { data: catalog = [] } = useQuery<Exercise[]>({
+    queryKey: ["/api/exercises?slim=1"],
+    enabled: isBuilderOpen,
+  });
+  const catalogById = new Map(catalog.map((c) => [c.id, c]));
+  const exerciseTypeOf = (ex: Exercise) =>
+    (catalogById.get(ex.id)?.exerciseType as string | null | undefined) ?? ex.exerciseType;
+  const isAssistedExercise = (ex: Exercise) =>
+    catalogById.get(ex.id)?.isAssisted === true || ex.isAssisted === true;
 
   const createRoutineMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string; defaultDurationDays: number; isPublic: boolean; progression: { incrementLbs: number; everyWeeks: number } | null; entries: RoutineEntryDraft[] }) => {
@@ -468,7 +514,9 @@ export default function RoutinesPage() {
       progression: progressionOn
         ? { incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks }
         : null,
-      entries: routineEntries.filter(e => e.workoutName),
+      entries: routineEntries
+        .filter(e => e.workoutName)
+        .map(e => ({ ...e, exercises: cleanExercises(e.exercises) })),
     };
 
     if (editingRoutine) {
@@ -527,6 +575,27 @@ export default function RoutinesPage() {
       return [...prev, newEntry];
     });
   };
+
+  /**
+   * Replace one exercise inside one day, immutably. "Copy week" shares the
+   * exercise arrays between the copied days, so editing in place would change
+   * the starting weight on every copy at once.
+   */
+  const updateEntryExercise = (dayIndex: number, exIndex: number, next: Exercise) => {
+    setRoutineEntries(prev =>
+      prev.map(e =>
+        e.dayIndex !== dayIndex || !e.exercises
+          ? e
+          : { ...e, exercises: e.exercises.map((ex, i) => (i === exIndex ? next : ex)) },
+      ),
+    );
+  };
+
+  // The routine rule as the editor currently has it, for the per-exercise rows
+  // to describe what "Routine rule" means right now.
+  const editorRoutineRule = progressionOn
+    ? normalizeRule({ incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks })
+    : null;
 
   const getWeekDays = (weekOffset: number) => {
     const startDay = weekOffset * 7 + 1;
@@ -1033,7 +1102,7 @@ export default function RoutinesPage() {
                         </div>
                         <p className="text-xs text-muted-foreground" data-testid="text-progression-summary">
                           {describeRule({ incrementLbs: progressionIncrement, everyWeeks: progressionEveryWeeks })}
-                          . Applies to any exercise with a starting weight.
+                          . Applies to any exercise with a starting weight, set under each day below.
                         </p>
                       </>
                     ) : null}
@@ -1097,7 +1166,8 @@ export default function RoutinesPage() {
                     {currentWeekDays.map(dayIndex => {
                       const entry = routineEntries.find(e => e.dayIndex === dayIndex);
                       return (
-                        <div key={dayIndex} className="flex items-center gap-3 rounded-xl border bg-white/[0.03] p-2.5">
+                        <div key={dayIndex} className="rounded-xl border bg-white/[0.03] p-2.5">
+                        <div className="flex items-center gap-3">
                           <span className="w-14 shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-tertiary-foreground">Day {dayIndex}</span>
                           <Select
                             value={dayValue(entry)}
@@ -1128,6 +1198,19 @@ export default function RoutinesPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                        {entry?.exercises && entry.exercises.length > 0 ? (
+                          <RoutineDayWeights
+                            key={`${dayIndex}-${entry.workoutTemplateId ?? entry.workoutName}`}
+                            dayIndex={dayIndex}
+                            exercises={entry.exercises}
+                            weightUnit={weightUnit}
+                            routineRule={editorRoutineRule}
+                            exerciseTypeOf={exerciseTypeOf}
+                            isAssisted={isAssistedExercise}
+                            onChange={(exIndex, next) => updateEntryExercise(dayIndex, exIndex, next)}
+                          />
+                        ) : null}
                         </div>
                       );
                     })}
