@@ -20,6 +20,7 @@ import {
 import { preferRepsOverVolume, type SetData } from "@/lib/workout-stats";
 import { localDateKey } from "@/lib/date";
 import { formatDuration, parseDurationInput } from "@/lib/workout-duration";
+import { WorkoutDurationEditor } from "@/components/WorkoutDurationEditor";
 import { usesDistance, usesTime } from "@/lib/exercise-types";
 
 // DB always stores weights in lbs. Display + edit in user's preferred unit;
@@ -380,9 +381,24 @@ export function WorkoutHistoryCard({
             ) : null}
             {duration > 0 && (
               <div>
-                <div className="font-mono text-[17px] font-bold" data-testid={`text-history-duration-${id}`}>
-                  {formatDuration(duration)}
-                </div>
+                {/* Tap to correct, without going through the full editor below:
+                    finishing late inflates this number, and the full edit is
+                    three taps deep. Keyed on the value so a refetch after the
+                    save remounts it with the stored number. */}
+                {workoutId ? (
+                  <WorkoutDurationEditor
+                    key={duration}
+                    workoutId={workoutId}
+                    seconds={duration}
+                    valueClassName="font-mono text-[17px] font-bold"
+                    testIdSuffix={id}
+                    valueTestId={`text-history-duration-${id}`}
+                  />
+                ) : (
+                  <div className="font-mono text-[17px] font-bold" data-testid={`text-history-duration-${id}`}>
+                    {formatDuration(duration)}
+                  </div>
+                )}
                 <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-tertiary-foreground">
                   Time
                 </div>

@@ -2,14 +2,13 @@ import { and, eq, lt } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Trophy, Flame } from "lucide-react";
-import { ShareWorkoutButton } from "@/components/ShareWorkoutButton";
 import { WorkoutNameEditor } from "@/components/WorkoutNameEditor";
+import { SummaryDurationProvider, SummaryDurationStat, SummaryShareButton } from "./SummaryDuration";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
 import { completedWorkouts, prHistory, userSettings } from "@/lib/db/schema";
 import {
   summarizeWorkout,
-  formatDuration,
   calcStreak,
   detectPRs,
   preferRepsOverVolume,
@@ -162,178 +161,179 @@ export default async function WorkoutCompletePage({ params }: Ctx) {
     .filter((e) => e.sets > 0);
 
   return (
-    <div className="mx-auto max-w-md pb-2 md:max-w-4xl md:pt-6">
-      {/* Celebratory hero - neon radial glow + scattered confetti */}
-      <div className="relative overflow-hidden bg-[radial-gradient(120%_70%_at_50%_0%,rgba(229,255,0,0.14),rgba(229,255,0,0)_60%)] px-6 pb-7 pt-9 text-center">
-        {/* confetti dots */}
-        <span className="pointer-events-none absolute left-10 top-8 h-[7px] w-[7px] rotate-[20deg] rounded-[2px] bg-primary" />
-        <span className="pointer-events-none absolute right-12 top-14 h-2 w-2 rounded-full bg-white/70" />
-        <span className="pointer-events-none absolute left-16 top-24 h-1.5 w-1.5 rounded-full bg-primary" />
-        <span className="pointer-events-none absolute right-20 top-11 h-1.5 w-1.5 rotate-[30deg] rounded-[2px] bg-success" />
-        <span className="pointer-events-none absolute right-10 top-28 h-[5px] w-[5px] rotate-45 rounded-[2px] bg-primary" />
-        <span className="pointer-events-none absolute left-10 top-36 h-1.5 w-1.5 rounded-full bg-white/50" />
+    <SummaryDurationProvider initialSeconds={summary.durationSeconds}>
+      <div className="mx-auto max-w-md pb-2 md:max-w-4xl md:pt-6">
+        {/* Celebratory hero - neon radial glow + scattered confetti */}
+        <div className="relative overflow-hidden bg-[radial-gradient(120%_70%_at_50%_0%,rgba(229,255,0,0.14),rgba(229,255,0,0)_60%)] px-6 pb-7 pt-9 text-center">
+          {/* confetti dots */}
+          <span className="pointer-events-none absolute left-10 top-8 h-[7px] w-[7px] rotate-[20deg] rounded-[2px] bg-primary" />
+          <span className="pointer-events-none absolute right-12 top-14 h-2 w-2 rounded-full bg-white/70" />
+          <span className="pointer-events-none absolute left-16 top-24 h-1.5 w-1.5 rounded-full bg-primary" />
+          <span className="pointer-events-none absolute right-20 top-11 h-1.5 w-1.5 rotate-[30deg] rounded-[2px] bg-success" />
+          <span className="pointer-events-none absolute right-10 top-28 h-[5px] w-[5px] rotate-45 rounded-[2px] bg-primary" />
+          <span className="pointer-events-none absolute left-10 top-36 h-1.5 w-1.5 rounded-full bg-white/50" />
 
-        <div className="relative flex flex-col items-center">
-          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border-[1.5px] border-yellow bg-primary-dim text-primary shadow-[0_0_40px_-6px_rgba(229,255,0,0.4)]">
-            <Trophy className="h-10 w-10" strokeWidth={1.8} />
-          </div>
-          <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-primary">
-            Workout complete
-          </div>
-          <div className="mt-2.5">
-            <WorkoutNameEditor workoutId={workout.id} initialName={workout.name} />
-          </div>
-          <p className="mt-1.5 font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
-            {completedDateLabel}
-          </p>
-          {streakDays > 0 ? (
-            <div className="mt-3.5 inline-flex items-center gap-1.5 rounded-full border border-yellow bg-primary-dim px-3.5 py-1.5 text-[13px] font-semibold text-primary">
-              <Flame className="h-3.5 w-3.5" />
-              <span>
-                <span className="font-mono">{streakDays}</span> day streak, keep it up!
-              </span>
+          <div className="relative flex flex-col items-center">
+            <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border-[1.5px] border-yellow bg-primary-dim text-primary shadow-[0_0_40px_-6px_rgba(229,255,0,0.4)]">
+              <Trophy className="h-10 w-10" strokeWidth={1.8} />
             </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="px-5 pb-6 md:grid md:grid-cols-2 md:items-start md:gap-5">
-        {/* Left column: stats + muscles trained */}
-        <div className="flex flex-col gap-4">
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <Stat label="Duration" value={formatDuration(summary.durationSeconds)} />
-          <Stat label="Sets" value={summary.totalSets.toString()} />
-          {/* Volume is weight x reps, so a bodyweight session scores zero
-              however hard it was. Ivo, after a pull-up workout: "the workout
-              summary shows 0 lbs for volume because it's bodyweight. I wish in
-              these instances it would show the total amount of pullups or
-              pushups, not just a fat zero." Reps are the honest unit there. */}
-          {!preferRepsOverVolume(summary.totalVolumeLbs, summary.totalReps) ? (
-            <Stat
-              label="Volume"
-              value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
-            />
-          ) : (
-            <Stat label="Total reps" value={summary.totalReps.toLocaleString()} />
-          )}
-          <Stat label="Exercises" value={summary.exerciseCount.toString()} />
-        </div>
-
-        {/* Muscles trained */}
-        {muscleEntries.length > 0 ? (
-          <section className="card-elevated p-5">
-            <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Muscles trained
-            </h2>
-            <div className="mt-4 space-y-3.5">
-              {muscleEntries.map(([muscle, sets]) => {
-                const pct = Math.min(
-                  100,
-                  Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
-                );
-                return (
-                  <div key={muscle} className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] text-foreground">{muscle}</span>
-                      <span className="font-mono text-xs text-tertiary-foreground">
-                        {sets}/{WEEKLY_TARGET_PER_MUSCLE}
-                      </span>
-                    </div>
-                    <div className="h-[7px] overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-primary">
+              Workout complete
             </div>
-          </section>
-        ) : null}
+            <div className="mt-2.5">
+              <WorkoutNameEditor workoutId={workout.id} initialName={workout.name} />
+            </div>
+            <p className="mt-1.5 font-mono text-[11px] tracking-[0.04em] text-muted-foreground">
+              {completedDateLabel}
+            </p>
+            {streakDays > 0 ? (
+              <div className="mt-3.5 inline-flex items-center gap-1.5 rounded-full border border-yellow bg-primary-dim px-3.5 py-1.5 text-[13px] font-semibold text-primary">
+                <Flame className="h-3.5 w-3.5" />
+                <span>
+                  <span className="font-mono">{streakDays}</span> day streak, keep it up!
+                </span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        {/* Right column: personal bests + actions */}
-        <div className="mt-4 flex flex-col gap-4 md:mt-0">
-        {/* Personal bests */}
-        {prHits.length > 0 ? (
-          <section className="rounded-[18px] border-[1.5px] border-yellow bg-[radial-gradient(120%_100%_at_0%_0%,rgba(229,255,0,0.1),rgba(229,255,0,0.03))] p-[18px]">
-            <div className="flex items-center gap-2">
-              <Trophy className="h-[18px] w-[18px] text-primary" strokeWidth={1.8} />
-              <h2 className="text-base font-bold text-primary">
-                {prHits.length} new personal best{prHits.length !== 1 ? "s" : ""}
+        <div className="px-5 pb-6 md:grid md:grid-cols-2 md:items-start md:gap-5">
+          {/* Left column: stats + muscles trained */}
+          <div className="flex flex-col gap-4">
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <SummaryDurationStat workoutId={workout.id} />
+            <Stat label="Sets" value={summary.totalSets.toString()} />
+            {/* Volume is weight x reps, so a bodyweight session scores zero
+                however hard it was. Ivo, after a pull-up workout: "the workout
+                summary shows 0 lbs for volume because it's bodyweight. I wish in
+                these instances it would show the total amount of pullups or
+                pushups, not just a fat zero." Reps are the honest unit there. */}
+            {!preferRepsOverVolume(summary.totalVolumeLbs, summary.totalReps) ? (
+              <Stat
+                label="Volume"
+                value={`${Math.round(lbsToDisplay(summary.totalVolumeLbs, weightUnit) ?? 0).toLocaleString()} ${weightUnit}`}
+              />
+            ) : (
+              <Stat label="Total reps" value={summary.totalReps.toLocaleString()} />
+            )}
+            <Stat label="Exercises" value={summary.exerciseCount.toString()} />
+          </div>
+
+          {/* Muscles trained */}
+          {muscleEntries.length > 0 ? (
+            <section className="card-elevated p-5">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+                Muscles trained
               </h2>
-            </div>
-            <div className="mt-3.5 flex flex-col">
-              {prHits.map((h, i) => (
-                <div
-                  key={`${h.exerciseId}-${h.type}-${i}`}
-                  className={`flex items-baseline justify-between gap-2.5 ${
-                    i > 0 ? "mt-3 border-t border-divider pt-3" : ""
-                  }`}
-                >
-                  <span className="text-sm font-semibold text-foreground">
-                    {h.exerciseName}
-                  </span>
-                  <span className="whitespace-nowrap font-mono text-[13px] text-foreground">
-                    {h.type === "weight"
-                      ? `${lbsToDisplay(h.newValue, weightUnit)} ${weightUnit}`
-                      : h.type === "time"
-                        // Seconds, NOT a weight - never unit-convert this one.
-                        ? `${h.newValue}s`
-                        : `${Math.round(lbsToDisplay(h.newValue, weightUnit) ?? 0).toLocaleString()} vol`}
-                    {h.previousValue != null ? (
-                      <span className="ml-1.5 text-[11px] text-tertiary-foreground">
-                        was{" "}
-                        {h.type === "weight"
-                          ? h.previousValue
-                          : h.type === "time"
-                            ? `${h.previousValue}s`
-                            : h.previousValue.toLocaleString()}
-                      </span>
-                    ) : (
-                      <span className="ml-1.5 text-[11px] text-primary">first time!</span>
-                    )}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
+              <div className="mt-4 space-y-3.5">
+                {muscleEntries.map(([muscle, sets]) => {
+                  const pct = Math.min(
+                    100,
+                    Math.round((sets / WEEKLY_TARGET_PER_MUSCLE) * 100),
+                  );
+                  return (
+                    <div key={muscle} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[13px] text-foreground">{muscle}</span>
+                        <span className="font-mono text-xs text-tertiary-foreground">
+                          {sets}/{WEEKLY_TARGET_PER_MUSCLE}
+                        </span>
+                      </div>
+                      <div className="h-[7px] overflow-hidden rounded-full bg-white/[0.08]">
+                        <div
+                          className="h-full rounded-full bg-primary"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+          </div>
 
-        {/* Actions - circular Share + primary Done */}
-        <div className="flex gap-2.5 pt-1">
-          <ShareWorkoutButton
-            workoutName={workout.name}
-            date={completedDateLabel}
-            durationLabel={formatDuration(summary.durationSeconds)}
-            totalSets={summary.totalSets}
-            totalVolumeLbs={summary.totalVolumeLbs}
-            totalReps={summary.totalReps}
-            weightUnit={weightUnit}
-            exerciseCount={summary.exerciseCount}
-            muscleGroups={muscleEntries}
-            prCount={prHits.length}
-            prs={prHits.map((h) => ({
-              exerciseName: h.exerciseName,
-              type: h.type,
-              newValue: h.newValue,
-              previousValue: h.previousValue,
-            }))}
-            streakDays={streakDays}
-            exercises={exerciseList}
-          />
-          <Link
-            href="/"
-            className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-base font-bold text-primary-foreground shadow-cta-strong hover:opacity-95"
-          >
-            Done
-          </Link>
-        </div>
+          {/* Right column: personal bests + actions */}
+          <div className="mt-4 flex flex-col gap-4 md:mt-0">
+          {/* Personal bests */}
+          {prHits.length > 0 ? (
+            <section className="rounded-[18px] border-[1.5px] border-yellow bg-[radial-gradient(120%_100%_at_0%_0%,rgba(229,255,0,0.1),rgba(229,255,0,0.03))] p-[18px]">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-[18px] w-[18px] text-primary" strokeWidth={1.8} />
+                <h2 className="text-base font-bold text-primary">
+                  {prHits.length} new personal best{prHits.length !== 1 ? "s" : ""}
+                </h2>
+              </div>
+              <div className="mt-3.5 flex flex-col">
+                {prHits.map((h, i) => (
+                  <div
+                    key={`${h.exerciseId}-${h.type}-${i}`}
+                    className={`flex items-baseline justify-between gap-2.5 ${
+                      i > 0 ? "mt-3 border-t border-divider pt-3" : ""
+                    }`}
+                  >
+                    <span className="text-sm font-semibold text-foreground">
+                      {h.exerciseName}
+                    </span>
+                    <span className="whitespace-nowrap font-mono text-[13px] text-foreground">
+                      {h.type === "weight"
+                        ? `${lbsToDisplay(h.newValue, weightUnit)} ${weightUnit}`
+                        : h.type === "time"
+                          // Seconds, NOT a weight - never unit-convert this one.
+                          ? `${h.newValue}s`
+                          : `${Math.round(lbsToDisplay(h.newValue, weightUnit) ?? 0).toLocaleString()} vol`}
+                      {h.previousValue != null ? (
+                        <span className="ml-1.5 text-[11px] text-tertiary-foreground">
+                          was{" "}
+                          {h.type === "weight"
+                            ? h.previousValue
+                            : h.type === "time"
+                              ? `${h.previousValue}s`
+                              : h.previousValue.toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="ml-1.5 text-[11px] text-primary">first time!</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {/* Actions - circular Share + primary Done */}
+          <div className="flex gap-2.5 pt-1">
+            <SummaryShareButton
+              workoutName={workout.name}
+              date={completedDateLabel}
+              totalSets={summary.totalSets}
+              totalVolumeLbs={summary.totalVolumeLbs}
+              totalReps={summary.totalReps}
+              weightUnit={weightUnit}
+              exerciseCount={summary.exerciseCount}
+              muscleGroups={muscleEntries}
+              prCount={prHits.length}
+              prs={prHits.map((h) => ({
+                exerciseName: h.exerciseName,
+                type: h.type,
+                newValue: h.newValue,
+                previousValue: h.previousValue,
+              }))}
+              streakDays={streakDays}
+              exercises={exerciseList}
+            />
+            <Link
+              href="/"
+              className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-base font-bold text-primary-foreground shadow-cta-strong hover:opacity-95"
+            >
+              Done
+            </Link>
+          </div>
+          </div>
         </div>
       </div>
-    </div>
+    </SummaryDurationProvider>
   );
 }
 
