@@ -4,12 +4,14 @@ import {
   MEMORY_TOOLS,
   PROPOSAL_TOOLS,
   READ_TOOLS,
+  MAX_PROGRAM_DAYS,
   RECENT_WORKOUTS_DEFAULT,
   RECENT_WORKOUTS_MAX,
   buildProposalRequest,
   isMemoryTool,
   isProposalTool,
   recentWorkoutsLimit,
+  resolveDurationDays,
 } from "@/lib/ai/fitbot-tools";
 
 describe("the tool surface", () => {
@@ -179,6 +181,32 @@ describe("list_recent_workouts limit", () => {
 });
 
 describe("propose_start_routine", () => {
+  it("takes a length in whatever unit it was said in", () => {
+    // People say a length in the unit that fits the thought, and the route
+    // takes days. Doing this in the mapper keeps it out of the model's head.
+    expect(resolveDurationDays({ durationDays: 10 })).toBe(10);
+    expect(resolveDurationDays({ durationWeeks: 6 })).toBe(42);
+    expect(resolveDurationDays({ durationMonths: 3 })).toBe(90);
+  });
+
+  it("prefers the more deliberate unit when several arrive", () => {
+    expect(resolveDurationDays({ durationDays: 10, durationWeeks: 6, durationMonths: 3 })).toBe(10);
+    expect(resolveDurationDays({ durationWeeks: 6, durationMonths: 3 })).toBe(42);
+  });
+
+  it("clamps to the longest program the route allows instead of failing", () => {
+    // "Run it all year" deserves the longest program the app can make, not a
+    // 400 from a zod ceiling the user never saw.
+    expect(resolveDurationDays({ durationMonths: 24 })).toBe(MAX_PROGRAM_DAYS);
+    expect(resolveDurationDays({ durationDays: 5000 })).toBe(MAX_PROGRAM_DAYS);
+  });
+
+  it("sends nothing for a length that was not usably given", () => {
+    for (const input of [{}, { durationWeeks: 0 }, { durationDays: -2 }, { durationMonths: "a while" }]) {
+      expect(resolveDurationDays(input)).toBeUndefined();
+    }
+  });
+
   it("turns the weeks people speak in into the days the route takes", () => {
     expect(buildProposalRequest("propose_start_routine", {
       routineId: "r1",
@@ -213,5 +241,18 @@ describe("propose_start_routine", () => {
       });
       expect(req?.body).toEqual({ startDate: "2026-09-23" });
     }
+  });
+});
+
+describe("propose_end_program", () => {
+  it("soft-cancels the running program by its instance id", () => {
+    // The instance and every completed session stay as history; only sessions
+    // from today onward leave the calendar. That is the route's own behaviour,
+    // inherited rather than reimplemented.
+    expect(buildProposalRequest("propose_end_program", { programId: "ri1", summary: "End it" })).toEqual({
+      method: "PATCH",
+      path: "/api/routine-instances/ri1",
+      body: { status: "cancelled" },
+    });
   });
 });

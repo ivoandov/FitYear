@@ -79,6 +79,9 @@ async function getActiveProgram(userId: string) {
   return {
     active: true,
     routineId: adherence.routineId,
+    // The instance, which is what ending a program acts on. Without it the
+    // model could see a program running and had no way to name it.
+    programId: adherence.instanceId,
     routineName: adherence.summary.routineName,
     sessionsCompleted: adherence.summary.sessionsCompleted,
     // "No sessions yet" and "no changes" are different statements and the model

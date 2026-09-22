@@ -40,6 +40,31 @@ import type Anthropic from "@anthropic-ai/sdk";
  * for approval is still a coach with amnesia.
  */
 
+/** The route's own ceiling: a program may run up to a year. */
+export const MAX_PROGRAM_DAYS = 366;
+
+/**
+ * A length in whatever unit it was said in, as days.
+ *
+ * Days win over weeks over months when more than one arrives, because the
+ * smaller unit is the more deliberate one. A month is 30 days: close enough to
+ * a calendar month for a training block, and predictable, which matters more
+ * here than exactness. Over the ceiling clamps rather than fails - a program
+ * as long as the app allows is a better answer to "run it all year" than a 400.
+ */
+export function resolveDurationDays(input: Record<string, unknown>): number | undefined {
+  const asCount = (v: unknown) => {
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : undefined;
+  };
+  const days = asCount(input.durationDays);
+  const weeks = asCount(input.durationWeeks);
+  const months = asCount(input.durationMonths);
+  const total = days ?? (weeks != null ? weeks * 7 : months != null ? months * 30 : undefined);
+  if (total == null) return undefined;
+  return Math.min(total, MAX_PROGRAM_DAYS);
+}
+
 /** Which endpoint the client calls when the user approves a proposal. */
 export type ProposalRequest = {
   method: "POST" | "PUT" | "PATCH" | "DELETE";
@@ -299,9 +324,23 @@ export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "propose_end_program",
+    description:
+      "Propose ENDING the program that is currently running: it stops tracking against it and clears the sessions it had scheduled from today onward, keeping every workout already trained as history. Use it when the user is done with a block, or when they want to run a routine again and that same routine is still running - end it first, then propose_start_routine. programId is the id get_active_program returns.",
+    input_schema: {
+      type: "object",
+      properties: {
+        programId: { type: "string" },
+        summary: { type: "string", description: "One sentence the user will read before approving." },
+      },
+      required: ["programId", "summary"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "propose_start_routine",
     description:
-      "Propose STARTING a routine: it schedules the routine's days across the calendar from a start date and creates the program that tracks progress against it. This is also how a finished routine is RUN AGAIN, and how a program is made longer - starting it again with a bigger durationWeeks is what extends it. The routine must not already be running (list_routines says which is); a running one answers 409 and must be finished or cancelled by the user first. Omit durationWeeks to use the routine's own default length.",
+      "Propose STARTING a routine: it schedules the routine's days across the calendar from a start date and creates the program that tracks progress against it. This is also how a finished routine is RUN AGAIN, and how a longer block is set up - starting it again with a longer duration IS the extension. Say the length in whatever unit the user used: durationDays, durationWeeks or durationMonths (give exactly one; a month counts as 30 days, and the longest a program can run is 12 months). Omit all three to use the routine's own default length. The routine must not already be running: list_routines says which is, and propose_end_program ends it first.",
     input_schema: {
       type: "object",
       properties: {
@@ -310,10 +349,12 @@ export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
           type: "string",
           description: "The calendar day it begins, YYYY-MM-DD, in the user's own dates. Today or later.",
         },
+        durationDays: { type: "integer", description: "Length in days, when that is how the user said it." },
         durationWeeks: {
           type: "integer",
-          description: "How many WEEKS to schedule. Whole weeks, because the rotation repeats on weeks.",
+          description: "Length in WEEKS. Prefer this one: the rotation repeats on whole weeks.",
         },
+        durationMonths: { type: "integer", description: "Length in months, counted as 30 days each." },
         summary: { type: "string", description: "One sentence the user will read before approving." },
       },
       required: ["routineId", "startDate", "summary"],
@@ -497,14 +538,21 @@ export function buildProposalRequest(
         },
       };
     }
+    case "propose_end_program":
+      return {
+        method: "PATCH",
+        path: `/api/routine-instances/${input.programId}`,
+        // A soft cancel: the instance and every completed session stay as
+        // history, and only sessions from today onward leave the calendar.
+        body: { status: "cancelled" },
+      };
     case "propose_start_routine": {
-      // Weeks in, days out. The model and the user talk in weeks; the route
-      // takes days, and its own repetition logic lays the rotation out across
-      // whole weeks. A non-numeric or absent value sends nothing, which the
+      // Days, weeks or months in; days out. People say a length in whichever
+      // unit fits the thought ("another month", "six weeks", "ten days") and
+      // the route takes days, so the conversion belongs here rather than in
+      // the model's head. An absent or unusable value sends nothing, which the
       // route reads as the routine's own default length rather than zero days.
-      const weeks = Number(input.durationWeeks);
-      const durationDays =
-        Number.isFinite(weeks) && weeks >= 1 ? Math.floor(weeks) * 7 : undefined;
+      const durationDays = resolveDurationDays(input);
       return {
         method: "POST",
         path: `/api/routines/${input.routineId}/start`,
