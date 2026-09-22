@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { hasRunItsCourse } from "@/lib/routine-completion";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
 import {
   createCalendarEvent,
@@ -190,7 +191,26 @@ export const POST = handle(async (request: NextRequest) => {
             eq(routineInstances.id, scheduledRoutineInstanceId),
             eq(routineInstances.userId, user.id),
           ),
-        ),
+        )
+        // Retire the program when this was its last session. The bump stays a
+        // single atomic statement and the decision reads the row it returns,
+        // so the rule lives in `hasRunItsCourse` alone rather than being
+        // written a second time as SQL that could drift from it.
+        .returning()
+        .then(async ([instance]) => {
+          if (!instance || instance.status !== "active") return;
+          if (!hasRunItsCourse(instance)) return;
+          await db
+            .update(routineInstances)
+            .set({ status: "completed" })
+            .where(
+              and(
+                eq(routineInstances.id, instance.id),
+                eq(routineInstances.userId, user.id),
+                eq(routineInstances.status, "active"),
+              ),
+            );
+        }),
     );
   }
 

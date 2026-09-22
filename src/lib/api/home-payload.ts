@@ -1,5 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { after } from "next/server";
 import { db } from "@/lib/db";
+import { scheduledDateKey, localDateKeyInZone } from "@/lib/date";
+import { hasRunOutOfDays } from "@/lib/routine-completion";
+import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   routineInstances,
   scheduledWorkouts,
@@ -49,9 +53,41 @@ export function loadRoutineInstances(userId: string) {
     .where(eq(routineInstances.userId, userId));
 }
 
-export function loadActiveRoutineInstances(userId: string) {
-  return db
-    .select()
+/**
+ * The programs actually running, which is not the same as the rows marked
+ * active.
+ *
+ * A program also ends by being abandoned: its last planned day passes and
+ * nothing is left on the calendar, so no future session can arrive to finish
+ * the count. Nothing used to notice, so a block that ended weeks ago still
+ * presented itself as the current one on Home, in the Routines card and to
+ * FitBot - and restarting that same routine answered 409.
+ *
+ * Retiring it is a WRITE, so it happens in `after()`: the caller is Home's
+ * first paint, and this must not add a round trip to it. The row is left out of
+ * the answer immediately either way, so the screen is right on this render
+ * rather than the next one.
+ */
+export async function loadActiveRoutineInstances(userId: string) {
+  const rows = await db
+    .select({
+      instance: routineInstances,
+      // One statement rather than a second query per instance: Home pays for
+      // this on every paint.
+      //
+      // Table names are written out rather than interpolated as Drizzle column
+      // refs. Inside a raw correlated subquery Drizzle emits them UNQUALIFIED,
+      // so `${scheduledWorkouts.routineInstanceId} = ${routineInstances.id}`
+      // became `"routine_instance_id" = "id"` - both resolved to the INNER
+      // table, the condition was never true, and every program read as having
+      // nothing scheduled. It typechecks, builds, and silently counts zero.
+      upcoming: sql<number>`(
+        select count(*) from scheduled_workouts sw
+        where sw.routine_instance_id = routine_instances.id
+          and sw.user_id = routine_instances.user_id
+          and sw.date >= current_date
+      )`.as("upcoming"),
+    })
     .from(routineInstances)
     .where(
       and(
@@ -59,6 +95,35 @@ export function loadActiveRoutineInstances(userId: string) {
         eq(routineInstances.status, "active"),
       ),
     );
+
+  const todayKey = localDateKeyInZone(new Date(), await viewerTimeZone());
+  const finished = rows.filter((r) =>
+    hasRunOutOfDays({
+      endDateKey: r.instance.endDate ? scheduledDateKey(r.instance.endDate) : null,
+      todayKey,
+      upcomingSessions: Number(r.upcoming ?? 0),
+    }),
+  );
+
+  if (finished.length > 0) {
+    after(async () => {
+      for (const r of finished) {
+        await db
+          .update(routineInstances)
+          .set({ status: "completed" })
+          .where(
+            and(
+              eq(routineInstances.id, r.instance.id),
+              eq(routineInstances.userId, userId),
+              eq(routineInstances.status, "active"),
+            ),
+          );
+      }
+    });
+  }
+
+  const done = new Set(finished.map((r) => r.instance.id));
+  return rows.filter((r) => !done.has(r.instance.id)).map((r) => r.instance);
 }
 
 /**
