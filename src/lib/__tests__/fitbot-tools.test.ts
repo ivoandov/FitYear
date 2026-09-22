@@ -177,3 +177,41 @@ describe("list_recent_workouts limit", () => {
     expect(recentWorkoutsLimit(4.9)).toBe(4);
   });
 });
+
+describe("propose_start_routine", () => {
+  it("turns the weeks people speak in into the days the route takes", () => {
+    expect(buildProposalRequest("propose_start_routine", {
+      routineId: "r1",
+      startDate: "2026-09-23",
+      durationWeeks: 8,
+      summary: "Run it again for 8 weeks",
+    })).toEqual({
+      method: "POST",
+      path: "/api/routines/r1/start",
+      body: { startDate: "2026-09-23", durationDays: 56 },
+    });
+  });
+
+  it("sends no duration at all when the model did not name one", () => {
+    // Absent must reach the route as absent, which it reads as the routine's
+    // own default length. A zero would schedule nothing.
+    const req = buildProposalRequest("propose_start_routine", {
+      routineId: "r1",
+      startDate: "2026-09-23",
+      summary: "Start it",
+    });
+    expect(req?.body).toEqual({ startDate: "2026-09-23" });
+  });
+
+  it("ignores a duration that is not a usable number of weeks", () => {
+    for (const durationWeeks of [0, -3, "soon", null, Number.NaN]) {
+      const req = buildProposalRequest("propose_start_routine", {
+        routineId: "r1",
+        startDate: "2026-09-23",
+        durationWeeks,
+        summary: "Start it",
+      });
+      expect(req?.body).toEqual({ startDate: "2026-09-23" });
+    }
+  });
+});

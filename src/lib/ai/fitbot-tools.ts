@@ -299,6 +299,28 @@ export const PROPOSAL_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "propose_start_routine",
+    description:
+      "Propose STARTING a routine: it schedules the routine's days across the calendar from a start date and creates the program that tracks progress against it. This is also how a finished routine is RUN AGAIN, and how a program is made longer - starting it again with a bigger durationWeeks is what extends it. The routine must not already be running (list_routines says which is); a running one answers 409 and must be finished or cancelled by the user first. Omit durationWeeks to use the routine's own default length.",
+    input_schema: {
+      type: "object",
+      properties: {
+        routineId: { type: "string" },
+        startDate: {
+          type: "string",
+          description: "The calendar day it begins, YYYY-MM-DD, in the user's own dates. Today or later.",
+        },
+        durationWeeks: {
+          type: "integer",
+          description: "How many WEEKS to schedule. Whole weeks, because the rotation repeats on weeks.",
+        },
+        summary: { type: "string", description: "One sentence the user will read before approving." },
+      },
+      required: ["routineId", "startDate", "summary"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "propose_program_resync",
     description:
       "Propose pushing a routine's current contents onto the sessions already scheduled from today onward. Only offer this after a routine change, and only when a program is running. Set removeOrphaned when the change dropped a day and its already-scheduled sessions should go with it; leave it false to keep them on the calendar.",
@@ -472,6 +494,23 @@ export function buildProposalRequest(
               exercises: day.exercises ?? [],
             };
           }),
+        },
+      };
+    }
+    case "propose_start_routine": {
+      // Weeks in, days out. The model and the user talk in weeks; the route
+      // takes days, and its own repetition logic lays the rotation out across
+      // whole weeks. A non-numeric or absent value sends nothing, which the
+      // route reads as the routine's own default length rather than zero days.
+      const weeks = Number(input.durationWeeks);
+      const durationDays =
+        Number.isFinite(weeks) && weeks >= 1 ? Math.floor(weeks) * 7 : undefined;
+      return {
+        method: "POST",
+        path: `/api/routines/${input.routineId}/start`,
+        body: {
+          startDate: input.startDate,
+          ...(durationDays !== undefined ? { durationDays } : {}),
         },
       };
     }
