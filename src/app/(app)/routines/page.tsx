@@ -23,6 +23,7 @@ import type { Routine, RoutineEntry, WorkoutTemplate, RoutineInstance } from "@/
 import type { Exercise } from "@/data/exercises";
 import { RoutineEditDialog } from "@/components/RoutineEditDialog";
 import { RoutineDayWeights } from "@/components/RoutineDayWeights";
+import { ProgramDayList, type ProgramListDay } from "@/components/ProgramDayList";
 import { describeRule, normalizeRule, type MaybeRule } from "@/lib/progression";
 import { displayToLbs, lbsToDisplay } from "@/lib/units";
 
@@ -552,6 +553,55 @@ export default function RoutinesPage() {
     });
   };
 
+  /**
+   * The routine a person is LOOKING at.
+   *
+   * Ivo, 2026-09-22: "When I wanted to hit on the routine in the routines tab,
+   * it doesn't really open it. It just selects the text as if I were to try to
+   * select text on a browser on a phone. I had to hit the three dots and then
+   * click on Edit Routine. Even then I had to scroll down and I still couldn't
+   * really see what the exercises for each day were." The card was a plain div
+   * with no handler, so a tap did nothing and a long press selected text - and
+   * there was no read-only view of a routine anywhere in the app.
+   */
+  const [detailRoutine, setDetailRoutine] = useState<RoutineWithEntries | null>(null);
+
+  /**
+   * The full routine, fetched when one is opened.
+   *
+   * The LIST deliberately ships a compact entries projection with no exercises
+   * jsonb, so every routine's whole program does not travel just to draw the
+   * cards. The detail view is the one place that needs them, so it asks for
+   * that routine alone.
+   */
+  const { data: detailFull } = useQuery<RoutineWithEntries>({
+    queryKey: [`/api/routines/${detailRoutine?.id}`],
+    enabled: !!detailRoutine,
+  });
+
+  /** A routine's days in the shape the shared day list renders. */
+  const detailDays = (routine: RoutineWithEntries | null): ProgramListDay[] => {
+    if (!routine) return [];
+    const entries = [...(routine.entries ?? [])].sort((a, b) => a.dayIndex - b.dayIndex);
+    return entries.map((entry) => {
+      // A day is either inline exercises (FitBot, import) or a template
+      // reference (hand-built), and the template is what holds the exercises in
+      // the second case - looking only at the entry is why a hand-built routine
+      // read as a list of empty day names.
+      const inline = (entry.exercises ?? []) as ProgramListDay["exercises"];
+      const template = entry.workoutTemplateId
+        ? workoutTemplates.find((t) => t.id === entry.workoutTemplateId)
+        : undefined;
+      const fromTemplate = ((template?.exercises ?? []) as unknown as ProgramListDay["exercises"]) ?? [];
+      return {
+        dayIndex: entry.dayIndex,
+        workoutName: entry.workoutName || template?.name || `Day ${entry.dayIndex}`,
+        isRest: false,
+        exercises: inline.length > 0 ? inline : fromTemplate,
+      };
+    });
+  };
+
   const handleDurationChange = (newDuration: number) => {
     setRoutineDuration(newDuration);
     setRoutineEntries(prev => prev.filter(e => e.dayIndex <= newDuration));
@@ -668,7 +718,14 @@ export default function RoutinesPage() {
     return (
       <div key={routine.id} className="card-elevated p-4" data-testid={`card-routine-${routine.id}`}>
         <div className="flex items-start justify-between gap-2.5">
-          <div className="min-w-0 flex-1">
+          {/* A real button, not a div: a tap opens the routine, and select-none
+              stops a press turning into a text selection on a phone. */}
+          <button
+            type="button"
+            onClick={() => setDetailRoutine(routine as RoutineWithEntries)}
+            data-testid={`button-open-routine-${routine.id}`}
+            className="min-w-0 flex-1 select-none text-left"
+          >
             <div className="truncate text-[17px] font-bold text-foreground">{routine.name}</div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {isFitBotRoutine(routine) && (
@@ -696,7 +753,7 @@ export default function RoutinesPage() {
                 </span>
               )}
             </div>
-          </div>
+          </button>
           {isOwner && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1007,6 +1064,71 @@ export default function RoutinesPage() {
             )}
 
         {/* Routine builder */}
+        {/* Reading a routine: every day, every exercise, and the three things
+            worth doing from here. Read-only on purpose - editing is its own
+            screen, and a person tapping a routine is usually asking "what is
+            in this?", which had no answer anywhere in the app. */}
+        <Dialog open={!!detailRoutine} onOpenChange={(open) => !open && setDetailRoutine(null)}>
+          <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col" data-testid="dialog-routine-detail">
+            <DialogHeader>
+              <DialogTitle>{detailRoutine?.name}</DialogTitle>
+              <DialogDescription>
+                {detailDays(detailFull ?? null).length} training days ·{" "}
+                {durationLabel(detailRoutine?.defaultDurationDays ?? 0)}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <ProgramDayList
+                days={detailDays(detailFull ?? null)}
+                weightUnit={weightUnit}
+                emptyLabel={detailFull ? "This routine has no days yet. Edit it to add some." : "Loading..."}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-t border-divider pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const routine = detailRoutine;
+                  setDetailRoutine(null);
+                  if (routine) openApplyRoutine(routine);
+                }}
+                className={CTA_DIALOG}
+                data-testid="button-detail-start"
+              >
+                <Play className="h-4 w-4 fill-current" />
+                Start this routine
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const routine = detailRoutine;
+                  setDetailRoutine(null);
+                  if (routine) openEditRoutine(routine);
+                }}
+                className={BTN_SECONDARY}
+                data-testid="button-detail-edit"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const routine = detailRoutine;
+                  setDetailRoutine(null);
+                  if (routine) setAiEditRoutine({ id: routine.id, name: routine.name });
+                }}
+                className={`${BTN_SECONDARY} gap-2`}
+                data-testid="button-detail-ask-fitbot"
+              >
+                <Sparkles className="h-4 w-4" />
+                Ask FitBot to change it
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isBuilderOpen} onOpenChange={(open) => !open && closeBuilder()}>
           <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col" data-testid="dialog-routine-builder">
             <DialogHeader>

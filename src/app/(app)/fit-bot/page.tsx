@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { apiRequest, describeApiError } from "@/lib/queryClient";
 import { assembleProgram } from "@/lib/program-assembler";
+import { ProgramDayList } from "@/components/ProgramDayList";
+import type { WeightUnit } from "@/lib/units";
 import type { Skeleton, PhaseVariety, Program } from "@/lib/program-schema";
 
 // The refresh's neon primary CTA (same treatment as the single-workout flow).
@@ -46,7 +48,7 @@ type WizardStep =
   | "imbalances"
   | "injuries"
   | "summary";
-type Screen = WizardStep | "building" | "preview";
+type Screen = WizardStep | "building" | "review" | "preview";
 
 type StepStatus = "queued" | "building" | "done" | "failed";
 interface PhaseState {
@@ -61,6 +63,7 @@ interface UserSettings {
   onboardingDaysPerWeek?: number | null;
   onboardingProgramLength?: number | null;
   fitbotDefaultFocus?: string | null;
+  weightUnit?: string | null;
 }
 
 // The wizard's step path is dynamic: imbalances/injuries only appear if the user
@@ -103,6 +106,24 @@ export default function FitBotProgramPage() {
   const [phases, setPhases] = useState<PhaseState[]>([]);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  /**
+   * The program as built, BEFORE anything is written.
+   *
+   * The builder used to save the moment generation finished and then show a
+   * list of day names, so the only way to change anything was to accept a
+   * program you could not read. Now the draft lives here, the review screen
+   * renders it in full, and refining it is a conversation. Saving is a button.
+   */
+  const [draft, setDraft] = useState<{
+    skeleton: Skeleton;
+    variety: (PhaseVariety | null)[];
+    program: Program;
+  } | null>(null);
+  const [refineTurns, setRefineTurns] = useState<
+    { role: "user" | "fitbot"; text: string }[]
+  >([]);
+  const [refining, setRefining] = useState(false);
+  const [refineError, setRefineError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     routineId: string;
     name: string;
@@ -191,18 +212,90 @@ export default function FitBotProgramPage() {
         varietyRef.current[i] = await buildPhaseCall(sk, i);
         setPhaseStatus(i, "done");
       } catch (e) {
-        setPhaseStatus(i, "failed", describeApiError(e));
-        return;
+        // One silent retry before handing the user a failure. Ivo hit this
+        // building his first program: a single phase failed, he pressed retry,
+        // and it worked - which is the signature of a transient model error
+        // (a 529 overloaded), not of anything he did. The phase endpoint is
+        // unmetered and bound to an already-charged build, so a retry costs
+        // seconds rather than a quota unit.
+        try {
+          varietyRef.current[i] = await buildPhaseCall(sk, i);
+          setPhaseStatus(i, "done");
+          continue;
+        } catch {
+          setPhaseStatus(i, "failed", describeApiError(e));
+          return;
+        }
       }
     }
-    await finalize(sk);
+    review(sk);
+  }
+
+  /**
+   * Generation finished. Show it; do not save it.
+   *
+   * Ivo, 2026-09-22: "The user needs to feel like they are conversing and
+   * iterating and have the full ability to see what FitBot is making,
+   * recommend any changes, and make any tweaks before the routine is saved."
+   */
+  function review(sk: Skeleton) {
+    const program = assembleProgram({ skeleton: sk, variety: varietyRef.current });
+    setDraft({ skeleton: sk, variety: [...varietyRef.current], program });
+    setRefineTurns([]);
+    setRefineError(null);
+    setScreen("review");
+  }
+
+  /** One conversational change to the unsaved draft. */
+  async function refine(instruction: string) {
+    if (!draft || refining) return;
+    setRefining(true);
+    setRefineError(null);
+    setRefineTurns((t) => [...t, { role: "user", text: instruction }]);
+    try {
+      const res = await apiRequest("POST", "/api/ai/refine-program", {
+        skeleton: draft.skeleton,
+        variety: draft.variety.filter((v): v is PhaseVariety => v != null),
+        instruction,
+        context: buildContext(),
+      });
+      const data = (await res.json()) as {
+        skeleton: Skeleton;
+        variety: PhaseVariety[];
+        summary: string;
+      };
+      // Re-assembled in code, so every week's loads are recomputed the same way
+      // they were at build time rather than by the model.
+      const program = assembleProgram({ skeleton: data.skeleton, variety: data.variety });
+      setDraft({ skeleton: data.skeleton, variety: data.variety, program });
+      setRefineTurns((t) => [...t, { role: "fitbot", text: data.summary }]);
+    } catch (e) {
+      setRefineError(describeApiError(e));
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  /** What they asked for at the start, so a refine does not undo the brief. */
+  function buildContext(): string {
+    return [
+      focus.length ? `Focus: ${focus.join(", ")}.` : "",
+      equipment.length ? `Equipment: ${equipment.join(", ")}.` : "",
+      experience ? `Experience: ${experience}.` : "",
+      structureNotes ? `Structure notes: ${structureNotes}` : "",
+      injuryNotes ? `Injuries: ${injuryNotes}` : "",
+      imbalanceNotes ? `Imbalances: ${imbalanceNotes}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 4000);
   }
 
   async function finalize(sk: Skeleton) {
     setFinalizing(true);
     setFinalizeError(null);
     try {
-      const program = assembleProgram({ skeleton: sk, variety: varietyRef.current });
+      const program = draft?.program ?? assembleProgram({ skeleton: sk, variety: varietyRef.current });
       const res = await apiRequest("POST", "/api/ai/save-program", {
         program,
         focus,
@@ -299,9 +392,23 @@ export default function FitBotProgramPage() {
             onRetryPhase={retryPhase}
             onRetrySave={retrySave}
           />
+        ) : screen === "review" && draft ? (
+          <ReviewScreen
+            program={draft.program}
+            weightUnit={(userSettings?.weightUnit === "kg" ? "kg" : "lbs") as WeightUnit}
+            turns={refineTurns}
+            refining={refining}
+            error={refineError}
+            saving={finalizing}
+            saveError={finalizeError}
+            onRefine={refine}
+            onSave={() => finalize(draft.skeleton)}
+            onClose={close}
+          />
         ) : screen === "preview" && result ? (
           <PreviewScreen
             result={result}
+            weightUnit={(userSettings?.weightUnit === "kg" ? "kg" : "lbs") as WeightUnit}
             onOpen={() => router.push("/routines")}
             onClose={() => router.push("/routines")}
           />
@@ -981,11 +1088,170 @@ function ChecklistRow({
 
 /* --------------------------- program ready (9d) ------------------------ */
 
+/**
+ * The program, in full, before anything is written.
+ *
+ * Ivo built one end to end on 2026-09-22 and this screen is his verdict: "when
+ * the routine was finished, there was nowhere to actually see all of the
+ * exercises... I felt a little bit like I had to accept the routine and hope
+ * that I could then go into the individual routine tab and change it there."
+ *
+ * So: every day with its exercises on one side, a conversation with FitBot on
+ * the other, and a save button that is the only thing that writes. Desktop puts
+ * them side by side; mobile stacks the chat under the program, because the
+ * program is the thing being judged and it should be what you land on.
+ */
+function ReviewScreen({
+  program,
+  weightUnit,
+  turns,
+  refining,
+  error,
+  saving,
+  saveError,
+  onRefine,
+  onSave,
+  onClose,
+}: {
+  program: Program;
+  weightUnit: WeightUnit;
+  turns: { role: "user" | "fitbot"; text: string }[];
+  refining: boolean;
+  error: string | null;
+  saving: boolean;
+  saveError: string | null;
+  onRefine: (instruction: string) => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [input, setInput] = useState("");
+  // One rotation is the whole shape of the program; the loads climb from here
+  // week by week, which the line below says rather than repeating 60 days.
+  const cycle = program.days.slice(0, program.cycleLength);
+  const training = cycle.filter((d) => !d.isRest);
+
+  function send() {
+    const text = input.trim();
+    if (!text || refining) return;
+    setInput("");
+    onRefine(text);
+  }
+
+  return (
+    <>
+      <TopBar onClose={onClose} label="Built by FitBot" backIcon right="Not saved yet" />
+      <div className="flex-1 overflow-y-auto px-5 pb-28">
+        <div className="mt-2">
+          <h1 className="text-[25px] font-bold leading-tight tracking-[-0.02em]">{program.name}</h1>
+          <div className="mt-1.5 font-mono text-xs tracking-[0.06em] text-muted-foreground">
+            {training.length} WORKOUTS · {program.cycleLength}-DAY CYCLE · {program.days.length} DAYS
+          </div>
+          <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+            This is one rotation. It repeats for the whole program, and the working
+            weights climb each week. Nothing is saved until you say so - tell FitBot
+            what to change first.
+          </p>
+        </div>
+
+        <div className="mt-4 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5">
+          <div className="min-w-0">
+            <ProgramDayList days={cycle} weightUnit={weightUnit} />
+          </div>
+
+          <div className="mt-5 lg:mt-0">
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+              Change anything
+            </div>
+            <div className="mt-2 space-y-2" data-testid="refine-transcript">
+              {turns.length === 0 && (
+                <p className="text-[13px] leading-relaxed text-muted-foreground">
+                  Ask in your own words. &quot;Swap the barbell squat, my knee hates
+                  it.&quot; &quot;Day 3 is too long.&quot; &quot;More upper body pulling.&quot;
+                  &quot;I have an L5-S1 disc herniation, work around it.&quot;
+                </p>
+              )}
+              {turns.map((t, i) => (
+                <div
+                  key={i}
+                  data-testid={`refine-turn-${i}`}
+                  className={
+                    t.role === "user"
+                      ? "rounded-2xl rounded-br-md bg-primary-dim px-3.5 py-2.5 text-[13px] text-foreground"
+                      : "rounded-2xl rounded-bl-md border bg-white/[0.02] px-3.5 py-2.5 text-[13px] text-muted-foreground"
+                  }
+                >
+                  {t.text}
+                </div>
+              ))}
+              {refining && (
+                <div className="rounded-2xl rounded-bl-md border bg-white/[0.02] px-3.5 py-2.5 text-[13px] text-muted-foreground">
+                  Rewriting the program...
+                </div>
+              )}
+              {error && (
+                <div className="rounded-xl border-[1.5px] border-yellow bg-primary-dim px-3.5 py-2.5 text-[13px] text-foreground">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                rows={2}
+                placeholder="Tell FitBot what to change"
+                data-testid="input-refine-program"
+                className="min-w-0 flex-1 resize-none rounded-xl border-strong bg-input px-4 py-3 text-sm outline-none placeholder:text-tertiary-foreground focus:border-yellow focus:bg-input-focus"
+              />
+              <button
+                type="button"
+                onClick={send}
+                disabled={!input.trim() || refining}
+                data-testid="button-send-refine"
+                className="h-[46px] shrink-0 self-end rounded-xl border-strong bg-white/[0.04] px-4 text-sm font-semibold text-foreground disabled:text-tertiary-foreground"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Saving is the only thing that writes, so it is the only primary action. */}
+      <div className="sticky bottom-0 border-t border-divider bg-background/95 px-5 py-3 backdrop-blur-sm">
+        {saveError && (
+          <p className="mb-2 text-[13px] text-foreground" data-testid="text-save-error">
+            {saveError}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving || refining}
+          data-testid="button-save-program"
+          className="flex h-[52px] w-full items-center justify-center rounded-2xl bg-primary text-[15px] font-bold text-primary-foreground shadow-cta disabled:opacity-60"
+        >
+          {saving ? "Saving..." : "Save to my routines"}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function PreviewScreen({
   result,
+  weightUnit,
   onOpen,
   onClose,
 }: {
+  weightUnit: WeightUnit;
   result: {
     name: string;
     cycleLength: number;
@@ -1029,26 +1295,7 @@ function PreviewScreen({
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
             Your rotation
           </div>
-          <div className="card-elevated overflow-hidden">
-            {shown.map((d, i) => (
-              <div
-                key={i}
-                className={`flex items-center gap-3 px-4 py-3 ${
-                  i < shown.length - 1 ? "border-b border-divider" : ""
-                }`}
-              >
-                <div className="w-12 font-mono text-[11px] font-bold uppercase tracking-[0.06em] text-tertiary-foreground">
-                  Day {i + 1}
-                </div>
-                <div className={`flex-1 text-[15px] font-semibold ${d.isRest ? "text-tertiary-foreground" : ""}`}>
-                  {d.isRest ? "Rest" : d.workoutName}
-                </div>
-                {!d.isRest ? (
-                  <div className="font-mono text-xs text-tertiary-foreground">{d.exercises.length} ex</div>
-                ) : null}
-              </div>
-            ))}
-          </div>
+          <ProgramDayList days={shown} weightUnit={weightUnit} />
         </div>
       </div>
 

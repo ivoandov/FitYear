@@ -37,7 +37,10 @@ test("deleting an account removes the user's data and KEEPS their shared exercis
   expect(await countMine()).toBeGreaterThan(0);
 
   await page.goto("/settings");
-  await page.getByTestId("button-delete-account").click();
+  // Through `main`: a server-rendered page briefly holds a second copy of its
+  // tree in a hidden container while React streams it, and getByTestId matches
+  // hidden elements, so a bare id can resolve to two and fail strict mode.
+  await page.locator("main").getByTestId("button-delete-account").click();
 
   // The confirm button stays disabled until the word is typed exactly: this is
   // instant and irreversible, so a mis-tap must not be able to reach it.

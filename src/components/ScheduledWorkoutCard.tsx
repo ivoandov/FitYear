@@ -19,6 +19,8 @@ interface ScheduledWorkoutCardProps {
   /** Caller-computed badge row (Done / Past Due / routine / Original). */
   badges?: React.ReactNode;
   onStart: (displayId: string) => void;
+  /** Tapping the card itself. Falls back to onStart, which opens the preview. */
+  onOpen?: (displayId: string) => void;
   onEdit: (displayId: string) => void;
   onEditTemplate: (templateId: string) => void;
   onSkip: (workoutId: string) => void;
@@ -36,6 +38,7 @@ export function ScheduledWorkoutCard({
   titleExtraClass = "",
   badges,
   onStart,
+  onOpen,
   onEdit,
   onEditTemplate,
   onSkip,
@@ -48,10 +51,26 @@ export function ScheduledWorkoutCard({
           imageUrl ? "bg-card" : "card-elevated"
         }`}
       >
+        {/* The whole card opens the workout. Ivo, 2026-09-22: "tapping a workout
+            on the homepage should also open a preview of that workout's
+            exercises (not just tapping the play button)". It sits BEHIND the
+            menu and the play button (z-10 on both) so those keep their own
+            jobs, and select-none stops a press becoming a text selection. */}
+        <button
+          type="button"
+          onClick={() => (onOpen ?? onStart)(workout.displayId)}
+          aria-label={`Open ${workout.name}`}
+          data-testid={`button-open-workout-${workout.displayId}`}
+          className="absolute inset-0 z-[1] select-none"
+        />
         {imageUrl && (
           <>
-            <img src={imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+            <img
+              src={imageUrl}
+              alt=""
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
           </>
         )}
         <div className="relative z-10 flex items-start justify-between p-4">
@@ -76,7 +95,7 @@ export function ScheduledWorkoutCard({
           />
         </div>
         {!imageUrl && (
-          <div className="flex flex-1 items-center justify-center px-4">
+          <div className="pointer-events-none relative z-[2] flex flex-1 items-center justify-center px-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-[14px] bg-primary-dim">
               <Dumbbell className="h-7 w-7 text-primary" />
             </div>
