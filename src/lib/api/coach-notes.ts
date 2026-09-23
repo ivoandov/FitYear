@@ -5,6 +5,7 @@ import { scheduledDateFromKey, scheduledDateKey } from "@/lib/date";
 import {
   MAX_ACTIVE_NOTES,
   MAX_NOTE_LENGTH,
+  houseDashes,
   activeNotes,
   findDuplicate,
   isCoachNoteKind,
@@ -82,7 +83,7 @@ function validate(
   if (!isCoachNoteKind(kind)) {
     return `kind must be one of goal, constraint, preference, context, agreement.`;
   }
-  const text = typeof content === "string" ? content.trim() : "";
+  const text = typeof content === "string" ? houseDashes(content).trim() : "";
   if (!text) return "content cannot be empty.";
   if (text.length > MAX_NOTE_LENGTH) {
     return `content must be ${MAX_NOTE_LENGTH} characters or fewer.`;

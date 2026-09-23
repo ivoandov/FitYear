@@ -1,3 +1,5 @@
+import { saveCoachDocument } from "@/lib/api/coach-documents";
+import { MAX_DOCUMENT_LENGTH } from "@/lib/coach-documents";
 import {
   createCoachNote,
   deleteCoachNote,
@@ -78,6 +80,28 @@ export async function runMemoryTool(
         return "There is no note with that id. Check the ids in your memory rather than guessing one.";
       }
       return `Forgotten: "${result.note.content}". Tell them you dropped it.`;
+    }
+
+    case "save_document": {
+      const content = typeof input.content === "string" ? input.content : "";
+      const result = await saveCoachDocument(ctx.userId, {
+        title: typeof input.title === "string" ? input.title : null,
+        content,
+        source: "fitbot",
+        today: ctx.todayKey,
+      });
+      if (result.ok) {
+        return `Saved "${result.document.title}" (id ${result.document.id}) to their documents, ${result.document.characters} characters. It is kept whole and you can read it again with read_document. Now write down what it CHANGES about their training as notes - the document itself is never in front of you unless you go and read it.`;
+      }
+      switch (result.reason) {
+        case "full":
+          return `Their document library is full. Nothing was saved. List what is there and ask which one to drop.`;
+        case "too_long":
+          return `That is longer than ${MAX_DOCUMENT_LENGTH} characters, so it was not saved. Ask them to paste it in parts, or save the part that matters.`;
+        case "empty":
+          return `There was no text to save.`;
+      }
+      break;
     }
 
     default:

@@ -55,6 +55,26 @@ export function isCoachNoteKind(value: unknown): value is CoachNoteKind {
  */
 export const MAX_ACTIVE_NOTES = 60;
 
+/**
+ * House punctuation, applied to every note as it is written.
+ *
+ * Notes are model-written text that renders in Settings and goes back into the
+ * prompt, and this project forbids em and en dashes in anything a person reads.
+ * A real note came back as "...facet arthropathy - confirmed on lumbar MRI"
+ * with an em dash, so the instruction alone is not enough - the same lesson as
+ * the form cues, where a word cap plus a strip is what kept 154 of them clean.
+ *
+ * A dash between spaces becomes a hyphen; one between characters (a rep range
+ * written "8-12", a spinal level, a date) becomes a plain hyphen rather than
+ * disappearing, because in that position it is INPUT and not prose. Documents
+ * are deliberately exempt: a report is stored exactly as its author wrote it.
+ */
+export function houseDashes(text: string): string {
+  return text.replace(/\s*[\u2013\u2014]\s*/g, (match) =>
+    /^\s|\s$/.test(match) ? " - " : "-",
+  );
+}
+
 /** Max characters in one note. A fact, not an essay. */
 export const MAX_NOTE_LENGTH = 400;
 

@@ -42,7 +42,9 @@ export type ReadToolName =
   | "list_upcoming_workouts"
   | "get_body_measurements"
   | "get_personal_records"
-  | "get_settings";
+  | "get_settings"
+  | "list_documents"
+  | "read_document";
 
 function num(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
@@ -408,6 +410,15 @@ export async function runReadTool(
       return getPersonalRecords(ctx.userId, Number(input.limit ?? 20));
     case "get_settings":
       return getSettings(ctx.userId);
+    case "list_documents": {
+      const { listCoachDocuments } = await import("@/lib/api/coach-documents");
+      return listCoachDocuments(ctx.userId);
+    }
+    case "read_document": {
+      const { getCoachDocument } = await import("@/lib/api/coach-documents");
+      const doc = await getCoachDocument(ctx.userId, String(input.documentId ?? ""));
+      return doc ?? { error: "No document with that id. list_documents has the ids." };
+    }
     default:
       return { error: `Unknown tool "${name}".` };
   }

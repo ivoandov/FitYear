@@ -164,6 +164,23 @@ export const READ_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "list_documents",
+    description:
+      "The documents this person has given you: MRI and imaging reports, physio summaries, blood work, plans from a previous coach. Titles and a short preview only, never the text. Check this when their history matters to what you are about to propose - the wording of a report says things the notes distilled from it do not.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "read_document",
+    description:
+      "Read one document in full, by the id list_documents gives. Ask for it when the detail matters: which level was affected, what the surgeon actually restricted, what the previous programme really prescribed.",
+    input_schema: {
+      type: "object",
+      properties: { documentId: { type: "string" } },
+      required: ["documentId"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "get_settings",
     description:
       "The user's preferences: weight unit for display, monthly workout goal, default training focus, time zone, and daysPerWeekTarget - how many days a week they said they can realistically train. Check that before proposing any program: training more days than they said they have is the fastest way to write a plan they will not follow.",
@@ -230,6 +247,20 @@ export const MEMORY_TOOLS: Anthropic.Tool[] = [
         expiresOn: { type: "string", description: "YYYY-MM-DD, or empty string to clear it." },
       },
       required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "save_document",
+    description:
+      "Keep a document they pasted - an imaging report, a physio summary, blood work, a programme from somewhere else - WHOLE, so it can be read again months from now. Pass the text through as they gave it, unedited, with a title naming what it is and when (\"Lumbar MRI, Sept 2026\"). Save it when it carries clinical or programme detail worth returning to; a sentence about how they feel is a memory note, not a document. Saving it is not the end of the job: write down separately, as notes, what it changes about their training, because the document itself is not in front of you unless you read it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        content: { type: "string", description: "The document, verbatim." },
+      },
+      required: ["title", "content"],
       additionalProperties: false,
     },
   },

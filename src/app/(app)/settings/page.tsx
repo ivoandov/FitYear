@@ -32,6 +32,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { enableRestPush, hasRestPush, pushSupported } from "@/lib/push-client";
 import { isNative } from "@/lib/native";
 import { CoachMemoryCard } from "@/components/settings/CoachMemoryCard";
+import { CoachDocumentsCard } from "@/components/settings/CoachDocumentsCard";
 
 interface CalendarInfo {
   id: string;
@@ -402,6 +403,8 @@ export default function SettingsPage() {
         <FitYearGoalsCard />
 
         <CoachMemoryCard />
+
+        <CoachDocumentsCard />
 
         <div className={CARD}>
           <div className={`${EYEBROW} mb-4`}>Workout tracking</div>

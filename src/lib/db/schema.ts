@@ -559,6 +559,28 @@ export const coachNotes = pgTable(
 );
 
 /**
+ * A document somebody gave their coach: an MRI report, a physio summary, a plan
+ * from a previous gym. Stored WHOLE and never rendered into the prompt - what
+ * reaches the prompt is the notes the coach wrote from it. See
+ * `lib/coach-documents.ts` for why the two are different things.
+ */
+export const coachDocuments = pgTable(
+  "coach_documents",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    /** fitbot | user - who put it there, the same distinction notes carry. */
+    source: text("source").notNull().default("user"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("coach_documents_user_id_idx").on(t.userId)],
+);
+
+/**
  * The running conversation with FitBot, one row per user.
  *
  * The transcript used to live only in React state, so closing the tab erased
