@@ -3,12 +3,10 @@
 import { useState } from "react";
 import { ArrowLeft, ClipboardList, Dumbbell, Sparkles } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { MAX_NOTE_LENGTH } from "@/lib/coach-notes";
 import {
   DESTINATION,
-  EQUIPMENT_OPTIONS,
   FLOW,
-  GOAL_OPTIONS,
-  LIMIT_OPTIONS,
   buildCoachNotes,
   monthlyGoalFromDaysPerWeek,
   type Door,
@@ -65,35 +63,6 @@ const DOORS: { key: Door; title: string; blurb: string; icon: typeof Dumbbell }[
   },
 ];
 
-/** Chip styling is shared by all three chip questions. */
-function Chip({
-  label,
-  selected,
-  onClick,
-  testId,
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  testId: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={testId}
-      aria-pressed={selected}
-      className={`rounded-full px-4 py-2 text-sm transition-colors ${
-        selected
-          ? "bg-primary font-bold text-primary-foreground"
-          : "border-strong bg-white/[0.03] font-semibold text-muted-foreground"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 export default function OnboardingPage() {
   const [door, setDoor] = useState<Door | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -101,11 +70,7 @@ export default function OnboardingPage() {
 
   const [unit, setUnit] = useState<"lbs" | "kg">("lbs");
   const [days, setDays] = useState<number | null>(null);
-  const [goalChip, setGoalChip] = useState<string | null>(null);
-  const [goalText, setGoalText] = useState("");
-  const [equipmentChip, setEquipmentChip] = useState<string | null>(null);
-  const [limitChips, setLimitChips] = useState<string[]>([]);
-  const [limitText, setLimitText] = useState("");
+  const [anythingText, setAnythingText] = useState("");
 
   const steps: StepKey[] = door ? FLOW[door] : [];
   const step = steps[stepIndex];
@@ -137,13 +102,7 @@ export default function OnboardingPage() {
       });
 
       if (!opts?.skipped) {
-        const notes = buildCoachNotes({
-          goalChip,
-          goalText,
-          equipmentChip,
-          limitChips,
-          limitText,
-        });
+        const notes = buildCoachNotes({ anythingText });
         await Promise.allSettled(
           notes.map((n) => apiRequest("POST", "/api/coach-notes", n)),
         );
@@ -172,11 +131,6 @@ export default function OnboardingPage() {
     setStepIndex((i) => i - 1);
   }
 
-  function toggleLimit(label: string) {
-    setLimitChips((prev) =>
-      prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label],
-    );
-  }
 
   return (
     <main className="flex min-h-screen flex-col p-5 sm:p-8">
@@ -316,52 +270,45 @@ export default function OnboardingPage() {
           </>
         ) : null}
 
-        {step === "goal" ? (
-          <ChipStep
-            eyebrow={`Step ${stepIndex + 1} of ${steps.length}`}
-            title="What are you working toward?"
-            help="So FitBot's advice is pointed at something."
-            options={GOAL_OPTIONS.map((o) => o.label)}
-            selected={goalChip ? [goalChip] : []}
-            onToggle={(l) => setGoalChip((prev) => (prev === l ? null : l))}
-            testPrefix="goal"
-            text={goalText}
-            onText={setGoalText}
-            placeholder="Or tell me in your own words"
-            onNext={advance}
-          />
-        ) : null}
-
-        {step === "equipment" ? (
-          <ChipStep
-            eyebrow={`Step ${stepIndex + 1} of ${steps.length}`}
-            title="What do you train with?"
-            help="A program you cannot actually perform is worse than none."
-            options={EQUIPMENT_OPTIONS.map((o) => o.label)}
-            selected={equipmentChip ? [equipmentChip] : []}
-            onToggle={(l) => setEquipmentChip((prev) => (prev === l ? null : l))}
-            testPrefix="equipment"
-            onNext={advance}
-          />
-        ) : null}
-
-        {step === "limits" ? (
-          <ChipStep
-            eyebrow={`Step ${stepIndex + 1} of ${steps.length}`}
-            title="Anything I should train around?"
-            help="Injuries or movements that give you trouble. Skip this if there is nothing."
-            options={LIMIT_OPTIONS.map((o) => o.label)}
-            selected={limitChips}
-            onToggle={toggleLimit}
-            testPrefix="limit"
-            text={limitText}
-            onText={setLimitText}
-            placeholder="Anything else worth knowing"
-            onNext={advance}
-            nextLabel={
-              limitChips.length === 0 && !limitText.trim() ? "Nothing to note" : "Finish"
-            }
-          />
+        {step === "anything" ? (
+          <>
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+              Step {stepIndex + 1} of {steps.length}
+            </div>
+            <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.01em]">
+              Tell FitBot about you
+            </h1>
+            {/* An open question, asked like one. The flow used to put an
+                optional "Add notes" box under a chip grid, which nobody reads
+                as an invitation to say what actually matters - Ivo, running it:
+                "it didn't feel like that was the right invocation or place to
+                invite the user to truly share what's on their mind". What is
+                typed here is stored verbatim as a memory, so it is the one
+                moment where somebody's own words survive exactly. */}
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              What you are training for, what you train with, anything that hurts
+              or that you work around, how you like to train. As much or as little
+              as you want - FitBot remembers it and plans around it.
+            </p>
+            <textarea
+              value={anythingText}
+              onChange={(e) => setAnythingText(e.target.value)}
+              rows={7}
+              maxLength={MAX_NOTE_LENGTH}
+              placeholder="Training for a muscle-up this year. Left shoulder gives me trouble overhead. Full gym, but only 45 minutes at lunch."
+              data-testid="input-anything-text"
+              className="mt-4 w-full resize-none rounded-2xl border-strong bg-input px-4 py-3.5 text-sm leading-relaxed text-foreground outline-none placeholder:text-tertiary-foreground focus:border-yellow focus:bg-input-focus"
+            />
+            <p className="mt-2 text-right font-mono text-[10px] uppercase tracking-[0.08em] text-tertiary-foreground">
+              {anythingText.length} / {MAX_NOTE_LENGTH}
+            </p>
+            <PrimaryButton onClick={advance} testId="button-onboarding-next">
+              {anythingText.trim() ? "Finish" : "Nothing to add"}
+            </PrimaryButton>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              You can tell FitBot anything later, in the chat or in Settings.
+            </p>
+          </>
         ) : null}
       </div>
     </main>
@@ -389,72 +336,5 @@ function PrimaryButton({
     >
       {children}
     </button>
-  );
-}
-
-/**
- * Chips with an optional free-text field, which is Ivo's call over chips alone.
- * Chips are what most people will tap; the field is where the answer that
- * actually helps a coach tends to live ("left shoulder, only overhead").
- */
-function ChipStep({
-  eyebrow,
-  title,
-  help,
-  options,
-  selected,
-  onToggle,
-  testPrefix,
-  text,
-  onText,
-  placeholder,
-  onNext,
-  nextLabel = "Continue",
-}: {
-  eyebrow: string;
-  title: string;
-  help: string;
-  options: string[];
-  selected: string[];
-  onToggle: (label: string) => void;
-  testPrefix: string;
-  text?: string;
-  onText?: (v: string) => void;
-  placeholder?: string;
-  onNext: () => void;
-  nextLabel?: string;
-}) {
-  return (
-    <>
-      <div>
-        <div className={`${EYEBROW} mb-2`}>{eyebrow}</div>
-        <h1 className="text-3xl font-bold tracking-[-0.02em] text-foreground">{title}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{help}</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {options.map((label) => (
-          <Chip
-            key={label}
-            label={label}
-            selected={selected.includes(label)}
-            onClick={() => onToggle(label)}
-            testId={`option-${testPrefix}-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`}
-          />
-        ))}
-      </div>
-      {onText ? (
-        <input
-          value={text ?? ""}
-          onChange={(e) => onText(e.target.value)}
-          maxLength={400}
-          placeholder={placeholder}
-          data-testid={`input-${testPrefix}-text`}
-          className="h-12 w-full rounded-2xl border-strong bg-input px-4 text-sm text-foreground placeholder:text-tertiary-foreground"
-        />
-      ) : null}
-      <PrimaryButton onClick={onNext} testId="button-onboarding-next">
-        {nextLabel}
-      </PrimaryButton>
-    </>
   );
 }

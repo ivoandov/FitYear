@@ -18,10 +18,15 @@ describe("the flow", () => {
     expect(FLOW.import).toEqual(["unit"]);
   });
 
-  it("asks the coached user only what the tools cannot read", () => {
-    // Every one of these is unreadable from workout rows. Nothing here asks
-    // about sets, weights or records, which FitBot can already see.
-    expect(FLOW.coach).toEqual(["unit", "days", "goal", "equipment", "limits"]);
+  it("asks the coached user only what nothing else asks", () => {
+    // Two rules at once. Nothing here is readable from workout rows, which
+    // FitBot can already see. And nothing here is asked AGAIN by the program
+    // builder: goal, equipment and limitations moved there, because asking
+    // them twice in two visual styles is what Ivo hit running this for real.
+    expect(FLOW.coach).toEqual(["unit", "days", "anything"]);
+    expect(FLOW.coach).not.toContain("goal");
+    expect(FLOW.coach).not.toContain("equipment");
+    expect(FLOW.coach).not.toContain("limits");
   });
 
   it("does not send the logging user to an empty tracker", () => {
@@ -119,5 +124,24 @@ describe("the stored wording", () => {
     for (const o of [...GOAL_OPTIONS, ...EQUIPMENT_OPTIONS, ...LIMIT_OPTIONS]) {
       expect(o.note.length).toBeLessThanOrEqual(400);
     }
+  });
+});
+
+describe("the open question", () => {
+  it("stores what somebody typed, exactly, as something the coach can read", () => {
+    const notes = buildCoachNotes({
+      anythingText: "  Training for a muscle-up. Left shoulder hates overhead.  ",
+    });
+    // Verbatim apart from the trim: rewriting it would lose the precision that
+    // makes it worth having, which is the same reason the old free-text fields
+    // were stored as their own notes rather than folded into a chip sentence.
+    expect(notes).toEqual([
+      { kind: "context", content: "Training for a muscle-up. Left shoulder hates overhead." },
+    ]);
+  });
+
+  it("writes nothing when it was left empty", () => {
+    expect(buildCoachNotes({ anythingText: "   " })).toEqual([]);
+    expect(buildCoachNotes({})).toEqual([]);
   });
 });

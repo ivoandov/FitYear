@@ -7,6 +7,11 @@ import { handle } from "@/lib/api/handler";
 import { ProgramSchema } from "@/lib/program-schema";
 import { matchExercise, normalizeExerciseName } from "@/lib/exercise-match";
 import { canonicalExerciseName } from "@/lib/exercise-naming";
+import { after } from "next/server";
+import { createCoachNote } from "@/lib/api/coach-notes";
+import { programAnswerNotes } from "@/lib/program-notes";
+import { localDateKeyInZone } from "@/lib/date";
+import { viewerTimeZone } from "@/lib/server-timezone";
 
 const InputSchema = z.object({
   program: ProgramSchema,
@@ -14,6 +19,14 @@ const InputSchema = z.object({
   experience: z.string(),
   programLength: z.number().int().min(7).max(180),
   distinctWorkouts: z.number().int().min(1).max(8).optional(),
+  // What the wizard learned on the way. Optional so an older client still
+  // saves; when present it becomes what FitBot remembers about this person,
+  // which is the half that used to be asked twice and kept once.
+  equipment: z.array(z.string()).optional(),
+  extras: z.array(z.string()).optional(),
+  injuryNotes: z.string().max(2000).optional(),
+  imbalanceNotes: z.string().max(2000).optional(),
+  structureNotes: z.string().max(2000).optional(),
 });
 
 // Persists a Fit Bot-generated program. Split out from the generator route so
@@ -25,8 +38,8 @@ const InputSchema = z.object({
 // the schedule. No weekday mapping is involved.
 export const POST = handle(async (request: NextRequest) => {
   const { user } = await requireUser();
-  const { program, focus, experience, programLength, distinctWorkouts } =
-    InputSchema.parse(await request.json());
+  const input = InputSchema.parse(await request.json());
+  const { program, focus, experience, programLength, distinctWorkouts } = input;
 
 
   // Reconcile each generated exercise name against the shared catalog so the
@@ -98,6 +111,35 @@ export const POST = handle(async (request: NextRequest) => {
         .values(days.map((d) => ({ ...d, routineId: row.id })));
     }
     return row;
+  });
+
+  /**
+   * Remember what building this taught us about them.
+   *
+   * In `after()`, so a note never delays the save, and swallowed on failure for
+   * the same reason onboarding swallows its notes: a program that saved and
+   * then 500'd on a memory write would be a far worse outcome than a coach that
+   * has to ask one question later. `createCoachNote` de-duplicates, so building
+   * a second program does not write the same facts twice.
+   */
+  after(async () => {
+    const notes = programAnswerNotes({
+      focus,
+      equipment: input.equipment,
+      experience,
+      extras: input.extras,
+      injuryNotes: input.injuryNotes,
+      imbalanceNotes: input.imbalanceNotes,
+      structureNotes: input.structureNotes,
+    });
+    const todayKey = localDateKeyInZone(new Date(), await viewerTimeZone());
+    for (const note of notes) {
+      try {
+        await createCoachNote(user.id, { ...note, source: "user" }, todayKey);
+      } catch (e) {
+        console.error("[ai/save-program] could not write coach note:", e);
+      }
+    }
   });
 
   return {

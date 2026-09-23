@@ -68,14 +68,12 @@ test("the coached door writes what it learns into FitBot's memory", async ({ bro
     await page.getByTestId("option-days-4").click();
     await page.getByTestId("button-onboarding-next").click();
 
-    await page.getByTestId("option-goal-get-stronger").click();
-    await page.getByTestId("button-onboarding-next").click();
-
-    await page.getByTestId("option-equipment-full-gym").click();
-    await page.getByTestId("button-onboarding-next").click();
-
-    await page.getByTestId("option-limit-shoulder").click();
-    await page.getByTestId("input-limit-text").fill("left shoulder, only overhead");
+    // One open question now, in their own words. Goal, equipment and
+    // limitations moved to the program builder, which asked for all three
+    // again in its own style - the duplication Ivo hit running this for real.
+    await page
+      .getByTestId("input-anything-text")
+      .fill("Training to get stronger. Full gym. Left shoulder, only overhead.");
     await page.getByTestId("button-onboarding-next").click();
 
     await page.waitForURL((url) => new URL(url).pathname === "/fit-bot");
@@ -93,20 +91,13 @@ test("the coached door writes what it learns into FitBot's memory", async ({ bro
       select kind, content, source from coach_notes
       where user_id = ${user.id}::uuid order by kind, content`;
 
-    // The whole reason the redesign exists: FitBot knows these before the
-    // user's first message.
-    const kinds = notes.map((n) => n.kind);
-    expect(kinds).toContain("goal");
-    expect(kinds).toContain("constraint");
-
-    // Equipment and the injury are CONSTRAINTS, which is the kind the system
-    // prompt renders first and calls a rule. Filing either as a preference
-    // would make it something the coach is told it may argue with.
-    const constraints = notes.filter((n) => n.kind === "constraint").map((n) => n.content);
-    expect(constraints.some((c: string) => c.includes("full gym"))).toBe(true);
-    expect(constraints.some((c: string) => c.includes("shoulder issue"))).toBe(true);
-    // Free text stored verbatim, not folded into the chip's sentence.
-    expect(constraints).toContain("left shoulder, only overhead");
+    // The whole reason the redesign exists: FitBot knows this before the
+    // user's first message, in the words they used.
+    expect(notes).toHaveLength(1);
+    expect(notes[0].kind).toBe("context");
+    expect(notes[0].content).toBe(
+      "Training to get stronger. Full gym. Left shoulder, only overhead.",
+    );
 
     // Written as the user's own words, which is what stops the model quietly
     // rewriting them later.

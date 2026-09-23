@@ -302,6 +302,14 @@ export default function FitBotProgramPage() {
         experience,
         programLength,
         distinctWorkouts,
+        // Everything the wizard asked, so it becomes what FitBot remembers.
+        // Onboarding stopped asking these, which makes this the only place
+        // they are stated.
+        equipment,
+        extras,
+        injuryNotes,
+        imbalanceNotes,
+        structureNotes,
       });
       const saved = (await res.json()) as {
         routineId: string;
@@ -498,19 +506,27 @@ export default function FitBotProgramPage() {
               </div>
             </div>
             <div>
-              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
-                Structure notes{" "}
-                <span className="tracking-normal text-tertiary-foreground/70 normal-case">
-                  (optional)
-                </span>
+              {/* An open question rather than a notes field. Ivo, running this:
+                  "There was an optional 'Add notes' here on a couple of them but
+                  it didn't feel like that was the right invocation or place to
+                  invite the user to truly share what's on their mind." Whatever
+                  goes in here reaches the model AND is remembered afterwards. */}
+              <div className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-tertiary-foreground">
+                Anything else FitBot should know
               </div>
+              <p className="mb-3 text-[13px] leading-relaxed text-muted-foreground">
+                In your own words. How you want the week to look, what you are
+                working around, what you enjoy or refuse to do, how much time you
+                actually have.
+              </p>
               <textarea
                 value={structureNotes}
                 onChange={(e) => setStructureNotes(e.target.value)}
-                rows={3}
-                placeholder="e.g. Push / Pull / Legs, rest after every 3 days, extra arm work."
-                maxLength={500}
-                className="w-full resize-none rounded-xl border-strong bg-input px-4 py-3 text-sm outline-none placeholder:text-tertiary-foreground focus:border-yellow focus:bg-input-focus"
+                rows={5}
+                placeholder="Push / pull / legs suits me. 45 minutes at lunch, longer on Saturdays. My left shoulder hates overhead pressing, and I would rather not run."
+                maxLength={1000}
+                data-testid="input-structure-notes"
+                className="w-full resize-none rounded-xl border-strong bg-input px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-tertiary-foreground focus:border-yellow focus:bg-input-focus"
               />
             </div>
           </div>

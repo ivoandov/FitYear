@@ -19,7 +19,7 @@ import type { CoachNoteKind } from "@/lib/coach-notes";
 /** Which end of the spectrum this person is on. Asked first, because it decides what else is worth asking. */
 export type Door = "track" | "coach" | "import";
 
-export type StepKey = "unit" | "days" | "goal" | "equipment" | "limits";
+export type StepKey = "unit" | "days" | "goal" | "equipment" | "limits" | "anything";
 
 /**
  * What each door asks, in order.
@@ -30,7 +30,21 @@ export type StepKey = "unit" | "days" | "goal" | "equipment" | "limits";
  */
 export const FLOW: Record<Door, StepKey[]> = {
   track: ["unit"],
-  coach: ["unit", "days", "goal", "equipment", "limits"],
+  // The coached path deliberately does NOT ask about goals, equipment or
+  // limitations any more. Ivo ran this on 2026-09-22 and hit the duplication
+  // head on: "the process seems to have two kinds of onboarding questions,
+  // styled in two different ways. the first 4 asked about goals (strength,
+  // muscle, etc), then the second set also asked about the same." The program
+  // builder asks all three, in its own better-suited UI, and now writes its
+  // answers into memory itself - so asking here was asking twice and keeping
+  // the worse answer.
+  //
+  // What stays is what the builder does NOT ask: the unit, how many days a week
+  // they can train, and one open question in their own words. Ivo on that
+  // field: "There was an optional 'Add notes' here on a couple of them but it
+  // didn't feel like that was the right invocation or place to invite the user
+  // to truly share what's on their mind."
+  coach: ["unit", "days", "anything"],
   import: ["unit"],
 };
 
@@ -109,6 +123,8 @@ export type OnboardingAnswers = {
   equipmentChip?: string | null;
   limitChips?: string[];
   limitText?: string | null;
+  /** The open question, in their own words. Stored exactly as typed. */
+  anythingText?: string | null;
 };
 
 export type DraftNote = { kind: CoachNoteKind; content: string };
@@ -145,6 +161,13 @@ export function buildCoachNotes(answers: OnboardingAnswers): DraftNote[] {
 
   const limitText = answers.limitText?.trim();
   if (limitText) notes.push({ kind: "constraint", content: limitText });
+
+  // The open question. `context` rather than `constraint` or `goal`, because
+  // nobody knows what somebody will write there and inventing a kind for it
+  // would be putting words in their mouth; the coach reads every kind, and a
+  // wrong kind on a true sentence is worse than a neutral one.
+  const anythingText = answers.anythingText?.trim();
+  if (anythingText) notes.push({ kind: "context", content: anythingText });
 
   return notes;
 }
