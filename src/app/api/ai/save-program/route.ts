@@ -5,8 +5,7 @@ import { routines, routineEntries, exercises } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
 import { ProgramSchema } from "@/lib/program-schema";
-import { matchExercise, normalizeExerciseName } from "@/lib/exercise-match";
-import { canonicalExerciseName } from "@/lib/exercise-naming";
+import { makeNameReconciler } from "@/lib/api/reconcile-names";
 import { after } from "next/server";
 import { createCoachNote } from "@/lib/api/coach-notes";
 import { programAnswerNotes } from "@/lib/program-notes";
@@ -53,28 +52,9 @@ export const POST = handle(async (request: NextRequest) => {
   const catalog = await db
     .select({ id: exercises.id, name: exercises.name })
     .from(exercises);
-  const chosenForNew = new Map<string, string>();
-  let exercisesReconciled = 0;
-  const reconcileName = (raw: string): string => {
-    const match = matchExercise(raw, catalog);
-    if (match) {
-      if (match.name !== raw) exercisesReconciled++;
-      return match.name;
-    }
-    const key = normalizeExerciseName(raw);
-    const prior = chosenForNew.get(key);
-    if (prior !== undefined) {
-      if (prior !== raw) exercisesReconciled++;
-      return prior;
-    }
-    // A genuinely new movement is stored under the house naming convention, so
-    // FitBot output cannot seed a differently-spelled variant that a later
-    // import or manual add then fails to match.
-    const canonical = canonicalExerciseName(raw);
-    if (canonical !== raw) exercisesReconciled++;
-    chosenForNew.set(key, canonical);
-    return canonical;
-  };
+  // One implementation, shared with the integration door since 2026-09-23.
+  const reconciler = makeNameReconciler(catalog);
+  const reconcileName = reconciler.reconcile;
 
   const days = program.days
     .filter((day) => !day.isRest)
@@ -149,6 +129,6 @@ export const POST = handle(async (request: NextRequest) => {
     distinctWorkouts: distinctWorkouts ?? null,
     weeksGenerated: Math.ceil(programLength / 7),
     daysGenerated: days.length,
-    exercisesReconciled,
+    exercisesReconciled: reconciler.reconciledCount,
   };
 });

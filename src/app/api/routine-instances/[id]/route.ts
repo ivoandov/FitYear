@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { routineInstances, scheduledWorkouts } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
+import { endProgram } from "@/lib/api/end-program";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -67,21 +68,10 @@ export const PATCH = handle(async (req: NextRequest, ctx: Ctx) => {
 
   if (!instance) throw new ApiError(404, "Routine instance not found");
 
+  // The soft cancel lives in `lib/api/end-program.ts` since 2026-09-23, shared
+  // with the integration door, so ending a program is one implementation.
   if (status === "cancelled") {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    // userId-scoped: routineInstanceId is unvalidated client input on
-    // scheduled workouts (no FK), so without it another user's rows pointing
-    // at this instance id would be deleted too.
-    await db
-      .delete(scheduledWorkouts)
-      .where(
-        and(
-          eq(scheduledWorkouts.routineInstanceId, id),
-          eq(scheduledWorkouts.userId, user.id),
-          gte(scheduledWorkouts.date, todayStart),
-        ),
-      );
+    return await endProgram({ userId: user.id, instanceId: id });
   }
 
   try {

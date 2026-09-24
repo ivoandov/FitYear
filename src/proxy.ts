@@ -33,8 +33,9 @@ const PUBLIC_PATHS = [
   // no matter how correct its own auth was. "Public" here means ONLY that the
   // cookie gate does not apply: every route under /api/integrations/
   // authenticates itself with a shared secret bound to one user id
-  // (lib/api/integration-auth.ts) and is READ-ONLY. Do not put anything under
-  // this prefix that writes, or that authenticates any other way.
+  // (lib/api/integration-auth.ts). Reads take the read key and stay read-only;
+  // the ONE write route (`program`, 2026-09-23) takes a separate write key. Do
+  // not put anything under this prefix that authenticates any other way.
   "/api/integrations",
 ];
 

@@ -97,6 +97,43 @@ export async function saveCoachDocument(
   return { ok: true, document: toSummary(row) };
 }
 
+/**
+ * Save a document that stands in for any earlier one of the same title.
+ *
+ * For a source that is re-sent whenever it changes (Liv's copy of his
+ * constraints file, 2026-09-23): the new one is saved first, then older rows
+ * carrying the stored title go, so a failed save leaves the previous copy in
+ * place rather than nothing. Matching is on the title as STORED, because
+ * `prepareDocument` may trim or cap it on the way in.
+ */
+export async function replaceCoachDocumentByTitle(
+  userId: string,
+  args: { title: string; content: string; source: "fitbot" | "user"; today: string },
+): Promise<SaveDocumentResult> {
+  // Room for the replacement even when the shelf is full of its own predecessors.
+  const prior = await db
+    .select({ id: coachDocuments.id, title: coachDocuments.title })
+    .from(coachDocuments)
+    .where(eq(coachDocuments.userId, userId));
+  const wanted = args.title.trim();
+  const same = prior.filter((p) => p.title === wanted || p.title === wanted.slice(0, 120));
+  if (same.length > 0 && prior.length >= 25) {
+    // The cap is counted before the insert, so with a full shelf the old copy
+    // has to go first. Only in that case: otherwise the new one lands first.
+    for (const p of same) await deleteCoachDocument(userId, p.id);
+  }
+  const saved = await saveCoachDocument(userId, args);
+  if (!saved.ok) return saved;
+  const stale = await db
+    .select({ id: coachDocuments.id })
+    .from(coachDocuments)
+    .where(and(eq(coachDocuments.userId, userId), eq(coachDocuments.title, saved.document.title)));
+  for (const row of stale) {
+    if (row.id !== saved.document.id) await deleteCoachDocument(userId, row.id);
+  }
+  return saved;
+}
+
 /** Returns whether a row was actually theirs to delete. */
 export async function deleteCoachDocument(userId: string, id: string): Promise<boolean> {
   const deleted = await db

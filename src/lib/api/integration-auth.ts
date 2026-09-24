@@ -15,9 +15,16 @@ import { ApiError } from "@/lib/api/auth";
  * rather than the one it was issued for. Serving a second consumer means a real
  * grants table (key -> user, revocable, per-key scope), not a query parameter.
  *
- * These endpoints must stay READ-ONLY. A shared secret in someone else's env is
- * a weaker credential than a real user session, so it must never be able to
- * mutate FitYear data.
+ * The READ endpoints stay read-only under the read key. A shared secret in
+ * someone else's env is a weaker credential than a real user session, so that
+ * key must never be able to mutate FitYear data.
+ *
+ * WRITES take a SECOND secret (2026-09-23, `requireIntegrationWriter`). Ivo
+ * asked for Liv to put a program into FitYear on his approval, and the honest
+ * way to do that is not to loosen the read key but to issue a different one,
+ * held only by the one consumer that writes, opening exactly one route
+ * (`/api/integrations/program`) bound to the same single user id. The read key
+ * leaking still cannot mutate; the write key's blast radius is that route.
  */
 
 export interface IntegrationCaller {
@@ -70,5 +77,27 @@ export function requireIntegrationCaller(request: Request): IntegrationCaller {
     throw new ApiError(401, "Unauthorized");
   }
 
+  return { userId };
+}
+
+/**
+ * Verify the WRITE secret. Same shape and the same silence as the read check,
+ * against `INTEGRATION_WRITE_KEY`, accepted as `x-fityear-write-key: <secret>`
+ * or `Authorization: Bearer <secret>`. The read key is refused here by
+ * construction: it is a different string. Bound to the same one user id.
+ */
+export function requireIntegrationWriter(request: Request): IntegrationCaller {
+  const expected = process.env.INTEGRATION_WRITE_KEY;
+  const userId = process.env.INTEGRATION_USER_ID;
+  if (!expected || !userId || expected.length < 32) {
+    throw new ApiError(503, "Integration access is not configured");
+  }
+  const direct = request.headers.get("x-fityear-write-key");
+  const authHeader = request.headers.get("authorization") ?? "";
+  const bearer = /^Bearer\s+(.+)$/i.exec(authHeader.trim())?.[1];
+  const provided = (direct ?? bearer ?? "").trim();
+  if (!provided || !secretsMatch(provided, expected)) {
+    throw new ApiError(401, "Unauthorized");
+  }
   return { userId };
 }
