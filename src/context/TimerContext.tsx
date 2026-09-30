@@ -69,6 +69,13 @@ interface TimerContextType {
     exerciseName: string;
     nextExerciseName?: string;
     onClose: () => void;
+    /**
+     * A NEW rest, asked for deliberately (a completed set, the rest button).
+     * Starts the countdown over whatever state the last one was left in.
+     * Without it, this call ADOPTS a rest that is already running or finished,
+     * which is what re-entering the tracker needs and what a new set must not do.
+     */
+    fresh?: boolean;
   }) => void;
   closeTimer: () => void;
   setIsMinimized: (v: boolean) => void;
@@ -395,13 +402,19 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       exerciseName: string;
       nextExerciseName?: string;
       onClose: () => void;
+      fresh?: boolean;
     }) => {
       // A rest that already finished is still on screen (the user minimized it
       // and it ran out). Re-entering /track re-invokes openTimer, and starting
       // a fresh countdown here would silently begin a rest the user never asked
       // for AND advance the set pointer when it is dismissed. Keep the finished
       // timer; just adopt the new close callback.
-      if (isOpenRef.current && hasCompletedRef.current) {
+      //
+      // A `fresh` request is the opposite case and must not be swallowed: the
+      // user completed another set, so they are owed a new 90 seconds even
+      // though the last rest is sitting there finished. Swallowing it is
+      // exactly how the timer "stopped working halfway through a workout".
+      if (!opts.fresh && isOpenRef.current && hasCompletedRef.current) {
         onCloseRef.current = opts.onClose;
         return;
       }
@@ -416,6 +429,18 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       onCloseRef.current = opts.onClose;
 
       requestNotificationPermission();
+
+      // A deliberate new rest ignores whatever is saved: that blob describes the
+      // PREVIOUS rest, and continuing it would hand back its remaining seconds
+      // instead of the full duration the user just earned.
+      if (opts.fresh) {
+        clearState();
+        restIdRef.current = null;
+        startCounting(opts.initialSeconds);
+        isOpenRef.current = true;
+        setIsOpen(true);
+        return;
+      }
 
       // A live saved rest means we're re-entering the SAME rest period (the
       // track page re-opens the timer after a remount or a tab round trip), so

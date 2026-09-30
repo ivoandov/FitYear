@@ -416,19 +416,57 @@ export default function TrackPage() {
   const { openTimer, isOpen: timerIsOpen, setIsMinimized: setTimerMinimized } = useTimer();
   const handleRestTimerCloseRef = useRef<() => void>(() => {});
 
-  // Open the timer in TimerContext whenever we enter resting state
+  /**
+   * Asking for a rest is a COUNTER, not a state flip.
+   *
+   * Ivo, 2026-09-30: "my 90s timer stopped working halfway through my workout
+   * yesterday." Here is why. Completing a set used to ask for a rest by setting
+   * trackingState to "resting" - but the tracker can ALREADY be resting: a
+   * finished rest that the user minimized leaves the pill up, and the restore
+   * effect below then pins trackingState there for the rest of the session. A
+   * setState to the value it already holds changes nothing, so the effect that
+   * opens the timer never re-ran, and every set after that asked for a rest and
+   * silently got none. A counter always changes, so every request is honored.
+   */
+  const [restRequest, setRestRequest] = useState(0);
+  function startRest() {
+    setTrackingState("resting");
+    setRestRequest((n) => n + 1);
+  }
+
+  // A NEW rest, asked for deliberately: a completed set, or the rest button.
   useEffect(() => {
-    if (trackingState === "resting") {
-      restCloseProcessed.current = false;
-      const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex];
-      const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1];
-      openTimer({
-        initialSeconds: restTimerDuration,
-        exerciseName: exAtIndex?.name ?? "Rest",
-        nextExerciseName: nextEx?.name,
-        onClose: () => handleRestTimerCloseRef.current(),
-      });
-    }
+    if (restRequest === 0) return;
+    restCloseProcessed.current = false;
+    const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex];
+    const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1];
+    openTimer({
+      initialSeconds: restTimerDuration,
+      exerciseName: exAtIndex?.name ?? "Rest",
+      nextExerciseName: nextEx?.name,
+      onClose: () => handleRestTimerCloseRef.current(),
+      // Start the countdown over, whatever state the last rest was left in.
+      fresh: true,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restRequest]);
+
+  // Coming BACK to the tracker with a rest already running (a remount, a tab
+  // round trip). Adopts the live rest rather than restarting it, which is what
+  // stops a finished-but-minimized rest resurrecting as a phantom 90 seconds.
+  // Only on a fresh mount: once this mount has asked for a rest of its own, the
+  // effect above owns the timer.
+  useEffect(() => {
+    if (trackingState !== "resting" || restRequest !== 0) return;
+    restCloseProcessed.current = false;
+    const exAtIndex = enrichedWorkoutExercises[currentExerciseIndex];
+    const nextEx = enrichedWorkoutExercises[currentExerciseIndex + 1];
+    openTimer({
+      initialSeconds: restTimerDuration,
+      exerciseName: exAtIndex?.name ?? "Rest",
+      nextExerciseName: nextEx?.name,
+      onClose: () => handleRestTimerCloseRef.current(),
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingState]);
 
@@ -644,7 +682,7 @@ export default function TrackPage() {
       if (superset.restFirst) {
         // Round complete. Rest, then come back to the top of the group. The set
         // pointer advances because the whole group shares a round.
-        if (restTimerOnManualComplete) setTrackingState("resting");
+        if (restTimerOnManualComplete) startRest();
         else setTrackingState("not_started");
         setCurrentExerciseIndex(superset.nextIndex);
         if (currentSetIndex < sets.length - 1) setCurrentSetIndex(currentSetIndex + 1);
@@ -656,7 +694,7 @@ export default function TrackPage() {
     }
 
     if (restTimerOnManualComplete) {
-      setTrackingState("resting");
+      startRest();
     }
     if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
       setCurrentSetIndex(currentSetIndex + 1);
@@ -695,7 +733,7 @@ export default function TrackPage() {
       }
 
       if (currentSetIndex < sets.length - 1) {
-        setTrackingState("resting");
+        startRest();
       } else {
         setTrackingState("not_started");
       }
@@ -1208,7 +1246,7 @@ export default function TrackPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setTrackingState("resting")}
+                    onClick={startRest}
                     aria-label="Start rest timer"
                     data-testid="button-start-rest-timer"
                     className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary transition-colors hover:bg-primary/20"
