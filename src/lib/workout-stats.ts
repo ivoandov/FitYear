@@ -262,9 +262,30 @@ export function beatsHold(
   previous: BestHold | undefined,
 ): boolean {
   if (seconds <= 0) return false;
+  // "Nothing to beat" is a yes HERE, because this is also how the historical
+  // best is accumulated (lib/pr-bests, buildPrHistory), where the first hold
+  // seen must become the best. Whether a hold is a RECORD is isHoldRecord's
+  // question, and there no history means no record.
   if (!previous) return true;
   if (weightLbs < previous.weightLbs - PR_EPSILON_LBS) return false;
   return seconds > previous.seconds;
+}
+
+/**
+ * Is this hold a RECORD - which, unlike `beatsHold`, needs something to beat.
+ *
+ * A first-ever performance sets the baseline; it is not a personal record.
+ * Ivo, 2026-09-30, on seeing PRs "when I havent been changing many things": 30
+ * of his 47 records in six weeks were the first time he had done an exercise,
+ * each firing a weight AND a volume record on its debut. The weight and volume
+ * rules follow the same principle in detectPRs, prSetIndices and the toast.
+ */
+export function isHoldRecord(
+  seconds: number,
+  weightLbs: number,
+  previous: BestHold | undefined,
+): boolean {
+  return previous !== undefined && beatsHold(seconds, weightLbs, previous);
 }
 
 /**
@@ -371,7 +392,7 @@ export function detectPRs(
         if (!best || secs > best.seconds) best = { seconds: secs, weightLbs: s.weight || 0 };
       }
       const prevHold = histBestHold.get(ex.id);
-      if (best && beatsHold(best.seconds, best.weightLbs, prevHold)) {
+      if (best && isHoldRecord(best.seconds, best.weightLbs, prevHold)) {
         hits.push({
           exerciseId: ex.id,
           exerciseName: ex.name,
@@ -410,9 +431,11 @@ export function detectPRs(
     // user's lbs -> kg -> lbs round trip drifts up to ~0.11 lb, so a strict
     // comparison persisted a phantom "100.1 was 100" PR to pr_history and put
     // it on the complete screen even where the toast was correctly suppressed.
-    const isWeightPr = assisted
-      ? prev === undefined || bestWt < prev - PR_EPSILON_LBS
-      : prev === undefined || bestWt > prev + PR_EPSILON_LBS;
+    // A first-ever performance sets the baseline; it is not a record. Every
+    // new exercise used to fire a weight AND a volume PR on its debut.
+    const isWeightPr =
+      prev !== undefined &&
+      (assisted ? bestWt < prev - PR_EPSILON_LBS : bestWt > prev + PR_EPSILON_LBS);
     if (isWeightPr) {
       hits.push({
         exerciseId: ex.id,
@@ -429,7 +452,7 @@ export function detectPRs(
       // is too small at anything above ~3 reps; scale it by the reps behind the
       // best set.
       const volEpsilon = PR_EPSILON_LBS * Math.max(1, bestVolReps);
-      if (bestVol > 0 && (prevVol === null || bestVol > prevVol + volEpsilon)) {
+      if (bestVol > 0 && prevVol !== null && bestVol > prevVol + volEpsilon) {
         hits.push({
           exerciseId: ex.id,
           exerciseName: ex.name,
@@ -508,7 +531,7 @@ export function prSetIndices(
         bestIdx = i;
       }
     }
-    if (best && beatsHold(best.seconds, best.weightLbs, hold.previousBest)) marks.add(bestIdx);
+    if (best && isHoldRecord(best.seconds, best.weightLbs, hold.previousBest)) marks.add(bestIdx);
     return marks;
   }
 
@@ -524,9 +547,12 @@ export function prSetIndices(
     const r = s.reps ?? 0;
     if (w <= 0 || r <= 0) continue;
 
-    const beatsWeight = assisted
-      ? bestWeight === undefined || w < bestWeight - PR_EPSILON_LBS
-      : bestWeight === undefined || w > bestWeight + PR_EPSILON_LBS;
+    // No history, no badge: the first session of an exercise sets the
+    // baseline. The comparison runs against the session's own running best
+    // only once there IS a historical best to have beaten.
+    const beatsWeight =
+      bestWeight !== undefined &&
+      (assisted ? w < bestWeight - PR_EPSILON_LBS : w > bestWeight + PR_EPSILON_LBS);
     if (beatsWeight) {
       bestWeight = w;
       bestWeightIdx = i;
@@ -537,7 +563,7 @@ export function prSetIndices(
       // Volume drift scales with reps, so the margin does too - a flat one is
       // too small above ~3 reps and a re-logged prefill reads as a record.
       const volEpsilon = PR_EPSILON_LBS * Math.max(1, r);
-      if (bestVolume === undefined || vol > bestVolume + volEpsilon) {
+      if (bestVolume !== undefined && vol > bestVolume + volEpsilon) {
         bestVolume = vol;
         bestVolumeIdx = i;
       }

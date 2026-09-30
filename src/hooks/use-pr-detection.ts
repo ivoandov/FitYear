@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import { displayToLbs, lbsToDisplay, type WeightUnit } from "@/lib/units";
 import {
   PR_EPSILON_LBS,
-  beatsHold,
+  isHoldRecord,
   prSetIndices,
   type BestHold,
   type SetData,
@@ -81,6 +81,18 @@ export function usePrDetection(
   const historicalBests = historical.bests;
 
   /**
+   * Exercises that have already had their record toast this session.
+   *
+   * Ivo, 2026-09-30: one record toast per exercise per session, "but it's nice
+   * when both are tracked and shown in summary". So this caps the INTERRUPTION
+   * only: the badge is still derived per set, and the complete screen and
+   * pr_history still list every record, weight and volume both. Keyed by
+   * instance, so a movement done twice in one workout is two exercises here,
+   * exactly as it is everywhere else in the tracker.
+   */
+  const toastedRef = useRef<Set<string>>(new Set());
+
+  /**
    * Which (instanceId, setIndex) pairs currently HOLD a record — drives the
    * badge. Derived, so editing a set re-evaluates it for free.
    */
@@ -131,7 +143,8 @@ export function usePrDetection(
       if (isHold(exerciseType, exerciseId)) {
         const secs = (exerciseSets.get(instanceId) ?? [])[setIndex]?.time ?? 0;
         const prev = historicalHolds.get(exerciseId);
-        if (beatsHold(secs, setWeightLbs, prev)) {
+        if (isHoldRecord(secs, setWeightLbs, prev) && !toastedRef.current.has(instanceId)) {
+          toastedRef.current.add(instanceId);
           const load = setWeightLbs > 0 ? ` at ${lbsToDisplay(setWeightLbs, weightUnit)} ${weightUnit}` : "";
           void hapticSuccess();
           toast({
@@ -146,10 +159,16 @@ export function usePrDetection(
       const assisted = isAssistedById.get(exerciseId) === true;
       const volume = setWeightLbs * setReps;
       const hist = historicalBests.get(exerciseId);
+      // First time this exercise has ever been logged: a baseline, not a
+      // record - the same rule detectPRs and the badge follow, so the toast
+      // cannot celebrate something the complete screen does not list.
+      if (!hist) return;
+      // One toast per exercise per session; see toastedRef.
+      if (toastedRef.current.has(instanceId)) return;
 
       // Running best across earlier sets in THIS workout for the same instance.
-      let runningBestWeight = hist?.bestWeight ?? (assisted ? Number.POSITIVE_INFINITY : 0);
-      let runningMaxVolume = hist?.maxVolume ?? 0;
+      let runningBestWeight = hist.bestWeight;
+      let runningMaxVolume = hist.maxVolume;
       const earlierSets = (exerciseSets.get(instanceId) ?? []).slice(0, setIndex);
       for (const s of earlierSets) {
         if (!s.completed) continue;
@@ -178,11 +197,11 @@ export function usePrDetection(
       // Shared with detectPRs so the in-workout toast and the complete screen
       // agree on what counts as a record.
       const isWeightPr = assisted
-        ? runningBestWeight === Number.POSITIVE_INFINITY ||
-          setWeightLbs < runningBestWeight - PR_EPSILON_LBS
+        ? setWeightLbs < runningBestWeight - PR_EPSILON_LBS
         : setWeightLbs > runningBestWeight + PR_EPSILON_LBS;
       if (isWeightPr) {
         isPr = true;
+        toastedRef.current.add(instanceId);
         const prevLabel = !isFinite(runningBestWeight) || runningBestWeight === 0
           ? "-"
           : fmt(runningBestWeight);
@@ -197,8 +216,15 @@ export function usePrDetection(
       // Volume PR only meaningful for non-assisted exercises
       // Volume drift scales with reps, so the flat margin was too small above
       // ~3 reps and a re-logged prefill fired a phantom volume PR.
-      if (!assisted && volume > runningMaxVolume + PR_EPSILON_LBS * Math.max(1, setReps)) {
+      // The weight record is the stronger claim, so when one set earns both,
+      // only the weight toast shows; the volume record is still in the summary.
+      if (
+        !isPr &&
+        !assisted &&
+        volume > runningMaxVolume + PR_EPSILON_LBS * Math.max(1, setReps)
+      ) {
         isPr = true;
+        toastedRef.current.add(instanceId);
         void hapticSuccess();
         toast({
           title: `⭐ ${exerciseName} - new volume PR!`,

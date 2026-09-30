@@ -99,7 +99,15 @@ test("beating a previous hold fires a PR", async ({ page, account }) => {
   await seedCompletedHold(account.id, exId, "Prior Hang", 0, 45);
   await seedHold(account.id, "Neutral Hang", exId, "iid-pr");
 
+  // Wait for the history to arrive, as a person does by lifting first. Since
+  // 2026-09-30 a record needs something to beat, so completing the set before
+  // the bests land is (correctly) no toast - where it used to be a "record" by
+  // default, which is what hid the fact that this request 404'd for weeks.
+  const bests = page.waitForResponse(
+    (r) => r.url().includes("/api/exercises/personal-bests") && r.ok(),
+  );
   await page.goto("/track");
+  await bests;
   await expect(page.getByTestId("input-time-1")).toBeVisible();
 
   await page.getByTestId("input-weight-1").fill("0");

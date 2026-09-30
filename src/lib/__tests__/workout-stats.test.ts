@@ -79,12 +79,23 @@ describe("detectPRs", () => {
     ]);
   });
 
-  it("treats a first-ever exercise as a PR with null previous", () => {
+  it("treats a first-ever exercise as a BASELINE, not a record", () => {
+    // This used to fire a weight AND a volume PR on every exercise's debut.
+    // Ivo, 2026-09-30, seeing PRs "when I havent been changing many things":
+    // 30 of his 47 records in six weeks were the first time he had done the
+    // exercise. Nothing was beaten, so nothing is a record.
     const current = { exercises: [ex({ id: "e2", name: "Row", setsData: [set({ weight: 80, reps: 8, completed: true })] })] };
-    const hits = detectPRs(current, buildPrHistory([]));
-    expect(hits).toEqual([
-      { exerciseId: "e2", exerciseName: "Row", type: "weight", newValue: 80, previousValue: null },
-      { exerciseId: "e2", exerciseName: "Row", type: "volume", newValue: 640, previousValue: null },
+    expect(detectPRs(current, buildPrHistory([]))).toEqual([]);
+  });
+
+  it("still reports BOTH a weight and a volume record once there is history to beat", () => {
+    // The toast shows one per exercise per session; the summary shows both.
+    // Ivo: "it's nice when both are tracked and shown in summary".
+    const prior = [{ exercises: [ex({ id: "e2", name: "Row", setsData: [set({ weight: 70, reps: 8, completed: true })] })] }];
+    const current = { exercises: [ex({ id: "e2", name: "Row", setsData: [set({ weight: 80, reps: 8, completed: true })] })] };
+    expect(detectPRs(current, buildPrHistory(prior))).toEqual([
+      { exerciseId: "e2", exerciseName: "Row", type: "weight", newValue: 80, previousValue: 70 },
+      { exerciseId: "e2", exerciseName: "Row", type: "volume", newValue: 640, previousValue: 560 },
     ]);
   });
 
@@ -336,8 +347,11 @@ describe("prSetIndices - the badge follows the CURRENT sets", () => {
     expect(prSetIndices([s(0, 5), s(100, 0)], undefined, undefined, false).size).toBe(0);
   });
 
-  it("marks a first-ever set with no history", () => {
-    expect(prSetIndices([s(45, 5)], undefined, undefined, false).has(0)).toBe(true);
+  it("marks nothing on a first-ever session, since nothing was beaten", () => {
+    // The badge follows the same rule as the summary and the toast, or the
+    // three would disagree about what counts as a record.
+    expect(prSetIndices([s(45, 5)], undefined, undefined, false).size).toBe(0);
+    expect(prSetIndices([s(45, 5), s(50, 5)], undefined, undefined, false).size).toBe(0);
   });
 
   it("does not mark a set that only matches the historical best", () => {
@@ -510,5 +524,26 @@ describe("preferRepsOverVolume", () => {
     // A hold or a distance session has no rep count; an empty box would be
     // worse than the zero it replaced.
     expect(preferRepsOverVolume(0, 0)).toBe(false);
+  });
+});
+
+describe("isHoldRecord - a hold needs something to beat", () => {
+  it("is not a record the first time, however long it is", async () => {
+    const { isHoldRecord } = await import("@/lib/workout-stats");
+    expect(isHoldRecord(90, 25, undefined)).toBe(false);
+  });
+
+  it("is a record when it beats the best at no less load", async () => {
+    const { isHoldRecord } = await import("@/lib/workout-stats");
+    expect(isHoldRecord(60, 25, { seconds: 30, weightLbs: 25 })).toBe(true);
+    // Longer but lighter is not a record, the rule beatsHold always had.
+    expect(isHoldRecord(60, 10, { seconds: 30, weightLbs: 25 })).toBe(false);
+  });
+
+  it("leaves beatsHold free to ACCUMULATE history, where the first hold must count", async () => {
+    // beatsHold is also how the historical best is built; if "nothing to beat"
+    // meant "no" there, no hold could ever get a history and so never a record.
+    const { beatsHold } = await import("@/lib/workout-stats");
+    expect(beatsHold(30, 25, undefined)).toBe(true);
   });
 });
