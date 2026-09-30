@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
@@ -106,8 +107,29 @@ export default function TrackPage() {
     return [...new Set(ids)].sort().join(",");
   }, [activeWorkout]);
 
+  /*
+   * BOTH of these carry their own queryFn, and must.
+   *
+   * The app's default fetcher builds the URL by joining the query key with
+   * "/", so a key of ["/api/exercises/personal-bests", "a,b"] fetched
+   * `/api/exercises/personal-bests/a,b` - a route that does not exist - while
+   * both endpoints read `?ids=`. Every request 404'd from the day these were
+   * split out (2026-09-11) until 2026-09-30, and a failed query looks exactly
+   * like an empty one: the tracker had NO history. Every exercise's first set
+   * toasted a weight and a volume "PR", and no set prefilled from last time.
+   * Ivo noticed the first: "I keep seeing PR when I work out lately but i
+   * havent been changing many things." The keys stay as they are, so nothing
+   * that invalidates by prefix has to change.
+   */
   const { data: lastValues = {} } = useQuery<Record<string, LastRecorded>>({
     queryKey: ["/api/exercises/last-values", trackedExerciseIds],
+    queryFn: async () =>
+      (
+        await apiRequest(
+          "GET",
+          `/api/exercises/last-values?ids=${encodeURIComponent(trackedExerciseIds)}`,
+        )
+      ).json(),
     enabled: trackedExerciseIds.length > 0,
   });
 
@@ -116,6 +138,13 @@ export default function TrackPage() {
     holds: Record<string, { seconds: number; weightLbs: number }>;
   }>({
     queryKey: ["/api/exercises/personal-bests", trackedExerciseIds],
+    queryFn: async () =>
+      (
+        await apiRequest(
+          "GET",
+          `/api/exercises/personal-bests?ids=${encodeURIComponent(trackedExerciseIds)}`,
+        )
+      ).json(),
     enabled: trackedExerciseIds.length > 0,
   });
 
@@ -203,6 +232,17 @@ export default function TrackPage() {
   // because only the restore effect, gated on settings, may set it first.
   const weightsUnitRef = useRef<'lbs' | 'kg'>(weightUnit);
 
+  /**
+   * Whether this mount RESUMED a saved session, as opposed to starting one.
+   *
+   * The last-session prefill below used to skip whenever `trackingProgress`
+   * existed - but the tracker auto-saves progress the moment it creates the
+   * default rows, so a brand-new session looked resumed within one render and
+   * the prefill almost never ran when the history arrived second. Only a real
+   * restore should stand in its way.
+   */
+  const restoredFromSaveRef = useRef(false);
+
   // Restore saved progress once, AFTER the unit preference has settled.
   // Gating on `settingsPending` closes a race: if restore ran at the default
   // 'lbs' before settings resolved, a late 'kg' resolve would double-convert
@@ -212,6 +252,7 @@ export default function TrackPage() {
   useEffect(() => {
     if (!activeWorkout || hasLoadedSavedProgress || settingsPending) return;
     if (trackingProgress && trackingProgress.workoutDisplayId === activeWorkout.displayId) {
+      restoredFromSaveRef.current = true;
       // Saved weights are in trackingProgress.weightUnit; convert to the current
       // unit so inputs match their labels. Pre-2026-06 saves lack a unit and are
       // treated as the current unit (no conversion).
@@ -390,7 +431,9 @@ export default function TrackPage() {
 
   useEffect(() => {
     if (!hasLoadedSavedProgress || !userSettingsData || completedWorkouts.length === 0 || enrichedWorkoutExercises.length === 0) return;
-    if (trackingProgress) return;
+    // A resumed session keeps exactly what it had. A NEW one is filled from the
+    // last session whenever that arrives - see restoredFromSaveRef.
+    if (restoredFromSaveRef.current) return;
     setExerciseSets(prev => {
       let changed = false;
       const newMap = new Map(prev);
@@ -411,7 +454,10 @@ export default function TrackPage() {
       }
       return changed ? newMap : prev;
     });
-  }, [completedWorkouts, enrichedWorkoutExercises, hasLoadedSavedProgress, userSettingsData]);
+    // `lastValues` is a separate request now; without it here the fill ran
+    // before the history arrived and never again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completedWorkouts, enrichedWorkoutExercises, hasLoadedSavedProgress, userSettingsData, lastValues]);
 
   const { openTimer, isOpen: timerIsOpen, setIsMinimized: setTimerMinimized } = useTimer();
   const handleRestTimerCloseRef = useRef<() => void>(() => {});
