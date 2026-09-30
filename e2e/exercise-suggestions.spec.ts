@@ -28,7 +28,7 @@ test("typing an unknown movement offers a standard name, and picking it fills th
     await page.goto("/exercises");
     // The DESKTOP add button: the e2e viewport is 1280, and the other one is
     // md:hidden. They carry different testids for exactly this reason.
-    await page.getByTestId("button-add-exercise-desktop").click();
+    await page.locator("main").getByTestId("button-add-exercise-desktop").click();
 
     // "Pendlay" is deliberately chosen: it is absent from the public-domain
     // half of the vocabulary and present in the functional half, so this fails
