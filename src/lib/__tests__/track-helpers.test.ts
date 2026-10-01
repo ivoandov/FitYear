@@ -171,3 +171,84 @@ describe("formatTargetLine", () => {
     expect(formatTargetLine({ sets: null, repsLabel: null })).toBeNull();
   });
 });
+
+describe("the last-time line", () => {
+  const lbs = (v: number | null) => v;
+  const kg = (v: number | null) => (v == null ? null : Math.round((v / 2.20462) * 10) / 10);
+  const lift = { usesWeight: true, usesReps: true, usesTime: false, usesDistance: false };
+  const session = (sets: Array<Partial<{ weightLbs: number; reps: number; time: number; distance: number }>>) => ({
+    date: "2026-09-24",
+    workoutName: "Chest & Triceps",
+    sets: sets.map((s) => ({
+      weightLbs: s.weightLbs ?? null,
+      reps: s.reps ?? null,
+      time: s.time ?? null,
+      distance: s.distance ?? null,
+    })),
+  });
+
+  it("reads every set back in order, with the unit once", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    const line = formatLastSessionSets(
+      session([{ weightLbs: 135, reps: 8 }, { weightLbs: 135, reps: 8 }, { weightLbs: 135, reps: 6 }]),
+      { unit: "lbs", toDisplay: lbs, ...lift },
+    );
+    expect(line).toBe("135 x 8, 135 x 8, 135 x 6 lbs");
+  });
+
+  it("speaks the viewer's unit", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    expect(
+      formatLastSessionSets(session([{ weightLbs: 100, reps: 5 }]), { unit: "kg", toDisplay: kg, ...lift }),
+    ).toBe("45.4 x 5 kg");
+  });
+
+  it("calls a zero-load set bodyweight rather than 0", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    expect(
+      formatLastSessionSets(session([{ weightLbs: 0, reps: 10 }, { weightLbs: 0, reps: 8 }]), {
+        unit: "lbs",
+        toDisplay: lbs,
+        ...lift,
+      }),
+    ).toBe("BW x 10, BW x 8");
+  });
+
+  it("says assist on an assisted lift, where the weight is help and not load", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    expect(
+      formatLastSessionSets(session([{ weightLbs: 40, reps: 8 }]), {
+        unit: "lbs",
+        toDisplay: lbs,
+        ...lift,
+        assisted: true,
+      }),
+    ).toBe("40 assist x 8 lbs");
+  });
+
+  it("reads a hold as a duration, with its load when there was one", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    const hold = { usesWeight: true, usesReps: false, usesTime: true, usesDistance: false };
+    expect(
+      formatLastSessionSets(session([{ weightLbs: 25, time: 60 }, { weightLbs: 0, time: 45 }]), {
+        unit: "lbs",
+        toDisplay: lbs,
+        ...hold,
+      }),
+    ).toBe("60s at 25 lbs, 45s");
+  });
+
+  it("reads cardio as distance and time, with no weight unit", async () => {
+    const { formatLastSessionSets } = await import("@/lib/track-helpers");
+    const cardio = { usesWeight: false, usesReps: false, usesTime: true, usesDistance: true };
+    expect(
+      formatLastSessionSets(session([{ distance: 1.5, time: 12 }]), { unit: "lbs", toDisplay: lbs, ...cardio }),
+    ).toBe("1.5 mi in 12 min");
+  });
+
+  it("names the day, and the year only when it is not this one", async () => {
+    const { formatSessionDate } = await import("@/lib/track-helpers");
+    expect(formatSessionDate("2026-09-24", "2026-09-30")).toBe("Sep 24");
+    expect(formatSessionDate("2025-12-31", "2026-09-30")).toBe("Dec 31, 2025");
+  });
+});

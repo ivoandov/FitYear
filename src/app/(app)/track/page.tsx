@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { WorkoutEditorDialog, WorkoutData } from "@/components/WorkoutEditorDial
 import type { LastRecorded } from "@/lib/track-helpers";
 import { countsTowardGoal, familyOf } from "@/lib/exercise-family";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
+import { ExerciseTrendSheet } from "@/components/track/ExerciseTrendSheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Play, Dumbbell, Sparkles } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Plus, Play, Dumbbell, Sparkles, TrendingUp } from "lucide-react";
 import { useWorkout, type TrackingProgress } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
@@ -34,6 +36,8 @@ import { useExerciseDetails } from "@/hooks/useExerciseDetails";
 import { convertWeight, lbsToDisplay, displayToLbs } from "@/lib/units";
 import { type SetData, isRepTotalExercise, totalCompletedReps } from "@/lib/workout-stats";
 import {
+  formatLastSessionSets,
+  formatSessionDate,
   formatTargetLine,
   getDefaultSets as getDefaultSetsHelper,
   parseRepsPrescription,
@@ -41,7 +45,8 @@ import {
 import { overloadSuggestion } from "@/lib/analytics";
 import { usePrDetection } from "@/hooks/use-pr-detection";
 import { toast } from "@/hooks/use-toast";
-import { usesDistance, usesReps, usesTime } from "@/lib/exercise-types";
+import { usesDistance, usesReps, usesTime, usesWeight } from "@/lib/exercise-types";
+import { clientTimeZone, localDateKey } from "@/lib/date";
 import { hapticImpact, keepScreenAwake } from "@/lib/native-feedback";
 import type { WorkoutExerciseInput } from "@/context/WorkoutContext";
 import { solvePlates, formatPerSide, equipmentFor, showsPlateMath, warmupSets } from "@/lib/plate-math";
@@ -67,7 +72,7 @@ export default function TrackPage() {
     saveTrackingProgress,
     flushProgress,
   } = useWorkout();
-  const { restTimerOnManualComplete, showKgConversion } = useSettings();
+  const { restTimerOnManualComplete, setRestTimerOnManualComplete, showKgConversion } = useSettings();
   
   // `settingsPending` is true only until the query settles (data OR error), so
   // the restore effect can wait for the real unit instead of racing the 'lbs'
@@ -89,6 +94,17 @@ export default function TrackPage() {
   const [restTimerDuration, setRestTimerDuration] = useState(90);
   const [exerciseSets, setExerciseSets] = useState<Map<string, SetData[]>>(new Map()); // Keyed by exercise instanceId for stability
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  // The current exercise's trend sheet (components/track/ExerciseTrendSheet).
+  const [trendOpen, setTrendOpen] = useState(false);
+  /**
+   * What is typed in the rest-duration field, while it is being typed.
+   *
+   * The field used to be bound straight to the duration with
+   * `parseInt(v) || 90`, so clearing it to type a new number snapped it back
+   * to 90 on the spot and it could never be emptied - the reason it never read
+   * as editable. null means "not editing: show the real value".
+   */
+  const [restDraft, setRestDraft] = useState<string | null>(null);
   const [isAddExerciseOpen, setIsAddExerciseOpen] = useState(false);
   // Discard-confirm for finishing a workout with zero logged sets (junk guard).
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -121,13 +137,13 @@ export default function TrackPage() {
    * havent been changing many things." The keys stay as they are, so nothing
    * that invalidates by prefix has to change.
    */
-  const { data: lastValues = {} } = useQuery<Record<string, LastRecorded>>({
+  const { data: lastValues = {}, isSuccess: lastValuesLoaded } = useQuery<Record<string, LastRecorded>>({
     queryKey: ["/api/exercises/last-values", trackedExerciseIds],
     queryFn: async () =>
       (
         await apiRequest(
           "GET",
-          `/api/exercises/last-values?ids=${encodeURIComponent(trackedExerciseIds)}`,
+          `/api/exercises/last-values?ids=${encodeURIComponent(trackedExerciseIds)}&tz=${encodeURIComponent(clientTimeZone())}`,
         )
       ).json(),
     enabled: trackedExerciseIds.length > 0,
@@ -578,6 +594,41 @@ export default function TrackPage() {
   // still untouched - once you are working, a warm-up line is clutter. The
   // working weight is whatever the first row says, which is the plan's target
   // before you edit it and your own number after.
+  // "What did I do last time?" - every set of the most recent session, read
+  // back in order. Ivo, 2026-09-30: "see the last workout weights and rep for
+  // an exercise during tracking (to see what I lifted last time)". A plain
+  // const, deliberately below the early return and not a hook.
+  const lastSession = currentExercise
+    ? lastValues[(currentExercise as { id?: string }).id ?? ""]?.lastSession
+    : undefined;
+  const lastTimeLine = (() => {
+    if (!currentExercise) return null;
+    if (!lastSession || lastSession.sets.length === 0) return null;
+    const type = currentExercise.exerciseType;
+    const sets = formatLastSessionSets(lastSession, {
+      unit: weightUnit,
+      toDisplay: fromLbs,
+      usesWeight: usesWeight(type),
+      usesReps: usesReps(type),
+      usesTime: usesTime(type),
+      usesDistance: usesDistance(type),
+      assisted: !!(currentExercise as { isAssisted?: boolean | null }).isAssisted,
+    });
+    return {
+      date: formatSessionDate(lastSession.date, localDateKey(new Date())),
+      // One entry per set, so the line can wrap BETWEEN sets and never split
+      // "45 x" from its "8" on a narrow phone.
+      sets: sets.split(", "),
+    };
+  })();
+  // Nothing recorded yet: say so, because under the 2026-09-30 record rule this
+  // first session is what every later one is measured against.
+  const isFirstTime =
+    !!currentExercise &&
+    trackedExerciseIds.length > 0 &&
+    lastValuesLoaded &&
+    !lastSession;
+
   const warmupLine = (() => {
     if (!showPlates) return null;
     if (sets.some((x) => x.completed)) return null;
@@ -1117,6 +1168,20 @@ export default function TrackPage() {
                   <div className="line-clamp-2 text-balance text-[19px] font-bold leading-tight text-foreground" data-testid="text-current-exercise">
                     {currentExercise.name}
                   </div>
+                  {/* The trend is weight x reps only, and there is nothing to
+                      draw before a first session, so the button waits for both. */}
+                  {lastSession && usesWeight(currentExercise.exerciseType) && usesReps(currentExercise.exerciseType) ? (
+                    <button
+                      type="button"
+                      onClick={() => setTrendOpen(true)}
+                      aria-label={`${currentExercise.name} trend`}
+                      data-testid="button-exercise-trend"
+                      className="mx-auto mt-1 flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-primary hover:bg-primary/10"
+                    >
+                      <TrendingUp className="h-3 w-3" />
+                      Trend
+                    </button>
+                  ) : null}
                   <MuscleGroupsLabel
                     groups={currentExercise.muscleGroups ?? []}
                     className="mt-0.5 block truncate font-mono text-[11px] tracking-[0.02em]"
@@ -1138,6 +1203,33 @@ export default function TrackPage() {
                       Target {currentTarget}
                     </div>
                   )}
+                  {lastTimeLine ? (
+                    <div
+                      className="mt-1 font-mono text-[11px] tabular-nums text-muted-foreground"
+                      data-testid="text-last-time"
+                    >
+                      <span className="uppercase tracking-[0.1em] text-tertiary-foreground">Last time</span>{" "}
+                      <span className="whitespace-nowrap">{lastTimeLine.date} ·</span>{" "}
+                      {lastTimeLine.sets.map((set, i) => (
+                        // The space sits OUTSIDE the no-wrap span, so the line
+                        // can break there and only there.
+                        <span key={i}>
+                          <span className="whitespace-nowrap">
+                            {set}
+                            {i < lastTimeLine.sets.length - 1 ? "," : ""}
+                          </span>
+                          {i < lastTimeLine.sets.length - 1 ? " " : ""}
+                        </span>
+                      ))}
+                    </div>
+                  ) : isFirstTime ? (
+                    <div
+                      className="mt-1 font-mono text-[11px] text-tertiary-foreground"
+                      data-testid="text-first-time"
+                    >
+                      First time - this sets your baseline
+                    </div>
+                  ) : null}
                   {Array.isArray(currentExercise.formCues) && currentExercise.formCues.length > 0 && (
                     <ul className="mt-1.5 space-y-0.5" data-testid="list-form-cues">
                       {(currentExercise.formCues as string[]).slice(0, 2).map((cue, i) => (
@@ -1274,31 +1366,84 @@ export default function TrackPage() {
                   )}
                 </div>
 
-                {/* Rest control pill: mono REST + editable seconds + neon play */}
-                <div className="mt-4 flex items-center gap-2.5 rounded-xl border bg-card px-3.5 py-2.5">
-                  <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground">
-                    Rest
-                  </span>
-                  <div className="ml-auto flex items-baseline font-mono text-base font-semibold text-foreground">
-                    <Input
-                      type="number"
-                      value={restTimerDuration}
-                      onChange={(e) => setRestTimerDuration(parseInt(e.target.value) || 90)}
-                      aria-label="Rest duration in seconds"
-                      data-testid="input-rest-timer"
-                      className="h-auto w-11 rounded-none border-0 bg-transparent p-0 text-right font-mono text-base font-semibold text-foreground focus-visible:border-0 focus-visible:bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    />
-                    <span>s</span>
+                {/* Rest control. Ivo, 2026-09-30: "make the pill to turn on and off
+                    the rest timer during workout tracking as well... also allow
+                    me to change duration right there". The Auto switch IS the
+                    Settings toggle (same setting, same writer), so the two can
+                    never disagree; turning it off never stops a rest already
+                    running. The play button still starts one now. */}
+                <div className="mt-4 rounded-xl border bg-card px-3.5 py-2.5" data-testid="rest-control">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-tertiary-foreground">
+                      Rest
+                    </span>
+                    <label className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                      <Switch
+                        size="sm"
+                        checked={restTimerOnManualComplete}
+                        onCheckedChange={setRestTimerOnManualComplete}
+                        aria-label="Start the rest timer automatically after each set"
+                        data-testid="switch-auto-rest"
+                      />
+                      Auto
+                    </label>
+                    <div className="ml-auto flex items-baseline gap-0.5 rounded-lg border border-strong bg-input px-2 py-1 font-mono text-base font-semibold text-foreground focus-within:border-yellow">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={3600}
+                        value={restDraft ?? String(restTimerDuration)}
+                        onFocus={() => setRestDraft(String(restTimerDuration))}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setRestDraft(v);
+                          // Committed as it is typed, so the play button uses it
+                          // straight away - but only a usable number, so an empty
+                          // field stays empty instead of snapping to 90.
+                          const n = parseInt(v, 10);
+                          if (Number.isFinite(n) && n >= 1) setRestTimerDuration(Math.min(n, 3600));
+                        }}
+                        onBlur={() => setRestDraft(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        }}
+                        aria-label="Rest duration in seconds"
+                        data-testid="input-rest-timer"
+                        className="h-auto w-12 rounded-none border-0 bg-transparent p-0 text-right font-mono text-base font-semibold text-foreground focus-visible:border-0 focus-visible:bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                      <span className="text-sm text-muted-foreground">s</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={startRest}
+                      aria-label="Start rest timer"
+                      data-testid="button-start-rest-timer"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary transition-colors hover:bg-primary/20"
+                    >
+                      <Play className="size-3.5 fill-current" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={startRest}
-                    aria-label="Start rest timer"
-                    data-testid="button-start-rest-timer"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.12] text-primary transition-colors hover:bg-primary/20"
-                  >
-                    <Play className="size-3.5 fill-current" />
-                  </button>
+                  <div className="mt-2 flex gap-1.5">
+                    {[60, 90, 120, 180].map((secs) => (
+                      <button
+                        key={secs}
+                        type="button"
+                        onClick={() => {
+                          setRestDraft(null);
+                          setRestTimerDuration(secs);
+                        }}
+                        data-testid={`button-rest-preset-${secs}`}
+                        className={`flex-1 rounded-md py-1 font-mono text-[11px] font-semibold tabular-nums transition-colors ${
+                          restTimerDuration === secs
+                            ? "bg-primary text-primary-foreground"
+                            : "border border-strong bg-white/[0.03] text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Finish CTA - appears only when every set is checked; the checkbox
@@ -1370,6 +1515,16 @@ export default function TrackPage() {
             exerciseType: ex.exerciseType as "weight_reps" | "distance_time" | undefined,
           }))}
         />
+
+        {currentExercise ? (
+          <ExerciseTrendSheet
+            exerciseId={(currentExercise as { id: string }).id}
+            exerciseName={currentExercise.name}
+            weightUnit={weightUnit}
+            open={trendOpen}
+            onOpenChange={setTrendOpen}
+          />
+        ) : null}
 
         <AddExercisesSheet
           isOpen={isAddExerciseOpen}

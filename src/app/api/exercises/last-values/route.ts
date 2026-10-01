@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   completedWorkouts,
@@ -7,7 +7,9 @@ import {
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
-import { pickLastRecorded, type LastRecorded } from "@/lib/track-helpers";
+import { pickLastRecorded, type LastRecorded, type LastSession } from "@/lib/track-helpers";
+import { parseTimeZone } from "@/lib/api/timezone";
+import { localDateKeyInZone } from "@/lib/date";
 import type { NextRequest } from "next/server";
 
 /**
@@ -44,7 +46,10 @@ export const GET = handle(async (request: NextRequest) => {
   const rows = await db
     .select({
       exerciseId: workoutExercises.exerciseId,
+      workoutId: completedWorkouts.id,
+      workoutName: completedWorkouts.name,
       completedAt: completedWorkouts.completedAt,
+      setNumber: workoutSets.setNumber,
       weightLbs: workoutSets.weightLbs,
       reps: workoutSets.reps,
       distance: workoutSets.distance,
@@ -64,17 +69,36 @@ export const GET = handle(async (request: NextRequest) => {
         eq(workoutSets.completed, true),
       ),
     )
-    .orderBy(desc(completedWorkouts.completedAt));
+    // Newest workout first, and within it the sets in the order they were done,
+    // which is the order the "last time" line reads them back.
+    .orderBy(desc(completedWorkouts.completedAt), asc(workoutSets.setNumber));
 
   // Group by exercise, keeping only the sets from its most recent workout.
-  const latest = new Map<string, { at: number; sets: Record<string, number | null>[] }>();
+  const latest = new Map<
+    string,
+    {
+      at: number;
+      workoutId: string;
+      workoutName: string;
+      completedAt: Date;
+      sets: Record<string, number | null>[];
+    }
+  >();
   for (const r of rows) {
     const at = r.completedAt.getTime();
     const entry = latest.get(r.exerciseId);
     if (!entry) {
-      latest.set(r.exerciseId, { at, sets: [] });
-    } else if (at < entry.at) {
-      // An older workout for an exercise we have already answered.
+      latest.set(r.exerciseId, {
+        at,
+        workoutId: r.workoutId,
+        workoutName: r.workoutName,
+        completedAt: r.completedAt,
+        sets: [],
+      });
+    } else if (entry.workoutId !== r.workoutId) {
+      // An older workout for an exercise we have already answered. Compared by
+      // WORKOUT, not timestamp: two workouts finished in the same second would
+      // otherwise merge into one "last session".
       continue;
     }
     latest.get(r.exerciseId)!.sets.push({
@@ -86,10 +110,24 @@ export const GET = handle(async (request: NextRequest) => {
     });
   }
 
+  // The session's DAY is an instant resolved in the viewer's zone: an evening
+  // workout is still the evening's, not tomorrow's in UTC.
+  const tz = parseTimeZone(request.nextUrl.searchParams.get("tz"));
   const out: Record<string, LastRecorded> = {};
-  for (const [exerciseId, { sets }] of latest) {
-    const best = pickLastRecorded(sets);
-    if (best) out[exerciseId] = best;
+  for (const [exerciseId, entry] of latest) {
+    const best = pickLastRecorded(entry.sets);
+    if (!best) continue;
+    const lastSession: LastSession = {
+      date: localDateKeyInZone(entry.completedAt, tz),
+      workoutName: entry.workoutName,
+      sets: entry.sets.map((s) => ({
+        weightLbs: s.weight ?? null,
+        reps: s.reps ?? null,
+        time: s.time ?? null,
+        distance: s.distance ?? null,
+      })),
+    };
+    out[exerciseId] = { ...best, lastSession };
   }
   return out;
 });

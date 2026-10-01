@@ -14,6 +14,77 @@ export interface LastRecorded {
   reps: number | null;
   distance: number | null;
   time: number | null;
+  /**
+   * The whole of the most recent session, for READING. The four fields above
+   * are one set chosen for the prefill; a person asking "what did I do last
+   * time" wants every set, in order. Additive and optional, so the prefill
+   * cannot be affected by it.
+   */
+  lastSession?: LastSession;
+}
+
+export type LastSession = {
+  /** The viewer's local day, "YYYY-MM-DD". */
+  date: string;
+  workoutName: string;
+  sets: Array<{
+    weightLbs: number | null;
+    reps: number | null;
+    time: number | null;
+    distance: number | null;
+  }>;
+};
+
+/**
+ * "135 x 8, 135 x 8, 135 x 6 lbs" - last session's sets as one readable line.
+ *
+ * Follows what the exercise MEASURES, never its type name (the house rule in
+ * lib/exercise-types): a hold reads "60s at 25", cardio "1.5 mi in 12 min", a
+ * bodyweight set "BW x 10", and an assisted lift says "assist" because its
+ * weight is help, not load. Weights are converted from lbs by the caller's
+ * `toDisplay`, so the line reads in the unit everything else on screen does.
+ */
+export function formatLastSessionSets(
+  session: LastSession,
+  opts: {
+    unit: string;
+    toDisplay: (lbs: number | null) => number | null;
+    usesWeight: boolean;
+    usesReps: boolean;
+    usesTime: boolean;
+    usesDistance: boolean;
+    assisted?: boolean;
+  },
+): string {
+  const parts = session.sets.map((s) => {
+    const w = opts.toDisplay(s.weightLbs ?? 0) ?? 0;
+    if (opts.usesDistance) {
+      const d = s.distance ?? 0;
+      const t = s.time ?? 0;
+      return t > 0 ? `${d} mi in ${t} min` : `${d} mi`;
+    }
+    if (opts.usesTime && !opts.usesReps) {
+      // The unit sits beside the load here, because a hold's sets are not all
+      // loaded and a trailing unit would land after a bare "45s".
+      const t = s.time ?? 0;
+      return w > 0 ? `${t}s at ${w} ${opts.unit}` : `${t}s`;
+    }
+    const reps = s.reps ?? 0;
+    if (!opts.usesWeight || w <= 0) return `BW x ${reps}`;
+    return opts.assisted ? `${w} assist x ${reps}` : `${w} x ${reps}`;
+  });
+  const anyLoad = session.sets.some((s) => (s.weightLbs ?? 0) > 0);
+  const isHold = opts.usesTime && !opts.usesReps && !opts.usesDistance;
+  const unitSuffix = opts.usesWeight && anyLoad && !opts.usesDistance && !isHold ? ` ${opts.unit}` : "";
+  return `${parts.join(", ")}${unitSuffix}`;
+}
+
+/** "Sep 24", or "Sep 24, 2025" when it was not this year. */
+export function formatSessionDate(dateKey: string, todayKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const base = `${months[(m ?? 1) - 1]} ${d}`;
+  return todayKey.slice(0, 4) === String(y) ? base : `${base}, ${y}`;
 }
 
 /**
