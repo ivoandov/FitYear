@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { DEFAULT_MUSCLE_GROUPS as SHARED_DEFAULT_MUSCLE_GROUPS } from "@/lib/db/schema";
 
 export type WeekStart = "sunday" | "monday";
@@ -137,9 +139,45 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     return stored === "true";
   });
 
+  /**
+   * Auto-rest now lives on the ACCOUNT (2026-09-30). localStorage stays as the
+   * instant first answer, so the switch never flickers while settings load,
+   * and the account's value replaces it the moment it arrives.
+   *
+   * It used to exist ONLY in localStorage: per device, lost whenever site data
+   * was cleared, and invisible to the other device. Null on the account means it
+   * was never set there, so an existing browser choice is pushed up once rather
+   * than being overwritten by a default.
+   */
+  const { data: accountSettings } = useQuery<{ restTimerAutoStart?: boolean | null }>({
+    queryKey: ["/api/user-settings"],
+  });
+  const reconciledRef = useRef(false);
+  useEffect(() => {
+    if (!accountSettings || reconciledRef.current) return;
+    reconciledRef.current = true;
+    const onAccount = accountSettings.restTimerAutoStart;
+    if (typeof onAccount === "boolean") {
+      setRestTimerOnManualCompleteState(onAccount);
+      localStorage.setItem("restTimerOnManualComplete", String(onAccount));
+      return;
+    }
+    const inBrowser = localStorage.getItem("restTimerOnManualComplete");
+    if (inBrowser === "true" || inBrowser === "false") {
+      void apiRequest("PATCH", "/api/user-settings", {
+        restTimerAutoStart: inBrowser === "true",
+      }).catch(() => {});
+    }
+  }, [accountSettings]);
+
   const setRestTimerOnManualComplete = (enabled: boolean) => {
     setRestTimerOnManualCompleteState(enabled);
     localStorage.setItem("restTimerOnManualComplete", enabled.toString());
+    // The account is the source of truth; the tracker's Auto switch and the
+    // Settings toggle both land here, so they cannot disagree.
+    void apiRequest("PATCH", "/api/user-settings", { restTimerAutoStart: enabled })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["/api/user-settings"] }))
+      .catch(() => {});
   };
 
   const [showKgConversion, setShowKgConversionState] = useState<boolean>(() => {

@@ -148,6 +148,7 @@ export async function loadUserSettings(userId: string) {
       hasCompletedOnboarding: false,
       onboardingDaysPerWeek: null,
       onboardingProgramLength: null,
+      restTimerAutoStart: null,
     }
   );
 }

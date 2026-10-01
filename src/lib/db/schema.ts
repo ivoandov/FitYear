@@ -245,6 +245,13 @@ export const userSettings = pgTable("user_settings", {
   timeZone: text("time_zone"),
   onboardingDaysPerWeek: integer("onboarding_days_per_week"),
   onboardingProgramLength: integer("onboarding_program_length"),
+  /**
+   * Start the rest timer automatically when a set is completed. Null means
+   * never set on the account: the browser's old localStorage value, if any, is
+   * pushed up once and then the account is the source (2026-09-30), so the
+   * choice follows the person across devices and survives clearing site data.
+   */
+  restTimerAutoStart: boolean("rest_timer_auto_start"),
 });
 
 export const activeWorkouts = pgTable("active_workouts", {

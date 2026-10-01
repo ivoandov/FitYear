@@ -42,6 +42,8 @@ const PatchSchema = z.object({
     .optional(),
   onboardingDaysPerWeek: z.number().int().min(1).max(7).nullable().optional(),
   onboardingProgramLength: z.number().int().min(1).max(365).nullable().optional(),
+  // The tracker's Auto switch and the Settings toggle both write this.
+  restTimerAutoStart: z.boolean().optional(),
 });
 
 export const PATCH = handle(async (request: NextRequest) => {
