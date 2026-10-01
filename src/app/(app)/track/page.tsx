@@ -17,6 +17,7 @@ import type { LastRecorded } from "@/lib/track-helpers";
 import { countsTowardGoal, familyOf } from "@/lib/exercise-family";
 import { AddExercisesSheet, type PickerExercise } from "@/components/AddExercisesSheet";
 import { ExerciseTrendSheet } from "@/components/track/ExerciseTrendSheet";
+import { CreateExerciseFlow, type CreatedExercise } from "@/components/CreateExerciseFlow";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronRight, ChevronLeft, Check, Plus, Play, Dumbbell, Sparkles, TrendingUp } from "lucide-react";
+import { ChevronRight, ChevronLeft, Check, Plus, Minus, Play, Dumbbell, Sparkles, TrendingUp } from "lucide-react";
 import { useWorkout, type TrackingProgress } from "@/context/WorkoutContext";
 import { useSettings } from "@/components/SettingsProvider";
 import { useQuery } from "@tanstack/react-query";
@@ -96,6 +97,9 @@ export default function TrackPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   // The current exercise's trend sheet (components/track/ExerciseTrendSheet).
   const [trendOpen, setTrendOpen] = useState(false);
+  // The name typed into Add Exercise when the person chose to CREATE it
+  // (components/CreateExerciseFlow). null when that flow is closed.
+  const [createExerciseName, setCreateExerciseName] = useState<string | null>(null);
   /**
    * What is typed in the rest-duration field, while it is being typed.
    *
@@ -640,6 +644,13 @@ export default function TrackPage() {
   })();
   const progress = ((currentExerciseIndex + 1) / enrichedWorkoutExercises.length) * 100;
   const allSetsCompleted = sets.every(s => s.completed);
+  // Finishing an exercise needs ONE completed set, not all of them. Ivo,
+  // 2026-09-30: "'Finish exercise' button doesnt show up until 3 sets are
+  // completed - what if I want to finish with only two sets or I am doing a
+  // 1RM?" Unchecked rows are left as they are; every total in the app counts
+  // completed sets only, so they cost nothing.
+  const completedSetCount = sets.filter((s) => s.completed).length;
+  const anySetCompleted = completedSetCount > 0;
   const isLastExercise = currentExerciseIndex === enrichedWorkoutExercises.length - 1;
 
   // Progressive-overload ghost target for the current weight/reps exercise,
@@ -790,7 +801,11 @@ export default function TrackPage() {
       return;
     }
 
-    if (restTimerOnManualComplete) {
+    // Nothing follows the last set of the last exercise, so there is nothing to
+    // rest for - the next tap is Finish Workout.
+    const finishedTheWorkout =
+      isLastExercise && newSets.every((st) => st.completed);
+    if (restTimerOnManualComplete && !finishedTheWorkout) {
       startRest();
     }
     if (index === currentSetIndex && currentSetIndex < sets.length - 1 && !restTimerOnManualComplete) {
@@ -799,45 +814,6 @@ export default function TrackPage() {
     }
   };
 
-  const handlePrimaryAction = () => {
-    if (trackingState === "not_started") {
-      setTrackingState("in_set");
-    } else if (trackingState === "in_set") {
-      let newSets = [...sets];
-      newSets[currentSetIndex].completed = true;
-      newSets = propagateToNextSet(newSets, currentSetIndex);
-      setCurrentSets(newSets);
-      void hapticImpact("medium");
-
-      // PR check (in-workout)
-      const completedSet = newSets[currentSetIndex];
-      const wLbs = toLbs(completedSet.weight) ?? 0;
-      const reps = completedSet.reps ?? 0;
-      if (currentExercise && activeWorkout) {
-        const ex = activeWorkout.exercises[currentExerciseIndex];
-        if (ex) {
-          checkForPRs(
-            ex.id,
-            ex.instanceId,
-            currentExercise.name,
-            currentSetIndex,
-            wLbs,
-            reps,
-            exerciseSets,
-            ex.exerciseType,
-          );
-        }
-      }
-
-      if (currentSetIndex < sets.length - 1) {
-        startRest();
-      } else {
-        setTrackingState("not_started");
-      }
-    }
-  };
-
-  // Convert all weights in the exerciseSets map from display unit back to lbs before saving
   const toLbsMap = (map: Map<string, SetData[]>): Map<string, SetData[]> => {
     if (weightUnit === 'lbs') return map;
     const converted = new Map<string, SetData[]>();
@@ -910,6 +886,16 @@ export default function TrackPage() {
     }
   };
 
+  // Take back an extra set. Only the LAST row, and only while it is unchecked:
+  // removing a middle row would renumber sets that are already logged.
+  const handleRemoveLastSet = () => {
+    if (sets.length <= 1) return;
+    const last = sets[sets.length - 1];
+    if (last.completed) return;
+    setCurrentSets(sets.slice(0, -1));
+    if (currentSetIndex >= sets.length - 1) setCurrentSetIndex(Math.max(0, sets.length - 2));
+  };
+
   const handleAddSet = () => {
     const newSetNumber = sets.length + 1;
     const lastSet = sets[sets.length - 1];
@@ -974,6 +960,23 @@ export default function TrackPage() {
   // Append exercises picked mid-workout to the live workout. updateActiveWorkout
   // preserves instanceIds (and tracked sets) for existing exercises and assigns
   // fresh ones to the additions, then we jump to the first newly added exercise.
+  // A freshly created exercise, or the existing one the duplicate guard pointed
+  // at, goes straight into the workout - the person was mid-session and asked
+  // for it, so a second "now add it" step would be one tap too many.
+  const handleExerciseCreated = (created: CreatedExercise) => {
+    setCreateExerciseName(null);
+    handleAddExercises([
+      {
+        id: created.id,
+        name: created.name,
+        muscleGroups: created.muscleGroups ?? [],
+        description: created.description ?? "",
+        exerciseType: created.exerciseType,
+        isAssisted: created.isAssisted,
+      },
+    ]);
+  };
+
   const handleAddExercises = (picked: PickerExercise[]) => {
     if (!activeWorkout || picked.length === 0) return;
     const firstNewIndex = activeWorkout.exercises.length;
@@ -1027,25 +1030,12 @@ export default function TrackPage() {
     }
   };
 
-  const getPrimaryButtonText = () => {
-    if (allSetsCompleted) {
-      return isLastExercise ? "Finish Workout" : "Finish Exercise";
-    }
-    if (trackingState === "not_started") {
-      return currentSetIndex === 0 ? "Start" : `Start Set ${currentSetIndex + 1}`;
-    }
-    if (trackingState === "in_set") {
-      return "End Set";
-    }
-    return "Start";
-  };
-
+  // The only primary action left. The old Start / End Set steps behind this
+  // button were unreachable once it began to show after the first set, and
+  // were removed with that change (2026-09-30).
+  const getPrimaryButtonText = () => (isLastExercise ? "Finish Workout" : "Finish Exercise");
   const handlePrimaryButtonClick = () => {
-    if (allSetsCompleted) {
-      handleFinishExercise();
-    } else {
-      handlePrimaryAction();
-    }
+    void handleFinishExercise();
   };
 
   // Empty workout (quick-start with nothing added yet, or all exercises
@@ -1098,6 +1088,14 @@ export default function TrackPage() {
           exercises={pickerExercises}
           existingIds={[]}
           onAdd={handleAddExercises}
+          onCreateNew={(name) => setCreateExerciseName(name)}
+        />
+        <CreateExerciseFlow
+          open={createExerciseName !== null}
+          initialName={createExerciseName ?? ""}
+          library={pickerExercises}
+          onCreated={handleExerciseCreated}
+          onClose={() => setCreateExerciseName(null)}
         />
       </div>
     );
@@ -1353,17 +1351,37 @@ export default function TrackPage() {
                       />
                     );
                   })}
-                  {allSetsCompleted && (
+                  {/* Always available, prefilled from the last row. Not added
+                      automatically: an empty extra row on every exercise is noise
+                      for the usual session that ends at the planned count. Once
+                      every row is done it lights up, so "one more" is the obvious
+                      tap rather than a hunt. */}
+                  <div className="mt-1 flex gap-2">
                     <button
                       type="button"
                       onClick={handleAddSet}
                       data-testid="button-add-set"
-                      className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-xl border bg-white/[0.03] text-sm font-semibold text-foreground transition-colors hover:bg-white/[0.06]"
+                      className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${
+                        allSetsCompleted
+                          ? "border border-yellow bg-primary-dim text-primary"
+                          : "border bg-white/[0.03] text-foreground hover:bg-white/[0.06]"
+                      }`}
                     >
                       <Plus className="h-4 w-4" />
-                      Add Set
+                      {allSetsCompleted ? "One more set" : "Add set"}
                     </button>
-                  )}
+                    {sets.length > 1 && !sets[sets.length - 1].completed ? (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLastSet}
+                        aria-label="Remove the last set"
+                        data-testid="button-remove-set"
+                        className="flex h-11 items-center justify-center rounded-xl border px-3.5 text-sm font-semibold text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 {/* Rest control. Ivo, 2026-09-30: "make the pill to turn on and off
@@ -1446,18 +1464,30 @@ export default function TrackPage() {
                   </div>
                 </div>
 
-                {/* Finish CTA - appears only when every set is checked; the checkbox
-                    completes individual sets (no separate "End Set" button). */}
-                {allSetsCompleted && (
-                  <button
-                    type="button"
-                    onClick={handlePrimaryButtonClick}
-                    data-testid="button-primary-action"
-                    className={`${CTA} mt-4`}
-                  >
-                    <Check className="h-[18px] w-[18px]" />
-                    {getPrimaryButtonText()}
-                  </button>
+                {/* Finish appears with the FIRST completed set - two sets, or a
+                    single 1RM attempt, is a finished exercise. When some rows are
+                    still unchecked it says so, so finishing early is a choice and
+                    never a surprise. */}
+                {anySetCompleted && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePrimaryButtonClick}
+                      data-testid="button-primary-action"
+                      className={`${CTA} mt-4`}
+                    >
+                      <Check className="h-[18px] w-[18px]" />
+                      {getPrimaryButtonText()}
+                    </button>
+                    {!allSetsCompleted && (
+                      <p
+                        className="mt-2 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-tertiary-foreground"
+                        data-testid="text-sets-done"
+                      >
+                        {completedSetCount} of {sets.length} sets done - the rest are skipped
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1532,6 +1562,14 @@ export default function TrackPage() {
           exercises={pickerExercises}
           existingIds={(activeWorkout.exercises as { id: string }[]).map((e) => e.id)}
           onAdd={handleAddExercises}
+          onCreateNew={(name) => setCreateExerciseName(name)}
+        />
+        <CreateExerciseFlow
+          open={createExerciseName !== null}
+          initialName={createExerciseName ?? ""}
+          library={pickerExercises}
+          onCreated={handleExerciseCreated}
+          onClose={() => setCreateExerciseName(null)}
         />
 
         <AlertDialog

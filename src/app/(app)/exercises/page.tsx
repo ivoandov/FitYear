@@ -10,6 +10,7 @@ import { Search, Plus } from "lucide-react";
 import { type Exercise } from "@/data/exercises";
 import { COARSE_MUSCLE_GROUPS, matchesCoarse, type CoarseGroup } from "@/lib/muscle-groups";
 import { useToast } from "@/hooks/use-toast";
+import { duplicateMatchFrom } from "@/lib/exercise-duplicate";
 import { useAuth } from "@/hooks/use-auth";
 import { canRegenerateImage } from "@/lib/photo-admin";
 import { apiRequest, queryClient, describeApiError, invalidateCompletedWorkouts } from "@/lib/queryClient";
@@ -26,25 +27,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-/**
- * Extract the duplicate-guard payload from a thrown apiRequest error. The
- * create API answers 409 + { error: "duplicate", match } when the name
- * confidently matches an existing exercise; anything else returns null.
- */
-function duplicateMatchFrom(e: unknown): { id: string; name: string } | null {
-  if (!(e instanceof Error)) return null;
-  const m = e.message.match(/^409:\s*([\s\S]*)$/);
-  if (!m) return null;
-  try {
-    const parsed = JSON.parse(m[1]);
-    if (parsed?.error === "duplicate" && parsed.match?.id && parsed.match?.name) {
-      return { id: parsed.match.id, name: parsed.match.name };
-    }
-  } catch {
-    // not our payload
-  }
-  return null;
-}
 
 interface DBExercise {
   id: string;

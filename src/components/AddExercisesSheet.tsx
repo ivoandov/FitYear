@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Check } from "lucide-react";
+import { Search, Check, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MuscleFilterChips } from "@/components/MuscleFilterChips";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
@@ -42,12 +42,19 @@ export function AddExercisesSheet({
   exercises,
   existingIds,
   onAdd,
+  onCreateNew,
 }: {
   isOpen: boolean;
   onClose: () => void;
   exercises: PickerExercise[];
   existingIds: string[];
   onAdd: (picked: PickerExercise[]) => void;
+  /**
+   * "Can't find it? Create it." Ivo, 2026-09-30: "I also wish I could add a
+   * new exercise to the database from the 'Add Exercise' menu if I dont see
+   * what I want." Receives what was typed, to seed the new exercise's name.
+   */
+  onCreateNew?: (name: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [muscle, setMuscle] = useState<string>("All");
@@ -124,6 +131,23 @@ export function AddExercisesSheet({
         </div>
 
         <div className="px-6 py-3 space-y-2">
+          {/* Offered whenever something is typed, at the TOP, not only when the
+              list is empty: "Bench Press" matches eleven exercises and none of
+              them may be the one somebody means. */}
+          {onCreateNew && search.trim() ? (
+            <button
+              type="button"
+              onClick={() => onCreateNew(search.trim())}
+              data-testid="button-create-exercise-from-search"
+              className="flex w-full items-center gap-3 rounded-lg border border-dashed border-yellow p-3 text-left transition-colors hover:bg-primary-dim"
+            >
+              <Plus className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 text-sm">
+                <span className="text-muted-foreground">Not here? Create </span>
+                <span className="font-semibold text-foreground">&quot;{search.trim()}&quot;</span>
+              </span>
+            </button>
+          ) : null}
           {filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               No exercises match.
