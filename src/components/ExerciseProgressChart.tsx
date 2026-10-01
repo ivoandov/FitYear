@@ -40,11 +40,18 @@ export function ExerciseProgressChart({
   weightUnit,
   exerciseId,
   exerciseName,
+  readOnly = false,
 }: {
   points: ProgressPoint[];
   weightUnit: "lbs" | "kg";
   exerciseId: string;
   exerciseName: string;
+  /**
+   * Hide the "treat as kg" history correction. The tracker's trend sheet sets
+   * this: correcting a past session belongs on the exercise page, not mid-set
+   * (Ivo, 2026-09-30, agreeing to a view-only trend while tracking).
+   */
+  readOnly?: boolean;
 }) {
   const [metric, setMetric] = useState<Metric>("1rm");
   const [selected, setSelected] = useState<ProgressPoint | null>(null);
@@ -208,7 +215,7 @@ export function ExerciseProgressChart({
                           </span>{" "}
                           × {s.reps}
                         </div>
-                        {selected.isOutlier ? (
+                        {selected.isOutlier && !readOnly ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -228,7 +235,7 @@ export function ExerciseProgressChart({
                     );
                   })}
                 </div>
-                {selected.isOutlier ? (
+                {selected.isOutlier && !readOnly ? (
                   <p className="text-xs text-muted-foreground">
                     &quot;Treat as kg&quot; multiplies the stored weight by 2.20462. Use when this workout
                     was logged in kg but the value was stored without conversion.

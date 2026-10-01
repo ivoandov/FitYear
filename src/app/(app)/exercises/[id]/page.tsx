@@ -1,23 +1,18 @@
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, TrendingUp } from "lucide-react";
 import { getServerUser } from "@/lib/supabase/server";
 import { db } from "@/lib/db";
-import { exercises, completedWorkouts, userSettings } from "@/lib/db/schema";
-import {
-  ExerciseProgressChart,
-  type ProgressPoint,
-} from "@/components/ExerciseProgressChart";
+import { exercises, userSettings } from "@/lib/db/schema";
+import { ExerciseProgressChart } from "@/components/ExerciseProgressChart";
 import { rewriteImageUrl } from "@/lib/image-url";
 import { lbsToDisplay } from "@/lib/units";
 import { overloadSuggestion } from "@/lib/analytics";
-import { epley1RM } from "@/lib/workout-stats";
 import { viewerTimeZone } from "@/lib/server-timezone";
 import { MuscleGroupsLabel } from "@/components/MuscleGroupsLabel";
-import { localDateKeyInZone } from "@/lib/date";
-import { assembleNormalizedExercises } from "@/lib/db/normalized-workout";
+import { loadExerciseProgress } from "@/lib/api/exercise-progress";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -27,15 +22,6 @@ export const dynamic = "force-dynamic";
 // strength-trend SQL cannot drift apart (they previously disagreed at reps=1
 // and above the clamp).
 
-type ExerciseInWorkoutJson = {
-  id: string;
-  name?: string;
-  setsData?: Array<{
-    weight?: number | null;
-    reps?: number | null;
-    completed?: boolean;
-  }>;
-};
 
 export default async function ExerciseDetailPage({ params }: Ctx) {
   const { id } = await params;
@@ -64,97 +50,15 @@ export default async function ExerciseDetailPage({ params }: Ctx) {
     .limit(1);
   const weightUnit = (settings?.weightUnit ?? "lbs") as "lbs" | "kg";
 
-  // All completed workouts for this user (could narrow with a containment
-  // query, but the indexed user_id scan + in-memory filter is plenty fast
-  // for the ~100-row scale per user).
-  const workouts = await db
-    .select({
-      id: completedWorkouts.id,
-      name: completedWorkouts.name,
-      completedAt: completedWorkouts.completedAt,
-    })
-    .from(completedWorkouts)
-    .where(eq(completedWorkouts.userId, user.id))
-    .orderBy(desc(completedWorkouts.completedAt));
-
-  // Phase 4d: assemble the per-set data from the normalized tables (sole store).
-  // The enumeration index over the assembled sets (in set_number order) is what
-  // the fix-set-weight endpoint expects as setIdx.
-  const normalized = await assembleNormalizedExercises(workouts.map((w) => w.id));
-
+  // One implementation, shared with the tracker's trend sheet
+  // (lib/api/exercise-progress) so the two cannot draw different histories.
   const isAssisted = !!exercise.isAssisted;
-  // Viewer's zone, not the server's: on Vercel the server is UTC, which pushed
-  // evening workouts onto the next chart day and disagreed with the streak.
-  const timeZone = await viewerTimeZone();
-  const points: ProgressPoint[] = [];
-  for (const w of workouts) {
-    const exs = (normalized.get(w.id) ?? []) as ExerciseInWorkoutJson[];
-    const match = exs.find((e) => e.id === id);
-    if (!match?.setsData) continue;
-    const completedSets = match.setsData
-      .map((s, idx) => ({
-        setIdx: idx,
-        weight: s.weight ?? 0,
-        reps: s.reps ?? 0,
-        completed: !!s.completed,
-      }))
-      .filter((s) => s.completed && s.weight > 0 && s.reps > 0);
-    if (completedSets.length === 0) continue;
-    // On an assisted lift "weight" is counter-assistance, so LOWER is stronger:
-    // the best set is the lightest assist, and volume / est-1RM are meaningless
-    // (same rule detectPRs and the records card already follow). Taking the max
-    // here reported the user's easiest set as their heaviest.
-    let bestWeight = isAssisted ? Number.POSITIVE_INFINITY : 0;
-    let bestVolume = 0;
-    let best1RM = 0;
-    for (const s of completedSets) {
-      if (isAssisted ? s.weight < bestWeight : s.weight > bestWeight) {
-        bestWeight = s.weight;
-      }
-      if (!isAssisted) {
-        const v = s.weight * s.reps;
-        if (v > bestVolume) bestVolume = v;
-        const e = epley1RM(s.weight, s.reps);
-        if (e > best1RM) best1RM = e;
-      }
-    }
-    if (!Number.isFinite(bestWeight)) bestWeight = 0;
-    // Bucket by local calendar day (the app-wide convention, matching
-    // calcStreak) instead of a UTC slice, which shifted late-evening workouts
-    // into the next day and made the chart disagree with the streak.
-    const dateStr = localDateKeyInZone(w.completedAt, timeZone);
-    points.push({
-      workoutId: w.id,
-      workoutName: w.name,
-      date: dateStr,
-      bestWeightLbs: bestWeight,
-      bestVolumeLbs: bestVolume,
-      best1RMLbs: best1RM,
-      sets: completedSets.map((s) => ({
-        setIdx: s.setIdx,
-        weightLbs: s.weight,
-        reps: s.reps,
-      })),
-      isOutlier: false, // computed below once we know the median
-    });
-  }
-  // Chart wants chronological order; the DB query was DESC for stat-strip uses
-  points.sort((a, b) => a.date.localeCompare(b.date));
-
-  // Outlier: median 1RM, flag anything < 50% of it (matches the audit script
-  // heuristic, surfaced visually here for self-serve detection + fix).
-  const sorted1RMs = points.map((p) => p.best1RMLbs).sort((a, b) => a - b);
-  const median1RM =
-    sorted1RMs.length === 0
-      ? 0
-      : sorted1RMs.length % 2
-        ? sorted1RMs[sorted1RMs.length >>> 1]
-        : (sorted1RMs[sorted1RMs.length / 2 - 1] +
-            sorted1RMs[sorted1RMs.length / 2]) /
-          2;
-  for (const p of points) {
-    p.isOutlier = median1RM > 0 && p.best1RMLbs < median1RM * 0.5;
-  }
+  const points = await loadExerciseProgress(user.id, id, {
+    isAssisted,
+    // Viewer's zone, not the server's: on Vercel the server is UTC, which
+    // pushed evening workouts onto the next chart day.
+    timeZone: await viewerTimeZone(),
+  });
 
   const totalVolumeLbs = points.reduce((acc, p) => acc + p.bestVolumeLbs, 0);
   // Assisted: the best all-time set is the LIGHTEST assist across sessions.
