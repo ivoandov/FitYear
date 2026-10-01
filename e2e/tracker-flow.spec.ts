@@ -157,7 +157,7 @@ test("an exercise that is not in the list can be created from Add Exercise", asy
   });
   const created = await sql`select id, image_url from exercises where name ilike ${"%Brand New Movement%"} and user_id = ${account.id}::uuid`;
   expect(created).toHaveLength(1);
-  // Imageless on purpose: generating one is paid, and Ivo stopped that.
+  // Imageless on purpose: images are on demand (the card's button), never automatic.
   await page.waitForTimeout(1500);
   const [after] = await sql`select image_url from exercises where id = ${created[0].id}`;
   expect(after.image_url).toBeNull();

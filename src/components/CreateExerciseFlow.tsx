@@ -50,9 +50,10 @@ type Pending = {
  * creating theirs anyway, exactly as on the Exercises page. Either choice comes
  * back through `onCreated`, so the caller never has to know which happened.
  *
- * It deliberately does NOT generate an image. The Exercises page still fires an
- * AI image request on every create, which is paid generation Ivo stopped on
- * 2026-09-18; a new exercise here is created imageless.
+ * It deliberately does NOT generate an image. Images are ON DEMAND (Ivo,
+ * 2026-09-30: "i want ai on demand"): the exercise is created imageless and its
+ * card's "Generate image" button is the only way one gets made. Nothing creates
+ * an image automatically, here or anywhere else.
  */
 export function CreateExerciseFlow({
   open,
