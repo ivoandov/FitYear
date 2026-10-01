@@ -15,7 +15,7 @@
  * half is skipped with a message rather than ended.
  */
 import { test, expect } from "@playwright/test";
-import { sql, closeDb } from "./helpers";
+import { sql } from "./helpers";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const READ_KEY = process.env.INTEGRATION_API_KEY ?? "";
@@ -75,7 +75,11 @@ test.describe("integration program door", () => {
     await sql`delete from coach_documents where user_id = ${USER_ID} and title = ${DOC_TITLE}`;
     await sql`delete from coach_notes where user_id = ${USER_ID} and content = ${NOTE}`;
     await sql`delete from exercises where user_id = ${USER_ID} and name ilike ${"%E2E Invented Movement%"}`;
-    await closeDb();
+    // No closeDb() here. `sql` is ONE client shared by every spec in the
+    // worker; ending it in this afterAll made whichever spec ran next fail with
+    // "write CONNECTION_ENDED" (muscle-balance, every full run from 2026-09-24
+    // until it was traced on 2026-09-30). e2e/global-teardown.ts closes it once,
+    // after everything.
   });
 
   test("rejects a request with no key, and is not a redirect", async ({ request }) => {
