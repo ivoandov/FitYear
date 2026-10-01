@@ -201,9 +201,8 @@ export default function FitBotWorkoutPage() {
           if (!res.ok) continue;
           const created = (await res.json()) as { id: string };
           createdByKey.set(normalizeExerciseName(ex.name), created.id);
-          apiRequest("POST", `/api/exercises/${created.id}/regenerate-image`, {}).catch(
-            () => {},
-          );
+          // No automatic image: generation is on demand since 2026-09-30 (Ivo,
+          // "i want ai on demand"), from the exercise's card.
         } catch {
           // Creation failed (e.g. transient): fall through to a client-side id
           // so the workout can still start; it just won't link to the library.

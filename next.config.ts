@@ -56,6 +56,23 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // sharp's native library, forced into the image routes' bundles.
+  //
+  // The in-app image generator crashed in production with "Could not load the
+  // 'sharp' module using the linux-x64 runtime ... libvips-cpp.so.8.18.3: cannot
+  // open shared object file" (found 2026-09-30, probably broken since the sharp
+  // 0.35 upgrade on 2026-07-29). The packages ARE installed on Vercel - they are
+  // in the lockfile - but sharp's .node binary loads libvips by dlopen at RUN
+  // time, which file tracing cannot see, so the .so was never copied into the
+  // function. Every image since then was made by a script on a Mac, where it
+  // works, which is how nobody noticed. The crash happens while the route
+  // module loads, before any paid model call, so it never cost anything.
+  outputFileTracingIncludes: {
+    "/api/exercises/**": [
+      "./node_modules/@img/sharp-linux-x64/**/*",
+      "./node_modules/@img/sharp-libvips-linux-x64/**/*",
+    ],
+  },
   // Strip "Powered by Vercel" and gzip responses by default — small but free wins.
   compress: true,
   poweredByHeader: false,

@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, X, RefreshCw, TrendingUp, Dumbbell } from "lucide-react";
+import { Plus, Pencil, X, RefreshCw, TrendingUp, Dumbbell, Sparkles } from "lucide-react";
 
 interface ExerciseCardProps {
   id: string;
@@ -125,18 +125,27 @@ function ExerciseCardImpl({
                 <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             )}
+            {/* No picture yet: say so, and offer one. Generation is ON DEMAND
+                since 2026-09-30 (Ivo: "i want ai on demand"), so for a new
+                exercise this button is the only way an image ever appears - a
+                bare refresh icon in a corner did not read as that. */}
             {(isOwner || canRegenerate) && onRegenerateImage && (
               <button
-                className="absolute bottom-2 left-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-60"
+                className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/50 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition-colors hover:text-primary disabled:opacity-70"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRegenerateImage(id);
                 }}
                 disabled={isRegenerating}
-                aria-label={`Regenerate image for ${name}`}
+                aria-label={`Generate image for ${name}`}
                 data-testid={`button-regenerate-image-${id}`}
               >
-                <RefreshCw className={`h-4 w-4 ${isRegenerating ? "animate-spin" : ""}`} strokeWidth={2.25} />
+                {isRegenerating ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" strokeWidth={2.25} />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2.25} />
+                )}
+                {isRegenerating ? "Generating..." : "Generate image"}
               </button>
             )}
           </div>

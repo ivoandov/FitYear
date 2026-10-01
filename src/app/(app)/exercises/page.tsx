@@ -84,33 +84,17 @@ export default function ExercisesPage() {
       const res = await apiRequest("POST", "/api/exercises", exercise);
       return res.json() as Promise<{ id: string }>;
     },
-    onSuccess: (created) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
       setShowAddDialog(false);
+      // No image is generated here any more. It used to fire a paid AI image
+      // request on EVERY create; Ivo stopped paying for automatic generation on
+      // 2026-09-18 and chose "ai on demand" on 2026-09-30, so an image is made
+      // only when somebody presses Generate image on the card.
       toast({
-        title: "Exercise Created",
-        description: "Your custom exercise has been added. Generating an image…",
+        title: "Exercise created",
+        description: "Tap Generate image on its card if you want a picture.",
       });
-      // Best-effort AI image (Imagen via Vertex). Non-blocking: the exercise
-      // already exists, so if generation fails it simply stays imageless. The
-      // card shows the regenerating spinner while it runs (~10-25s), then the
-      // list refreshes to pick up the new image.
-      if (created?.id) {
-        const newId = created.id;
-        setRegeneratingIds(prev => new Set(prev).add(newId));
-        apiRequest("POST", `/api/exercises/${newId}/regenerate-image`, {})
-          .catch(() => {
-            // Generation failed (e.g. Vertex/billing). Exercise still created.
-          })
-          .finally(() => {
-            setRegeneratingIds(prev => {
-              const next = new Set(prev);
-              next.delete(newId);
-              return next;
-            });
-            queryClient.invalidateQueries({ queryKey: ["/api/exercises"] });
-          });
-      }
     },
     onError: (error, variables) => {
       const match = duplicateMatchFrom(error);
