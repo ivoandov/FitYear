@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUp, Check, Loader2, Sparkles, Square, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, ArrowUp, Check, Loader2, Sparkles, Square } from "lucide-react";
 import { DesktopTopBar } from "@/components/DesktopTopBar";
 import { VoiceInputButton } from "@/components/VoiceInputButton";
 import { toast } from "@/hooks/use-toast";
 import { queryClient, describeApiError } from "@/lib/queryClient";
 import { clientTimeZone } from "@/lib/date";
 import { buildProposalRequest } from "@/lib/ai/fitbot-tools";
+import { ProposalCard, type ChatProposal } from "@/components/fitbot/ProposalCard";
+import { hasPendingRoutineChange, supersedeKey } from "@/lib/fitbot-proposals";
 
 /**
  * Talking to FitBot, with the whole app in reach.
@@ -42,13 +45,7 @@ const OPENERS = [
 /** An opaque Anthropic message, stored exactly as the route returned it. */
 type Transcript = { role: "user" | "assistant"; content: unknown }[];
 
-type Proposal = {
-  tool: string;
-  input: Record<string, unknown>;
-  summary: string;
-  /** Resolved locally rather than trusted from the stream. See below. */
-  status: "pending" | "approved" | "rejected" | "failed";
-};
+type Proposal = ChatProposal;
 
 type Turn =
   | { kind: "user"; text: string }
@@ -98,6 +95,18 @@ export default function FitBotChatPage() {
   // Lets Stop abort the in-flight turn. Held in a ref because the click handler
   // must reach the CURRENT request, not the one captured when it rendered.
   const abortRef = useRef<AbortController | null>(null);
+  // "I approved that" for an approval tapped while FitBot was still answering.
+  // `send` refuses while busy, so this used to be dropped on the floor: the
+  // change applied and FitBot was never told, then built on stale state.
+  const queuedRef = useRef<string | null>(null);
+  const [applying, setApplying] = useState<number | null>(null);
+  // The composer is pinned over the page, so the thread needs room under its
+  // last line equal to the composer's height, which grows with what is typed.
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [composerHeight, setComposerHeight] = useState(96);
+
+  const { data: settings } = useQuery<{ weightUnit?: string }>({ queryKey: ["/api/user-settings"] });
+  const weightUnit = settings?.weightUnit === "kg" ? "kg" : "lbs";
 
   /**
    * Grow the composer with its content, from two lines up to a ceiling.
@@ -114,8 +123,18 @@ export default function FitBotChatPage() {
   useEffect(autoGrow, [input]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns]);
+    const el = composerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setComposerHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // `block: "end"` against a spacer as tall as the composer: the last line
+  // lands just above the composer instead of underneath it.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns, composerHeight]);
 
   /**
    * Pick the conversation back up.
@@ -243,17 +262,26 @@ export default function FitBotChatPage() {
             });
           } else if (event.type === "proposal") {
             streamingText = "";
+            const incoming: Proposal = {
+              tool: String(event.tool ?? ""),
+              input: (event.input ?? {}) as Record<string, unknown>,
+              summary: String(event.summary ?? "Proposed change"),
+              status: "pending",
+            };
+            // A newer version of the same change retires the older card, so a
+            // stale routine or start date can no longer be approved by a tap on
+            // something scrolled up the thread.
+            const key = supersedeKey(incoming.tool, incoming.input);
             setTurns((t) => [
-              ...t,
-              {
-                kind: "proposal",
-                proposal: {
-                  tool: String(event.tool ?? ""),
-                  input: (event.input ?? {}) as Record<string, unknown>,
-                  summary: String(event.summary ?? "Proposed change"),
-                  status: "pending",
-                },
-              },
+              ...t.map((turn): Turn =>
+                key &&
+                turn.kind === "proposal" &&
+                turn.proposal.status === "pending" &&
+                supersedeKey(turn.proposal.tool, turn.proposal.input) === key
+                  ? { kind: "proposal", proposal: { ...turn.proposal, status: "superseded" } }
+                  : turn,
+              ),
+              { kind: "proposal", proposal: incoming },
             ]);
           } else if (event.type === "thinking") {
             streamingText = "";
@@ -302,7 +330,17 @@ export default function FitBotChatPage() {
     } finally {
       abortRef.current = null;
       setBusy(false);
+      const queued = queuedRef.current;
+      queuedRef.current = null;
+      // This closure saw busy === false when it started, so the guard passes.
+      if (queued) void send(queued);
     }
+  }
+
+  /** Say something to FitBot now, or as soon as the current answer finishes. */
+  function tellFitBot(text: string) {
+    if (busy) queuedRef.current = text;
+    else void send(text);
   }
 
   function stop() {
@@ -317,6 +355,9 @@ export default function FitBotChatPage() {
    * arbitrary call: only the eight known proposals resolve to a request at all.
    */
   async function approve(index: number, proposal: Proposal) {
+    // One application per card: a second tap while the first is in flight would
+    // start the same program twice (the second is refused, as a failure).
+    if (applying !== null) return;
     const request = buildProposalRequest(proposal.tool, proposal.input);
     if (!request) {
       toast({ title: "FitBot proposed something I can't apply", variant: "destructive" });
@@ -332,6 +373,7 @@ export default function FitBotChatPage() {
         ),
       );
 
+    setApplying(index);
     try {
       const res = await fetch(request.path, {
         method: request.method,
@@ -348,10 +390,12 @@ export default function FitBotChatPage() {
 
       // Tell FitBot it landed, so the conversation stays honest about state and
       // it can offer the follow-up (a routine change wants a resync next).
-      void send(`I approved that: ${proposal.summary}. It has been applied.`);
+      tellFitBot(`I approved that: ${proposal.summary}. It has been applied.`);
     } catch (e) {
       setStatus("failed");
       toast({ title: "Couldn't apply that", description: describeApiError(e), variant: "destructive" });
+    } finally {
+      setApplying(null);
     }
   }
 
@@ -363,7 +407,7 @@ export default function FitBotChatPage() {
           : turn,
       ),
     );
-    void send(`No, don't do that: ${proposal.summary}`);
+    tellFitBot(`No, don't do that: ${proposal.summary}`);
   }
 
   // Not "no turns" but "nothing to show and nothing coming": the openers must
@@ -473,53 +517,21 @@ export default function FitBotChatPage() {
             if (turn.kind === "proposal") {
               const p = turn.proposal;
               return (
-                <div
+                <ProposalCard
                   key={i}
-                  className="rounded-[16px] border-yellow bg-primary-dim p-4"
-                  data-testid="chat-proposal"
-                >
-                  <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-primary">
-                    Proposed change
-                  </div>
-                  <p className="mt-2 text-[15px] text-foreground">{p.summary}</p>
-                  <ProposalDetail tool={p.tool} input={p.input} />
-
-                  {p.status === "pending" ? (
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => approve(i, p)}
-                        data-testid="button-approve-proposal"
-                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(180deg,#f0ff5c,#E5FF00)] text-sm font-bold text-primary-foreground shadow-cta"
-                      >
-                        <Check className="h-4 w-4" />
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => reject(i, p)}
-                        data-testid="button-reject-proposal"
-                        className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border-strong bg-white/[0.03] text-sm font-semibold text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                        No
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-tertiary-foreground">
-                      {p.status === "approved"
-                        ? "Applied"
-                        : p.status === "rejected"
-                          ? "Declined"
-                          : "Could not apply"}
-                    </div>
-                  )}
-                  {p.status === "pending" && (
-                    <p className="mt-2 text-[12px] leading-snug text-tertiary-foreground">
-                      Or just tell it what to change instead.
-                    </p>
-                  )}
-                </div>
+                  proposal={p}
+                  weightUnit={weightUnit}
+                  routineChangeWaiting={
+                    p.tool === "propose_start_routine" &&
+                    hasPendingRoutineChange(
+                      turns.flatMap((x) => (x.kind === "proposal" ? [x.proposal] : [])),
+                      p.input.routineId,
+                    )
+                  }
+                  applying={applying === i}
+                  onApprove={() => approve(i, p)}
+                  onReject={() => reject(i, p)}
+                />
               );
             }
             return (
@@ -535,13 +547,33 @@ export default function FitBotChatPage() {
               Thinking
             </div>
           )}
-          <div ref={bottomRef} />
+          {/* Room for the pinned composer, so the last line can scroll clear
+              of it. The scroll target, too: see the effect above. Its scroll
+              margin is the mobile BottomNav, so "end" means above the nav and
+              not behind it. */}
+          <div
+            ref={bottomRef}
+            aria-hidden
+            style={{ height: composerHeight }}
+            className="scroll-mb-[calc(5rem+env(safe-area-inset-bottom))] md:scroll-mb-0"
+            data-testid="chat-composer-spacer"
+          />
         </div>
+      </div>
 
-        {/* The mobile BottomNav is a 20-unit fixed bar over the viewport, and
-            this composer sticks to the scrollport bottom - which is UNDER it.
-            Offset on mobile only; at md+ there is no bottom bar. */}
-        <div className="sticky bottom-20 flex items-end gap-2 bg-background pb-2 pt-2 md:bottom-0">
+      {/* PINNED to the viewport, above the mobile BottomNav (h-20 plus the
+          safe area) and beside the desktop rail. It was `sticky bottom-20`
+          until 2026-10-03, which never stuck: <main> is overflow-auto, so the
+          composer stuck to main's padding box instead, and with main's own
+          pb-20 that put it 64px up over the end of the conversation. Ivo:
+          "sometimes I can't see the end of his response as it's behind the
+          chat box." */}
+      <div
+        ref={composerRef}
+        className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 bg-background md:bottom-0 md:left-20 lg:left-24"
+        data-testid="chat-composer"
+      >
+        <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-4 pb-2 pt-2 md:px-9 md:pb-4">
           <textarea
             ref={boxRef}
             value={input}
@@ -585,53 +617,5 @@ export default function FitBotChatPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-/** The concrete shape of a proposal, so "approve" is an informed decision. */
-function ProposalDetail({
-  tool,
-  input,
-}: {
-  tool: string;
-  input: Record<string, unknown>;
-}) {
-  if (tool === "propose_routine_change" && Array.isArray(input.days)) {
-    return (
-      <div className="mt-3 space-y-2">
-        {(input.days as Record<string, unknown>[]).map((d, i) => (
-          <div key={i} className="rounded-xl border-strong bg-white/[0.03] p-2.5">
-            <div className="text-[13px] font-semibold text-foreground">
-              Day {String(d.dayIndex)} · {String(d.workoutName ?? "")}
-            </div>
-            <ul className="mt-1 space-y-0.5">
-              {(Array.isArray(d.exercises) ? d.exercises : []).map(
-                (e: Record<string, unknown>, j: number) => (
-                  <li key={j} className="font-mono text-[12px] tabular-nums text-muted-foreground">
-                    {String(e.name)} · {String(e.sets ?? "")} x {String(e.reps ?? "")}
-                  </li>
-                ),
-              )}
-            </ul>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  const skip = new Set(["summary", "routineId", "scheduledWorkoutId"]);
-  const fields = Object.entries(input).filter(
-    ([k, v]) => !skip.has(k) && v !== undefined && v !== null,
-  );
-  if (fields.length === 0) return null;
-
-  return (
-    <ul className="mt-3 space-y-0.5">
-      {fields.map(([k, v]) => (
-        <li key={k} className="font-mono text-[12px] text-muted-foreground">
-          {k}: {typeof v === "object" ? JSON.stringify(v) : String(v)}
-        </li>
-      ))}
-    </ul>
   );
 }
