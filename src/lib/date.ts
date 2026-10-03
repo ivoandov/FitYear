@@ -172,6 +172,32 @@ export function scheduledDateKey(d: Date | string): string {
   return at.toISOString().slice(0, 10);
 }
 
+/**
+ * The calendar day a caller MEANT, from whatever it sent.
+ *
+ * A bare "YYYY-MM-DD" is already a day, so it is returned as-is. Feeding it to
+ * `new Date()` instead (what the start and schedule routes did until
+ * 2026-10-03) reads it as MIDNIGHT UTC, which in any zone west of Greenwich is
+ * still the evening BEFORE, so the day came out one early. FitBot and Liv both
+ * send bare days, and Ivo's program, asked to start "today, 2026-10-02",
+ * started on the 1st with its first session already past due. Anything else
+ * (a full timestamp, the Start button's `toISOString()`) is an instant and is
+ * resolved in the viewer's zone, as before.
+ */
+export function dayKeyFromInput(value: string, timeZone: string): string {
+  const bare = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (bare) {
+    const [y, m, d] = [Number(bare[1]), Number(bare[2]), Number(bare[3])];
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    // The pattern alone lets February 31st through; JS would roll it into March.
+    if (dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d) {
+      return value;
+    }
+    throw new RangeError(`${value} is not a calendar day`);
+  }
+  return localDateKeyInZone(new Date(value), timeZone);
+}
+
 /** Add whole days to a YYYY-MM-DD key without touching timezones at all. */
 export function addDaysToDateKey(dateKey: string, days: number): string {
   const [y, m, d] = dateKey.split("-").map(Number);

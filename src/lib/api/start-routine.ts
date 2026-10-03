@@ -6,7 +6,7 @@ import { expandRoutineSchedule, isExpandedProgram } from "@/lib/routine-schedule
 import { progressedExercises } from "@/lib/progression";
 import { loadAssistedCheck } from "@/lib/api/assisted";
 import { isUniqueViolation } from "@/lib/api/pg-errors";
-import { addDaysToDateKey, localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { addDaysToDateKey, dayKeyFromInput, scheduledDateFromKey } from "@/lib/date";
 
 /**
  * Start a routine: the instance that tracks it and every session on the calendar.
@@ -23,7 +23,10 @@ import { addDaysToDateKey, localDateKeyInZone, scheduledDateFromKey } from "@/li
 export interface StartRoutineInput {
   userId: string;
   routineId: string;
-  /** Anything `Date.parse` accepts; resolved to a calendar day in `timeZone`. */
+  /**
+   * A bare "YYYY-MM-DD" (FitBot, Liv) is that day, exactly. Anything else is an
+   * instant (the Start button sends `toISOString()`) resolved in `timeZone`.
+   */
   startDate: string;
   durationDays?: number;
   /** The viewer's zone. A route reads the cookie; a machine caller passes what it knows. */
@@ -63,11 +66,17 @@ export async function startRoutine(input: StartRoutineInput) {
     existing.map((w) => new Date(w.date).toISOString().split("T")[0]),
   );
 
-  const startDate = new Date(input.startDate);
-  // The calendar day the user picked, resolved in THEIR zone rather than the
-  // server's (UTC on Vercel). Every date below is derived from this KEY by
-  // calendar arithmetic, so no step ever depends on a machine's local clock.
-  const startKey = localDateKeyInZone(startDate, input.timeZone);
+  // The calendar day the user picked. A bare day is taken as written: parsing
+  // it as an instant made it midnight UTC, the evening BEFORE anywhere west of
+  // Greenwich, and started Ivo's program a day early (2026-10-03). Every date
+  // below is derived from this KEY by calendar arithmetic, so no step ever
+  // depends on a machine's local clock.
+  let startKey: string;
+  try {
+    startKey = dayKeyFromInput(input.startDate, input.timeZone);
+  } catch {
+    throw new ApiError(400, `startDate ${input.startDate} is not a calendar day`);
+  }
 
   // REPEAT the cycle across the chosen duration. Until 2026-09-18 a routine
   // scheduled one pass and the duration only filtered entries out, so starting

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addDaysToDateKey,
+  dayKeyFromInput,
   localDateKey,
   localDateKeyInZone,
   parseServerDate,
@@ -154,5 +155,26 @@ describe("scheduledDateKey - reading an authored day back", () => {
 
   it("accepts the string form a driver hands back", () => {
     expect(scheduledDateKey("2026-08-27T12:00:00.000Z")).toBe("2026-08-27");
+  });
+});
+
+describe("dayKeyFromInput - the day a caller meant", () => {
+  it("keeps a bare day as that day in a zone WEST of UTC (Ivo's 2026-10-02 start)", () => {
+    // new Date("2026-10-02") is midnight UTC, which is 5pm on Oct 1 in Los
+    // Angeles. That is the day-early program this exists to prevent.
+    expect(localDateKeyInZone(new Date("2026-10-02"), "America/Los_Angeles")).toBe("2026-10-01");
+    expect(dayKeyFromInput("2026-10-02", "America/Los_Angeles")).toBe("2026-10-02");
+  });
+  it("keeps a bare day as that day east of UTC too", () => {
+    expect(dayKeyFromInput("2026-10-02", "Pacific/Auckland")).toBe("2026-10-02");
+    expect(dayKeyFromInput("2026-10-02", "UTC")).toBe("2026-10-02");
+  });
+  it("still resolves a full timestamp in the viewer's zone (the Start button's shape)", () => {
+    // 2026-10-03T01:29Z is the evening of Oct 2 in Los Angeles.
+    expect(dayKeyFromInput("2026-10-03T01:29:10.000Z", "America/Los_Angeles")).toBe("2026-10-02");
+    expect(dayKeyFromInput("2026-10-03T01:29:10.000Z", "UTC")).toBe("2026-10-03");
+  });
+  it("refuses a day that does not exist rather than rolling it over", () => {
+    expect(() => dayKeyFromInput("2026-02-31", "UTC")).toThrow(RangeError);
   });
 });

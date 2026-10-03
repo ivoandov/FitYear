@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { scheduledWorkouts } from "@/lib/db/schema";
 import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
-import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { dayKeyFromInput, scheduledDateFromKey } from "@/lib/date";
 import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   createCalendarEvent,
@@ -57,9 +57,14 @@ export const PUT = handle(async (request: NextRequest, ctx: Ctx) => {
   if (body.localDate) {
     update.date = scheduledDateFromKey(body.localDate);
   } else if (body.date) {
-    update.date = scheduledDateFromKey(
-      localDateKeyInZone(new Date(body.date), await viewerTimeZone()),
-    );
+    // A bare day is that day; see dayKeyFromInput. Through `new Date()` FitBot's
+    // "move it to 2026-10-04" landed on Oct 3 in Los Angeles: a 200, and the
+    // session never moved.
+    try {
+      update.date = scheduledDateFromKey(dayKeyFromInput(body.date, await viewerTimeZone()));
+    } catch {
+      throw new ApiError(400, `date ${body.date} is not a calendar day`);
+    }
   }
 
   // If name changed, propagate to sibling rows in the same routine/template

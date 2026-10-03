@@ -3,9 +3,9 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { scheduledWorkouts, userSettings } from "@/lib/db/schema";
-import { requireUser } from "@/lib/api/auth";
+import { ApiError, requireUser } from "@/lib/api/auth";
 import { handle } from "@/lib/api/handler";
-import { localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
+import { dayKeyFromInput, localDateKeyInZone, scheduledDateFromKey } from "@/lib/date";
 import { viewerTimeZone } from "@/lib/server-timezone";
 import {
   createCalendarEvent,
@@ -42,9 +42,23 @@ export const POST = handle(async (request: NextRequest) => {
   // is readable back with scheduledDateKey; the `date` fallback is legacy and
   // must be anchored too, or one caller omitting `localDate` silently
   // reintroduces the un-anchored rows the 2026-08-27 migration removed.
-  const dateValue = body.localDate
-    ? scheduledDateFromKey(body.localDate)
-    : scheduledDateFromKey(localDateKeyInZone(body.date ? new Date(body.date) : new Date(), await viewerTimeZone()));
+  //
+  // A bare "YYYY-MM-DD" in `date` (what FitBot sends) is that day as written;
+  // through `new Date()` it was midnight UTC and landed a day EARLY west of
+  // Greenwich (2026-10-03, see dayKeyFromInput).
+  const zone = await viewerTimeZone();
+  let dateValue: Date;
+  try {
+    dateValue = scheduledDateFromKey(
+      body.localDate
+        ? body.localDate
+        : body.date
+          ? dayKeyFromInput(body.date, zone)
+          : localDateKeyInZone(new Date(), zone),
+    );
+  } catch {
+    throw new ApiError(400, `date ${body.date} is not a calendar day`);
+  }
 
   const [created] = await db
     .insert(scheduledWorkouts)
