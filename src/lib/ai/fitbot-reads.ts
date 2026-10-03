@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { loadTrainingHistory } from "@/lib/api/training-history";
 import { getActiveRoutineAdherence } from "@/lib/api/routine-adherence";
-import { localDateKeyInZone, scheduledDateKey } from "@/lib/date";
+import { addDaysToDateKey, localDateKeyInZone, scheduledDateKey } from "@/lib/date";
 import { searchReference } from "@/lib/exercise-reference";
 import { routineEntries } from "@/lib/db/schema";
 import { recentWorkoutsLimit } from "@/lib/ai/fitbot-tools";
@@ -281,9 +281,26 @@ async function searchExercises(query?: string, muscleGroup?: string) {
   return { inCatalog, standardNames };
 }
 
-async function listUpcomingWorkouts(userId: string) {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+/** How far back an un-done session still counts as overdue rather than history. */
+export const OVERDUE_LOOKBACK_DAYS = 14;
+
+/**
+ * The calendar from today on, plus anything recent still sitting on it undone.
+ *
+ * Two bugs lived here until 2026-10-03. "Today" was the SERVER's midnight, UTC,
+ * so from 5pm in Los Angeles the day's own session had already dropped off the
+ * list. And nothing before today was returned at all, so when Ivo asked FitBot
+ * to fix a session showing past due it could not see the session to move it,
+ * and tried to work around it instead. A scheduled row is deleted when its
+ * workout is completed, so any row before today is one that has not been done:
+ * it comes back flagged `overdue`, for the last two weeks only, because older
+ * than that is a missed session, not a plan.
+ */
+async function listUpcomingWorkouts(userId: string, tz: string) {
+  const todayKey = localDateKeyInZone(new Date(), tz);
+  // Stored days are anchored at noon UTC, so midnight UTC of a key is a safe
+  // lower bound for that day.
+  const from = new Date(`${addDaysToDateKey(todayKey, -OVERDUE_LOOKBACK_DAYS)}T00:00:00Z`);
   const rows = await db
     .select({
       id: scheduledWorkouts.id,
@@ -293,20 +310,22 @@ async function listUpcomingWorkouts(userId: string) {
       routineDayIndex: scheduledWorkouts.routineDayIndex,
     })
     .from(scheduledWorkouts)
-    .where(
-      and(eq(scheduledWorkouts.userId, userId), gte(scheduledWorkouts.date, todayStart)),
-    )
+    .where(and(eq(scheduledWorkouts.userId, userId), gte(scheduledWorkouts.date, from)))
     .orderBy(scheduledWorkouts.date);
 
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
+  return rows.map((r) => {
     // An AUTHORED day, read with the zone-free helper. Resolving it in a
     // viewer's zone reports every session a day late from UTC+12 east.
-    date: scheduledDateKey(r.date),
-    routineDayIndex: r.routineDayIndex,
-    exercises: r.exercises ?? [],
-  }));
+    const date = scheduledDateKey(r.date);
+    return {
+      id: r.id,
+      name: r.name,
+      date,
+      ...(date < todayKey ? { overdue: true } : {}),
+      routineDayIndex: r.routineDayIndex,
+      exercises: r.exercises ?? [],
+    };
+  });
 }
 
 async function getBodyMeasurements(userId: string) {
@@ -403,7 +422,7 @@ export async function runReadTool(
         input.muscleGroup ? String(input.muscleGroup) : undefined,
       );
     case "list_upcoming_workouts":
-      return listUpcomingWorkouts(ctx.userId);
+      return listUpcomingWorkouts(ctx.userId, ctx.tz);
     case "get_body_measurements":
       return getBodyMeasurements(ctx.userId);
     case "get_personal_records":

@@ -146,7 +146,8 @@ export const READ_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "list_upcoming_workouts",
-    description: "Workouts already scheduled from today onward, with the date and exercises planned for each.",
+    description:
+      "Workouts on the calendar from today onward, with the date and exercises planned for each, PLUS any from the last 14 days that were never done, marked overdue: true. An overdue session can be moved or removed like any other; use its id.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
